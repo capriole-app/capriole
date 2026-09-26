@@ -18,7 +18,9 @@ add_library(capriole_engine STATIC
   src/parser/object_stream.cpp
   src/parser/xref.cpp
   src/repair/reconstruct.cpp
-  src/repair/repair.cpp)
+  src/repair/repair.cpp
+  src/writer/byte_sink.cpp
+  src/writer/serializer.cpp)
 add_library(capriole::engine ALIAS capriole_engine)
 
 target_include_directories(capriole_engine PUBLIC
