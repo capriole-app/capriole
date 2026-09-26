@@ -18,9 +18,12 @@ Data: 2026-09-26 · Stato: accettata
    scelta della UI (Tauri o altro) non vincola il motore.
 7. **`ByteSource`** come astrazione di input ad accesso casuale: il motore non presuppone il file in memoria.
 8. **Errori**: `Result<T> = std::expected<T, Error>`; `Error` porta codice, messaggio e offset nel file.
-9. **CI su GitHub Actions** (il repo è su GitHub), non Jenkins: nessuno stack da avviare, solo build e test.
+9. **CI sul Jenkins del workspace** (multibranch, `Jenkinsfile`), con `agent { dockerfile }` su
+   `ci/Dockerfile`: toolchain fissata nell'immagine, nessun requisito sull'host oltre a docker, nessun
+   `lock` perché non avvia risorse con nome o porta fissi. GitHub Actions è stato scartato: con il repo
+   privato i minuti sono a consumo. L'hook `pre-push` locale (`scripts/hooks/`) esegue lo stesso gate.
 
 ## Conseguenze
 
-- Il gate locale è `scripts/check.sh`; la CI esegue gli stessi passi più release Clang, WASM e fuzz smoke.
+- Il gate è `scripts/check.sh`, eseguito dall'hook `pre-push` e da Jenkins; Jenkins aggiunge release Clang e fuzz smoke.
 - Senza licenza decisa il repo resta privato e non accetta contributi esterni; OSS-Fuzz richiederà la licenza.

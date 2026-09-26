@@ -22,6 +22,16 @@ sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld
   per i test differenziali**, usati come programmi esterni. Non si linkano mai (licenze, spec §7.3).
   PDFium e pdf.js arrivano alla fase 4 (binario precompilato / Node).
 
+## Hook git (obbligatorio, una volta per clone)
+
+```sh
+git config core.hooksPath scripts/hooks
+```
+
+`scripts/hooks/pre-push` è il gate: blocca il push diretto su `main` ed esegue `scripts/check.sh`,
+build WebAssembly compresa se `~/emsdk` è installato. La CI gira sul nostro Jenkins (`Jenkinsfile`,
+immagine `ci/Dockerfile`) e ripete lo stesso gate, più build release con Clang e fuzz smoke.
+
 ## Emscripten (build WebAssembly)
 
 Installato in user space, senza sudo:
@@ -33,7 +43,7 @@ source ~/emsdk/emsdk_env.sh       # in ogni shell che builda wasm
 cmake --preset wasm && cmake --build --preset wasm && ctest --preset wasm
 ```
 
-La versione usata è fissata in `.github/workflows/ci.yml` (`EMSDK_VERSION`): locale e CI devono coincidere.
+La versione è fissata anche in `ci/Dockerfile` (`EMSDK_VERSION`): locale e CI devono coincidere.
 
 ## Corpora di test
 

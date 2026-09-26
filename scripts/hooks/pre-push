@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# pre-push: the local gate, the same scripts/check.sh that Jenkins runs — broken code is caught
+# before it reaches the remote, not minutes later in CI.
+#
+#   - blocks direct pushes to main (main moves by merging development; override: ALLOW_MAIN_PUSH=1);
+#   - runs scripts/check.sh, including the WebAssembly build when ~/emsdk is installed.
+#
+# Installed by: git config core.hooksPath scripts/hooks   (see docs/SETUP.md)
+set -euo pipefail
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [[ "$remote_ref" == "refs/heads/main" && "${ALLOW_MAIN_PUSH:-0}" != 1 ]]; then
+    echo "pre-push: direct push to main is blocked. Merge development instead, or set ALLOW_MAIN_PUSH=1." >&2
+    exit 1
+  fi
+done
+
+root="$(git rev-parse --show-toplevel)"
+emsdk_env="${EMSDK:-$HOME/emsdk}/emsdk_env.sh"
+if [[ -f "$emsdk_env" ]]; then
+  # shellcheck source=/dev/null
+  source "$emsdk_env" >/dev/null 2>&1
+  export SKIP_WASM=0
+fi
+
+exec "$root/scripts/check.sh"
