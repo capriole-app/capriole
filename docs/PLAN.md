@@ -111,7 +111,8 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
 - campione SafeDocs (1.000 file): **98,91%** dei file sani aperti — sotto il 99% per 7 file, tutti
   violazioni della specifica verificate a mano (fase 5); nessun numero di pagine diverso dai riferimenti;
 - UNSAFE-DOCS: **0 crash** su 1.417 file (x002); x008 da completare;
-- fuzzing di 24 h: **non ancora fatto**.
+- fuzzing di 24 h: in locale, a bassa intensità, con `scripts/fuzz_local.sh start 24` (1 core, 1,5 GB,
+  nice 19, I/O idle; unità systemd utente `capriole-fuzz`). Esito da registrare qui.
 
 ## Fase 3 — Writer (~2 settimane)
 

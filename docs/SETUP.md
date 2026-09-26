@@ -53,6 +53,19 @@ Si scaricano con `corpus-tools/fetch_corpus.sh` e si analizzano con `corpus-tool
 (vedi `corpus-tools/README.md`). Vanno trattati come input ostile:
 non si aprono con visualizzatori di sistema, si processano solo con i nostri strumenti.
 
+## Fuzzing lungo
+
+```sh
+scripts/fuzz_local.sh start 24     # campagna di 24 h in background, bassa intensità
+scripts/fuzz_local.sh status       # avanzamento e problemi trovati finora
+scripts/fuzz_local.sh stop         # interrompe (il corpus accumulato resta)
+scripts/fuzz_local.sh report       # riepilogo dell'ultima campagna
+```
+
+Gira come unità systemd utente (`capriole-fuzz`) con limiti rigidi: 1 core, 1,5 GB senza swap, nice 19,
+I/O idle, un fuzzer alla volta. Usa una sua copia del repo (`.git/capriole-fuzz-worktree`) ferma al commit
+di avvio. Si ferma al logout, salvo `loginctl enable-linger`.
+
 ## Editor
 
 Il preset scrive `build/<preset>/compile_commands.json`; per clangd/VS Code puntare a `build/debug`.

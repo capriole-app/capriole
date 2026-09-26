@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Long fuzzing campaign over every libFuzzer target (DOCS/CAPRIOLE.md §7.4, PLAN.md phase 2 exit).
+# Usually started through scripts/fuzz_local.sh, which adds the resource limits.
 #
 #   scripts/fuzz_campaign.sh <hours> <workers>
 #
