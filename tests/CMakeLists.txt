@@ -7,6 +7,7 @@ add_executable(capriole_unit_tests
   unit/object_parser_test.cpp
   unit/object_test.cpp
   unit/regression_test.cpp
+  unit/repair_test.cpp
   unit/source_reader_test.cpp
   unit/capi_test.cpp
   unit/basic_filters_test.cpp

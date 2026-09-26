@@ -27,6 +27,7 @@
 #include "capriole/parser/header.hpp"
 #include "capriole/parser/object_loader.hpp"
 #include "capriole/parser/xref.hpp"
+#include "capriole/repair/repair.hpp"
 
 namespace capriole {
 
@@ -42,6 +43,9 @@ struct OpenOptions {
   // Tried as the user password, then as the owner password. Most encrypted files open with the
   // empty user password (they only restrict permissions).
   std::string password;
+  // Let the repair layer (repair/) fix files that strict reading rejects; every repair applied is
+  // listed by Document::repairs(). false = strict only, for diagnostics.
+  bool repair = true;
 };
 
 class Document {
@@ -61,6 +65,8 @@ class Document {
   // The cross-reference sections as read from the file (never changed by edits).
   [[nodiscard]] const parser::XrefTable& xref() const noexcept { return loader_->xref(); }
   [[nodiscard]] ByteSource& source() noexcept { return *source_; }
+  // Repairs applied while opening (empty for a file that conforms).
+  [[nodiscard]] const std::vector<repair::RepairNote>& repairs() const noexcept { return repairs_; }
   // The security handler of an encrypted document (permissions, revision); nullptr otherwise.
   [[nodiscard]] const crypto::StandardSecurityHandler* security() const noexcept { return security_.get(); }
 
@@ -110,12 +116,15 @@ class Document {
   };
 
   Document() = default;
+  // One strict attempt. source is moved into the document only on success.
+  static Result<Document> build(std::unique_ptr<ByteSource>& source, const OpenOptions& options);
   // The slot for an object that exists (loading it from the file if needed); nullptr otherwise.
   Result<Slot*> slot(std::uint32_t number);
 
   std::unique_ptr<ByteSource> source_;
   std::unique_ptr<parser::ObjectLoader> loader_;
   std::shared_ptr<const crypto::StandardSecurityHandler> security_;
+  std::vector<repair::RepairNote> repairs_;
   ParseLimits limits_;
   parser::PdfHeader header_;
   model::Dict trailer_;

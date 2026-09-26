@@ -50,7 +50,8 @@ void print_usage() {
                "  check <file>    load every object, decode every stream, walk the page tree;\n"
                "                  exit 1 on any error\n"
                "\n"
-               "Encrypted files: set CAPRIOLE_PASSWORD (user or owner password; empty by default).\n";
+               "Encrypted files: set CAPRIOLE_PASSWORD (user or owner password; empty by default).\n"
+               "Strict reading only (no repairs): set CAPRIOLE_STRICT=1.\n";
 }
 
 int fail(std::string_view context, const capriole::Error& error) {
@@ -71,6 +72,10 @@ capriole::Result<capriole::Document> open_document(std::string_view path) {
   capriole::OpenOptions options;
   if (const char* password = std::getenv("CAPRIOLE_PASSWORD")) {  // NOLINT(concurrency-mt-unsafe): single-threaded tool
     options.password = password;
+  }
+  // CAPRIOLE_STRICT=1: no repairs, to see what strict reading alone makes of a file.
+  if (const char* strict = std::getenv("CAPRIOLE_STRICT"); strict != nullptr && std::string_view(strict) == "1") {  // NOLINT(concurrency-mt-unsafe)
+    options.repair = false;
   }
   return capriole::Document::open(std::move(*source), options);
 }
@@ -287,6 +292,9 @@ int cmd_check(std::string_view path) {
   }
   for (const auto& [reason, count] : unsupported) {
     std::cout << std::format("  not supported yet ({} objects/streams): {}\n", count, reason);
+  }
+  for (const auto& note : doc.repairs()) {
+    std::cout << std::format("  repaired ({}): {}\n", capriole::repair::to_string(note.kind), note.description);
   }
   return errors == 0 ? kExitOk : kExitFailure;
 }

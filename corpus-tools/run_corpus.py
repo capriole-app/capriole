@@ -89,6 +89,7 @@ def run_capriole(cpdf: str, path: str, timeout: float) -> dict:
         "error": first_error[:300],
         "error_kind": (re.search(r"\((\w+)\)\s*$", first_error) or [None, None])[1] if outcome == "error" else None,
         "unsupported": [line.split(": ", 1)[-1] for line in out.splitlines() if "not supported yet" in line],
+        "repairs": [re.sub(r"^\s*repaired \((\w+)\).*$", r"\1", line) for line in out.splitlines() if line.strip().startswith("repaired (")],
         "sanitizer": sanitizer.group(0)[:300] if sanitizer else None,
         "seconds": result["seconds"],
     }
@@ -155,6 +156,8 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
     beyond = [r for r in results if r["reference"]["majority"] is None and r["capriole"]["pages"] is not None]
     kinds = collections.Counter(r["capriole"]["error_kind"] for r in results if r["capriole"]["outcome"] == "error")
     unsupported = collections.Counter(re.sub(r"\d+", "N", u) for r in results for u in r["capriole"]["unsupported"])
+    repairs = collections.Counter(k for r in results for k in r["capriole"].get("repairs", []))
+    repaired_files = sum(1 for r in results if r["capriole"].get("repairs"))
     errors = collections.Counter(re.sub(r"\d+", "N", r["capriole"]["error"])[:120] for r in results if r["capriole"]["outcome"] == "error")
 
     def pct(n: int, d: int) -> str:
@@ -176,6 +179,11 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
         f"- files with a reference majority: {len(with_majority)}; same page count: {pct(len(matched), len(with_majority))}; "
         f"different count: {len(mismatched)}; no count from Capriole: {len(missed)}",
         f"- files no two references agree on, which Capriole reads: {len(beyond)}",
+        f"- files opened only thanks to a repair: {repaired_files}",
+        "",
+        "## Repairs applied",
+        "",
+        *[f"- {k}: {v}" for k, v in repairs.most_common()],
         "",
         "## Capriole outcomes",
         "",

@@ -88,4 +88,22 @@ Result<std::size_t> FileByteSource::read(std::uint64_t offset, std::span<std::by
   return got;
 }
 
+// ── OffsetByteSource ─────────────────────────────────────────────────────────────────────────
+
+OffsetByteSource::OffsetByteSource(std::unique_ptr<ByteSource> base, std::uint64_t offset) noexcept
+    : base_(std::move(base)), offset_(base_ != nullptr ? std::min(offset, base_->size()) : 0) {}
+
+std::uint64_t OffsetByteSource::size() const noexcept { return base_ != nullptr ? base_->size() - offset_ : 0; }
+
+Result<std::size_t> OffsetByteSource::read(std::uint64_t offset, std::span<std::byte> dest) {
+  if (base_ == nullptr) {
+    return make_error(ErrorCode::kIo, "source released");
+  }
+  auto count = clamp_read(size(), offset, dest.size());
+  if (!count || *count == 0) {
+    return count;
+  }
+  return base_->read(offset_ + offset, dest.first(*count));
+}
+
 }  // namespace capriole

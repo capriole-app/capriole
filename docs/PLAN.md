@@ -108,9 +108,10 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
 1.000 file SafeDocs *non* malformati; zero crash/ASan su UNSAFE-DOCS campione; fuzzer 24 h senza crash.
 
 **Stato (2026-09-26):** tutte le funzionalità della fase sono fatte. Criterio d'uscita:
-- campione SafeDocs (1.000 file): **98,91%** dei file sani aperti — sotto il 99% per 7 file, tutti
-  violazioni della specifica verificate a mano (fase 5); nessun numero di pagine diverso dai riferimenti;
-- UNSAFE-DOCS: **0 crash** su 1.417 file (x002); x008 da completare;
+- campione SafeDocs (1.000 file): **99,38%** dei file sani aperti ✅ (98,91% con la sola lettura
+  rigorosa; +3 file con la prima riparazione, gli offset relativi all'header); nessun numero di pagine
+  diverso dai riferimenti; i 4 restanti sono violazioni della specifica verificate a mano;
+- UNSAFE-DOCS: **0 crash** su 1.417 file (x002: 99,90% dei file sani aperti); x008 da completare;
 - fuzzing di 24 h: in locale, a bassa intensità, con `scripts/fuzz_local.sh start 24` (1 core, 1,5 GB,
   nice 19, I/O idle; unità systemd utente `capriole-fuzz`). Esito da registrare qui.
 
@@ -163,8 +164,15 @@ x002), che spostano tutti gli offset. Con quella sola riparazione SafeDocs passe
 
 ## Fase 5 — Strato di riparazione (continuo, guidato dal report)
 
+**Architettura (2026-09-26):** `Document::open` tenta la lettura rigorosa; solo se fallisce, e solo per
+errori strutturali (`repair::may_help`: non password, non funzioni non supportate, non limiti), prova le
+riparazioni in ordine fisso e registra quelle applicate in `Document::repairs()` (il writer ne terrà
+conto). `OpenOptions.repair = false` / `CAPRIOLE_STRICT=1` per la sola lettura rigorosa. L'harness conta
+i file aperti grazie a una riparazione e le riparazioni per tipo.
+
 **Casi reali raccolti finora** (dai 238 PDF pubblici, SafeDocs 0000, UNSAFE x002), in ordine di frequenza:
-1. byte spuri prima dell'header → offset relativi all'header (35 file);
+1. ✅ byte spuri prima dell'header → offset relativi all'header: il file si legge attraverso una vista
+   che parte dall'header (`OffsetByteSource`). 35 file recuperati, 0 regressioni;
 2. voci xref "in uso" con offset 0 → trattarle come libere (23 file SafeDocs, qpdf avvisa);
 3. `startxref` assente o non seguito da `%%EOF`, file troncati (≥ 17);
 4. chiavi duplicate nei dizionari (`/Type`, `/Info`, `/Length`, ...);

@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "capriole/filters/decode.hpp"
+#include "capriole/repair/repair.hpp"
 
 namespace capriole {
 
@@ -34,10 +35,34 @@ Document& Document::operator=(Document&&) noexcept = default;
 Document::~Document() = default;
 
 Result<Document> Document::open(std::unique_ptr<ByteSource> source, const OpenOptions& options) {
-  const ParseLimits& limits = options.limits;
   if (source == nullptr) {
     return make_error(ErrorCode::kIo, "no source to open");
   }
+  // Strict reading first (§7.1 of the project specification); repairs only if it fails.
+  auto strict = build(source, options);
+  if (strict || !options.repair || !repair::may_help(strict.error())) {
+    return strict;
+  }
+
+  // Repair: junk before %PDF-, and offsets that count from the header instead of from byte 0.
+  // The file is read through a view that starts at the header, which makes every offset consistent.
+  if (const auto junk = repair::junk_before_header(*source)) {
+    auto view = std::make_unique<OffsetByteSource>(std::move(source), *junk);
+    OffsetByteSource* view_ptr = view.get();
+    std::unique_ptr<ByteSource> shifted = std::move(view);
+    auto repaired = build(shifted, options);
+    if (repaired) {
+      repaired->repairs_.push_back(repair::RepairNote{.kind = repair::RepairKind::kHeaderOffset,
+                                                      .description = std::to_string(*junk) + " bytes before %PDF-; offsets read relative to the header"});
+      return repaired;
+    }
+    source = view_ptr->release_base();
+  }
+  return strict;
+}
+
+Result<Document> Document::build(std::unique_ptr<ByteSource>& source, const OpenOptions& options) {
+  const ParseLimits& limits = options.limits;
   auto header = parser::find_header(*source);
   if (!header) {
     return std::unexpected(std::move(header.error()));
@@ -62,8 +87,10 @@ Result<Document> Document::open(std::unique_ptr<ByteSource> source, const OpenOp
   }
   document.next_number_ = static_cast<std::uint32_t>(std::min<std::uint64_t>(next, std::numeric_limits<std::uint32_t>::max()));
 
-  document.source_ = std::move(source);
-  document.loader_ = std::make_unique<parser::ObjectLoader>(*document.source_, std::move(*xref), limits);
+  // The loader refers to the source object, which stays where it is when the owning pointer moves:
+  // ownership is taken only once everything succeeded, so a failed attempt leaves the caller able to
+  // try a repair with the same source.
+  document.loader_ = std::make_unique<parser::ObjectLoader>(*source, std::move(*xref), limits);
 
   if (const Object* encrypt = document.trailer_.find("Encrypt")) {
     // The /Encrypt dictionary itself is never encrypted: load it before enabling decryption.
@@ -94,6 +121,7 @@ Result<Document> Document::open(std::unique_ptr<ByteSource> source, const OpenOp
     document.security_ = std::make_shared<const crypto::StandardSecurityHandler>(std::move(*handler));
     document.loader_->set_security_handler(document.security_, encrypt_object);
   }
+  document.source_ = std::move(source);
   return document;
 }
 

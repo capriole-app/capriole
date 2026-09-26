@@ -66,4 +66,23 @@ class FileByteSource final : public ByteSource {
   std::uint64_t size_;
 };
 
+// A view of another source that starts `offset` bytes in: byte 0 of the view is byte `offset` of the
+// base. Used by the repair layer when a file's offsets are relative to a header preceded by junk.
+class OffsetByteSource final : public ByteSource {
+ public:
+  // offset must not exceed base->size().
+  OffsetByteSource(std::unique_ptr<ByteSource> base, std::uint64_t offset) noexcept;
+
+  [[nodiscard]] std::uint64_t size() const noexcept override;
+  [[nodiscard]] Result<std::size_t> read(std::uint64_t offset, std::span<std::byte> dest) override;
+
+  [[nodiscard]] std::uint64_t base_offset() const noexcept { return offset_; }
+  // Gives the base source back (the view is empty afterwards).
+  [[nodiscard]] std::unique_ptr<ByteSource> release_base() noexcept { return std::move(base_); }
+
+ private:
+  std::unique_ptr<ByteSource> base_;
+  std::uint64_t offset_;
+};
+
 }  // namespace capriole
