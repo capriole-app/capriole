@@ -29,8 +29,8 @@ git config core.hooksPath scripts/hooks
 ```
 
 `scripts/hooks/pre-push` è il gate: blocca il push diretto su `main` ed esegue `scripts/check.sh`,
-build WebAssembly compresa se `~/emsdk` è installato. La CI su GitHub è **solo manuale** (repo privato,
-minuti a consumo): il controllo che conta è questo.
+build WebAssembly compresa se `~/emsdk` è installato. La CI gira sul nostro Jenkins (`Jenkinsfile`,
+immagine `ci/Dockerfile`) e ripete lo stesso gate, più build release con Clang e fuzz smoke.
 
 ## Emscripten (build WebAssembly)
 
@@ -43,7 +43,7 @@ source ~/emsdk/emsdk_env.sh       # in ogni shell che builda wasm
 cmake --preset wasm && cmake --build --preset wasm && ctest --preset wasm
 ```
 
-La versione usata è fissata in `.github/workflows/ci.yml` (`EMSDK_VERSION`): locale e CI devono coincidere.
+La versione è fissata anche in `ci/Dockerfile` (`EMSDK_VERSION`): locale e CI devono coincidere.
 
 ## Corpora di test
 

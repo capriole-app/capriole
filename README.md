@@ -18,7 +18,7 @@ cmake --preset debug
 cmake --build --preset debug
 ctest --preset debug
 
-scripts/check.sh          # full gate: format, ASan/UBSan build + tests, clang-tidy
+scripts/check.sh          # full gate: format, ASan/UBSan build + tests, clang-tidy (also run by the pre-push hook and Jenkins)
 ```
 
 | Preset    | What                                             |

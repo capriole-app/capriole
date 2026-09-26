@@ -18,7 +18,8 @@ bindings/wasm/  modulo Emscripten (ES module) + smoke test Node
 tools/cpdf/  CLI di sviluppo: ogni capacità del motore ha prima un sottocomando qui
 tests/unit/  GoogleTest     tests/regression/  un file minimizzato per bug   tests/differential/  vs motori esterni
 fuzz/        target libFuzzer + corpus seme (fuzz/corpus/<target>/)
-cmake/       moduli CMake     scripts/check.sh  IL GATE     docs/  piano, setup, ADR, dipendenze
+cmake/       moduli CMake     scripts/check.sh  IL GATE     scripts/hooks/  pre-push
+ci/          immagine della CI (Jenkinsfile alla radice)     docs/  piano, setup, ADR, dipendenze
 ```
 
 Aree previste in `engine/`: `core` (errori, ByteSource), `parser` (lexer, xref, oggetti — rigoroso),
@@ -36,8 +37,8 @@ cmake --preset fuzz && cmake --build --preset fuzz   # richiede clang
 ```
 
 **Prima di dire che una modifica è pronta, `scripts/check.sh` deve essere verde.** L'hook `pre-push`
-(`git config core.hooksPath scripts/hooks`) lo esegue a ogni push. La CI GitHub è solo manuale
-(repo privato, minuti a consumo): non avviarla né riattivarne i trigger senza chiedere.
+(`git config core.hooksPath scripts/hooks`) lo esegue a ogni push. La CI è il Jenkins del workspace
+(`Jenkinsfile` + `ci/Dockerfile`), che invoca lo stesso script. Niente GitHub Actions (minuti a pagamento).
 
 ## Principi che NON si violano
 

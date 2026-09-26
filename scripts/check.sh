@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The gate. Green here = ready to commit/push. Same steps as CI (.github/workflows/ci.yml).
+# The gate. Green here = ready to commit/push. Run by the pre-push hook and by Jenkins (Jenkinsfile).
 #
 #   scripts/check.sh            format + build/test with ASan/UBSan + clang-tidy
 #   scripts/check.sh --fix      apply clang-format instead of checking it

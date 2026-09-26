@@ -17,9 +17,10 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 - [x] `tools/cpdf` CLI di sviluppo.
 - [x] GoogleTest, target libFuzzer `fuzz_header` con corpus seme.
 - [x] Gate `scripts/check.sh` (clang-format, ASan/UBSan, test, clang-tidy) eseguito dall'hook `pre-push`;
-      CI GitHub Actions manuale (gate, release Clang, WASM, fuzz smoke).
+      CI su Jenkins (`Jenkinsfile`, immagine `ci/Dockerfile`): gate + WASM, release Clang, fuzz smoke.
 - [x] Toolchain installata (GCC 13, Clang 20, emsdk 6.0.10), gate completo verde in locale, primo push.
 - [x] Fuzzing: `fuzz_header` 10 minuti, ~300 milioni di esecuzioni, nessun problema.
+- [ ] Job multibranch su Jenkins creato e primo build verde su `development`.
 
 **Uscita:** gate completo verde in locale (WASM compreso) e fuzz smoke pulito. ✅
 

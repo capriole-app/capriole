@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# pre-push: the local gate. CI on GitHub is manual-only (metered minutes), so this hook is what
-# keeps broken code off the remote.
+# pre-push: the local gate, the same scripts/check.sh that Jenkins runs — broken code is caught
+# before it reaches the remote, not minutes later in CI.
 #
 #   - blocks direct pushes to main (main moves by merging development; override: ALLOW_MAIN_PUSH=1);
 #   - runs scripts/check.sh, including the WebAssembly build when ~/emsdk is installed.
