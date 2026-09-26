@@ -3,6 +3,8 @@ include(GoogleTest)
 add_executable(capriole_unit_tests
   unit/byte_source_test.cpp
   unit/header_test.cpp
+  unit/lexer_test.cpp
+  unit/source_reader_test.cpp
   unit/capi_test.cpp)
 target_link_libraries(capriole_unit_tests PRIVATE capriole::engine capriole::capi GTest::gtest_main)
 capriole_set_warnings(capriole_unit_tests)

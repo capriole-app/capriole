@@ -3,14 +3,20 @@
 // It grows with the engine: every capability gets a subcommand here first, so it can be exercised
 // on real files and by the corpus runner before any UI exists.
 
+#include <charconv>
+#include <cstdint>
 #include <format>
 #include <iostream>
+#include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 
 #include "capriole/core/byte_source.hpp"
+#include "capriole/core/source_reader.hpp"
 #include "capriole/core/version.hpp"
 #include "capriole/parser/header.hpp"
+#include "capriole/parser/lexer.hpp"
 
 namespace {
 
@@ -23,7 +29,54 @@ void print_usage() {
                "\n"
                "commands:\n"
                "  version         print the engine version\n"
-               "  header <file>   print the PDF version declared in the file header\n";
+               "  header <file>   print the PDF version declared in the file header\n"
+               "  tokens <file> [offset] [count]\n"
+               "                  print up to count tokens (default 100) starting at offset (default 0)\n";
+}
+
+std::optional<std::uint64_t> parse_uint(std::string_view text) {
+  std::uint64_t value = 0;
+  const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+  if (ec != std::errc{} || end != text.data() + text.size()) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+// Printable rendering of token bytes: ASCII as is, everything else as \xHH, long values cut.
+std::string printable(std::string_view bytes) {
+  constexpr std::size_t kMaxShown = 60;
+  std::string out;
+  for (const char ch : bytes.substr(0, kMaxShown)) {
+    const auto byte = static_cast<unsigned char>(ch);
+    if (byte >= 0x20 && byte < 0x7F && byte != '\\') {
+      out.push_back(ch);
+    } else {
+      out += std::format("\\x{:02X}", byte);
+    }
+  }
+  if (bytes.size() > kMaxShown) {
+    out += std::format("... ({} bytes)", bytes.size());
+  }
+  return out;
+}
+
+std::string describe(const capriole::parser::Token& token) {
+  using capriole::parser::TokenKind;
+  switch (token.kind) {
+    case TokenKind::kInteger:
+      return std::to_string(token.integer);
+    case TokenKind::kReal:
+      return std::format("{}", token.real);
+    case TokenKind::kString:
+      return token.string_form == capriole::parser::StringForm::kHex ? "<" + printable(token.bytes) + ">" : "(" + printable(token.bytes) + ")";
+    case TokenKind::kName:
+      return "/" + printable(token.bytes);
+    case TokenKind::kKeyword:
+      return printable(token.bytes);
+    default:
+      return "";
+  }
 }
 
 int cmd_header(std::string_view path) {
@@ -38,6 +91,32 @@ int cmd_header(std::string_view path) {
     return kExitFailure;
   }
   std::cout << std::format("PDF {}.{} (header at offset {})\n", header->major, header->minor, header->offset);
+  return kExitOk;
+}
+
+int cmd_tokens(std::string_view path, std::uint64_t offset, std::uint64_t count) {
+  auto source = capriole::FileByteSource::open(path);
+  if (!source) {
+    std::cerr << "cpdf: " << source.error().message << '\n';
+    return kExitFailure;
+  }
+  capriole::SourceReader reader(**source);
+  if (auto seek = reader.seek(offset); !seek) {
+    std::cerr << std::format("cpdf: {}\n", seek.error().message);
+    return kExitFailure;
+  }
+  capriole::parser::Lexer lexer(reader);
+  for (std::uint64_t i = 0; i < count; ++i) {
+    const auto token = lexer.next();
+    if (!token) {
+      std::cerr << std::format("cpdf: {} at offset {} ({})\n", token.error().message, token.error().offset, capriole::to_string(token.error().code));
+      return kExitFailure;
+    }
+    if (token->kind == capriole::parser::TokenKind::kEnd) {
+      break;
+    }
+    std::cout << std::format("{:>10}  {:<11}  {}\n", token->offset, capriole::parser::to_string(token->kind), describe(*token));
+  }
   return kExitOk;
 }
 
@@ -57,6 +136,13 @@ int main(int argc, char** argv) {
   }
   if (command == "header" && args.size() == 3) {
     return cmd_header(args[2]);
+  }
+  if (command == "tokens" && args.size() >= 3 && args.size() <= 5) {
+    const auto offset = args.size() >= 4 ? parse_uint(args[3]) : std::optional<std::uint64_t>(0);
+    const auto count = args.size() == 5 ? parse_uint(args[4]) : std::optional<std::uint64_t>(100);
+    if (offset && count) {
+      return cmd_tokens(args[2], *offset, *count);
+    }
   }
 
   print_usage();

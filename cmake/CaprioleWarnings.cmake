@@ -28,7 +28,8 @@ function(capriole_set_warnings target)
     -Wimplicit-fallthrough)
 
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(${target} PRIVATE -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wuseless-cast)
+    # No -Wuseless-cast: uint64_t -> size_t casts are no-ops on 64-bit hosts but required on wasm32.
+    target_compile_options(${target} PRIVATE -Wduplicated-cond -Wduplicated-branches -Wlogical-op)
   endif()
 
   if(CAPRIOLE_WARNINGS_AS_ERRORS)

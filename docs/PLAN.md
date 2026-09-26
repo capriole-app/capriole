@@ -26,9 +26,14 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 
 ## Fase 2 — Lexer, parser rigoroso, modello basso 🔜 (~4–6 settimane) — si lavora su `development`
 
-1. **Lexer** (ISO 32000-2 §7.2–7.3): whitespace/delimitatori, commenti, numeri (interi/reali, limiti),
+Passi: **2a** lexer ✅ · **2b** oggetti + parser 🔜 · **2c** xref/trailer/object stream + FlateDecode ·
+**2d** `Document` con stato delle modifiche · **2e** cifratura in lettura. Un branch `feat/…` per passo.
+
+1. ✅ **Lexer** (ISO 32000-2 §7.2–7.3): whitespace/delimitatori, commenti, numeri (interi/reali, limiti),
    stringhe letterali (escape, bilanciamento parentesi, EOL), stringhe esadecimali, nomi (`#xx`),
-   parole chiave. Lavora su `ByteSource` con un buffer a finestra; ogni token porta l'offset.
+   parole chiave. Lavora su `ByteSource` tramite `SourceReader` (finestra scorrevole); ogni token porta
+   offset e lunghezza. Limiti in `ParseLimits`. Fuzzer `fuzz_lexer` con controllo differenziale sulla
+   dimensione della finestra. `cpdf tokens`.
 2. **Oggetti** (§7.3): null, bool, int, real, string, name, array, dict, stream, riferimento indiretto.
    Rappresentazione: `Object` come variant compatto; stringhe/nomi in arena o interning dei nomi.
    Limiti anti-ostile: profondità di annidamento, dimensione array/dict, lunghezza token.
