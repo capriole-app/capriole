@@ -8,7 +8,6 @@
 function(capriole_add_fuzzer name source)
   add_executable(${name} ${source})
   target_link_libraries(${name} PRIVATE capriole::engine)
-  target_compile_options(${name} PRIVATE -fsanitize=fuzzer)
   target_link_options(${name} PRIVATE -fsanitize=fuzzer)
   capriole_set_warnings(${name})
 endfunction()

@@ -7,3 +7,10 @@ if(CAPRIOLE_SANITIZERS)
   add_link_options(-fsanitize=${_capriole_sanitizers})
   message(STATUS "Capriole: sanitizers enabled: ${_capriole_sanitizers}")
 endif()
+
+# Fuzz builds: every library must carry libFuzzer's coverage instrumentation, otherwise the fuzzer
+# sees no edges in the code under test and degrades to blind random input. Only the fuzz targets
+# themselves link the libFuzzer runtime (-fsanitize=fuzzer, in fuzz/CMakeLists.txt).
+if(CAPRIOLE_BUILD_FUZZERS)
+  add_compile_options(-fsanitize=fuzzer-no-link)
+endif()
