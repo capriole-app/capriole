@@ -20,6 +20,14 @@ struct ParseLimits {
   // stack use; the WebAssembly stack (1 MB, set in the root CMakeLists) must hold this depth, and the
   // WASM unit tests verify it with stack overflow checks enabled.
   std::size_t max_nesting_depth = 256;
+  // Largest decoded stream, in bytes. Compression ratios can exceed 1000:1 (a "zip bomb" turns
+  // kilobytes into gigabytes), so the output of every decoder is capped, not just its input.
+  std::size_t max_decoded_stream_bytes = 512 * 1024 * 1024;
+  // Longest chain of cross-reference sections followed through /Prev (one per incremental update).
+  std::size_t max_xref_sections = 4096;
+  // Deepest chain of indirect objects that must be loaded to load one object (e.g. an indirect
+  // /Length whose object is itself a stream): stops hostile reference cycles.
+  std::size_t max_load_depth = 16;
 };
 
 inline constexpr ParseLimits kDefaultParseLimits{};

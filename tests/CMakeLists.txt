@@ -7,8 +7,13 @@ add_executable(capriole_unit_tests
   unit/object_parser_test.cpp
   unit/object_test.cpp
   unit/source_reader_test.cpp
-  unit/capi_test.cpp)
-target_link_libraries(capriole_unit_tests PRIVATE capriole::engine capriole::capi GTest::gtest_main)
+  unit/capi_test.cpp
+  unit/decode_test.cpp
+  unit/flate_test.cpp
+  unit/xref_test.cpp)
+# support/ holds test helpers (PdfBuilder); zlib is linked to build compressed test data.
+target_include_directories(capriole_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(capriole_unit_tests PRIVATE capriole::engine capriole::capi capriole::zlib GTest::gtest_main)
 capriole_set_warnings(capriole_unit_tests)
 if(EMSCRIPTEN)
   # Trap on stack overflow instead of corrupting memory: the nesting-limit tests then prove that the

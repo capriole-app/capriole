@@ -16,6 +16,8 @@ std::string_view to_string(ErrorCode code) noexcept {
       return "unsupported";
     case ErrorCode::kLimitExceeded:
       return "limit_exceeded";
+    case ErrorCode::kCorruptData:
+      return "corrupt_data";
   }
   return "unknown";
 }

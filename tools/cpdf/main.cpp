@@ -7,17 +7,22 @@
 #include <cstdint>
 #include <format>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "capriole/core/byte_source.hpp"
 #include "capriole/core/source_reader.hpp"
 #include "capriole/core/version.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/parser/lexer.hpp"
+#include "capriole/parser/object_loader.hpp"
 #include "capriole/parser/object_parser.hpp"
+#include "capriole/parser/xref.hpp"
 
 namespace {
 
@@ -33,8 +38,56 @@ void print_usage() {
                "  header <file>   print the PDF version declared in the file header\n"
                "  tokens <file> [offset] [count]\n"
                "                  print up to count tokens (default 100) starting at offset (default 0)\n"
-               "  object <file> <offset>\n"
-               "                  parse the indirect object (n g obj ... endobj) that starts at offset\n";
+               "  xref <file>     print the cross-reference sections, trailer and entry counts\n"
+               "  object <file> <number> [generation]\n"
+               "                  load an object through the xref and print it\n"
+               "  object-at <file> <offset>\n"
+               "                  parse the indirect object (n g obj ... endobj) that starts at offset\n"
+               "  stream <file> <number>\n"
+               "                  write the decoded data of a stream object to stdout\n"
+               "  check <file>    load every object and decode every stream; exit 1 on any error\n";
+}
+
+int fail(std::string_view context, const capriole::Error& error) {
+  std::cerr << std::format("cpdf: {}: {}", context, error.message);
+  if (error.offset != capriole::Error::kNoOffset) {
+    std::cerr << std::format(" at offset {}", error.offset);
+  }
+  std::cerr << std::format(" ({})\n", capriole::to_string(error.code));
+  return kExitFailure;
+}
+
+// A file opened through its cross-reference table.
+struct OpenDocument {
+  std::unique_ptr<capriole::FileByteSource> source;
+  std::unique_ptr<capriole::parser::ObjectLoader> loader;
+};
+
+capriole::Result<OpenDocument> open_document(std::string_view path) {
+  auto source = capriole::FileByteSource::open(path);
+  if (!source) {
+    return std::unexpected(std::move(source.error()));
+  }
+  auto xref = capriole::parser::read_xref(**source);
+  if (!xref) {
+    return std::unexpected(std::move(xref.error()));
+  }
+  OpenDocument document;
+  document.loader = std::make_unique<capriole::parser::ObjectLoader>(**source, std::move(*xref));
+  document.source = std::move(*source);
+  return document;
+}
+
+std::string_view form_name(capriole::parser::XrefForm form) {
+  switch (form) {
+    case capriole::parser::XrefForm::kTable:
+      return "table";
+    case capriole::parser::XrefForm::kStream:
+      return "stream";
+    case capriole::parser::XrefForm::kHybrid:
+      return "hybrid";
+  }
+  return "?";
 }
 
 std::optional<std::uint64_t> parse_uint(std::string_view text) {
@@ -123,7 +176,116 @@ int cmd_tokens(std::string_view path, std::uint64_t offset, std::uint64_t count)
   return kExitOk;
 }
 
-int cmd_object(std::string_view path, std::uint64_t offset) {
+int cmd_xref(std::string_view path) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  const auto& xref = document->loader->xref();
+  std::cout << std::format("startxref {}\n", xref.startxref);
+  for (const auto& section : xref.sections) {
+    std::cout << std::format("section at {:>10}  {:<6}  {} entries\n", section.offset, form_name(section.form), section.entry_count);
+  }
+  std::map<capriole::parser::XrefEntryType, std::size_t> counts;
+  for (const auto& [number, entry] : xref.entries) {
+    ++counts[entry.type];
+  }
+  std::cout << std::format("objects: {} in use, {} compressed, {} free\n", counts[capriole::parser::XrefEntryType::kInUse],
+                           counts[capriole::parser::XrefEntryType::kCompressed], counts[capriole::parser::XrefEntryType::kFree]);
+  std::cout << "trailer " << capriole::model::debug_string(xref.trailer) << '\n';
+  return kExitOk;
+}
+
+int cmd_object(std::string_view path, std::uint32_t number, std::optional<std::uint16_t> generation) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  auto object =
+      generation ? document->loader->resolve(capriole::model::ObjectRef{.number = number, .generation = *generation}) : document->loader->load(number);
+  if (!object) {
+    return fail(path, object.error());
+  }
+  std::cout << std::format("{}  {}\n", number, capriole::model::to_string(object->kind()));
+  std::cout << capriole::model::debug_string(*object) << '\n';
+  return kExitOk;
+}
+
+int cmd_stream(std::string_view path, std::uint32_t number) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  auto object = document->loader->load(number);
+  if (!object) {
+    return fail(path, object.error());
+  }
+  const capriole::model::Stream* stream = object->as_stream();
+  if (stream == nullptr) {
+    std::cerr << std::format("cpdf: object {} is a {}, not a stream\n", number, capriole::model::to_string(object->kind()));
+    return kExitFailure;
+  }
+  auto data = document->loader->decode_stream(*stream);
+  if (!data) {
+    return fail(path, data.error());
+  }
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): ostream::write takes char*.
+  std::cout.write(reinterpret_cast<const char*>(data->data()), static_cast<std::streamsize>(data->size()));
+  return kExitOk;
+}
+
+int cmd_check(std::string_view path) {
+  constexpr std::size_t kMaxReported = 20;
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  auto& loader = *document->loader;
+  std::size_t objects = 0;
+  std::size_t streams = 0;
+  std::size_t errors = 0;
+  std::map<std::string, std::size_t> unsupported;
+  const auto report = [&](std::uint32_t number, const capriole::Error& error) {
+    if (++errors <= kMaxReported) {
+      std::cerr << std::format("object {}: {} ({})\n", number, error.message, capriole::to_string(error.code));
+    }
+  };
+
+  for (const auto& [number, entry] : loader.xref().entries) {
+    if (entry.type == capriole::parser::XrefEntryType::kFree) {
+      continue;
+    }
+    auto object = loader.load(number);
+    if (!object) {
+      // e.g. objects inside the object streams of an encrypted file (decryption is phase 2e)
+      if (object.error().code == capriole::ErrorCode::kUnsupported) {
+        ++unsupported[object.error().message];
+      } else {
+        report(number, object.error());
+      }
+      continue;
+    }
+    ++objects;
+    if (const auto* stream = object->as_stream()) {
+      auto data = loader.decode_stream(*stream);
+      if (data) {
+        ++streams;
+      } else if (data.error().code == capriole::ErrorCode::kUnsupported) {
+        ++unsupported[data.error().message];
+      } else {
+        report(number, data.error());
+      }
+    }
+  }
+
+  std::cout << std::format("{}: {} objects loaded, {} streams decoded, {} errors\n", path, objects, streams, errors);
+  for (const auto& [reason, count] : unsupported) {
+    std::cout << std::format("  not supported yet ({} objects/streams): {}\n", count, reason);
+  }
+  return errors == 0 ? kExitOk : kExitFailure;
+}
+
+int cmd_object_at(std::string_view path, std::uint64_t offset) {
   auto source = capriole::FileByteSource::open(path);
   if (!source) {
     std::cerr << "cpdf: " << source.error().message << '\n';
@@ -135,7 +297,7 @@ int cmd_object(std::string_view path, std::uint64_t offset) {
     std::cerr << std::format("cpdf: {}\n", seek.error().message);
     return kExitFailure;
   }
-  // Without a document there is no xref: an indirect /Length cannot be resolved yet (phase 2c).
+  // No xref here: an indirect /Length cannot be resolved (use `object <file> <number>`).
   const auto object = parser.parse_indirect_object();
   if (!object) {
     std::cerr << std::format("cpdf: {} at offset {} ({})\n", object.error().message, object.error().offset, capriole::to_string(object.error().code));
@@ -164,9 +326,27 @@ int main(int argc, char** argv) {
   if (command == "header" && args.size() == 3) {
     return cmd_header(args[2]);
   }
-  if (command == "object" && args.size() == 4) {
+  if (command == "xref" && args.size() == 3) {
+    return cmd_xref(args[2]);
+  }
+  if (command == "check" && args.size() == 3) {
+    return cmd_check(args[2]);
+  }
+  if ((command == "object" || command == "stream") && (args.size() == 4 || (command == "object" && args.size() == 5))) {
+    const auto number = parse_uint(args[3]);
+    const auto generation = args.size() == 5 ? parse_uint(args[4]) : std::optional<std::uint64_t>();
+    const bool valid = number && *number <= UINT32_MAX && (args.size() == 4 || (generation && *generation <= UINT16_MAX));
+    if (valid && command == "stream") {
+      return cmd_stream(args[2], static_cast<std::uint32_t>(*number));
+    }
+    if (valid) {
+      return cmd_object(args[2], static_cast<std::uint32_t>(*number),
+                        generation ? std::optional<std::uint16_t>(static_cast<std::uint16_t>(*generation)) : std::nullopt);
+    }
+  }
+  if (command == "object-at" && args.size() == 4) {
     if (const auto offset = parse_uint(args[3])) {
-      return cmd_object(args[2], *offset);
+      return cmd_object_at(args[2], *offset);
     }
   }
   if (command == "tokens" && args.size() >= 3 && args.size() <= 5) {

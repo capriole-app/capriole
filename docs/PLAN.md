@@ -26,8 +26,8 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 
 ## Fase 2 — Lexer, parser rigoroso, modello basso 🔜 (~4–6 settimane) — si lavora su `development`
 
-Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** 🔜 xref/trailer/object stream + FlateDecode ·
-**2d** `Document` con stato delle modifiche · **2e** cifratura in lettura. Un branch `feat/…` per passo.
+Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/object stream + FlateDecode ✅ ·
+**2d** 🔜 `Document` con stato delle modifiche · **2e** cifratura in lettura. Un branch `feat/…` per passo.
 
 1. ✅ **Lexer** (ISO 32000-2 §7.2–7.3): whitespace/delimitatori, commenti, numeri (interi/reali, limiti),
    stringhe letterali (escape, bilanciamento parentesi, EOL), stringhe esadecimali, nomi (`#xx`),
@@ -42,10 +42,27 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** 🔜 xref/trail
    annidamento, verificato anche contro lo stack WASM (1 MB, test con `STACK_OVERFLOW_CHECK=2`).
    Fuzzer `fuzz_object`. `cpdf object <file> <offset>`. Interning dei nomi / arena: rimandati a quando
    le misure sul corpus li giustificheranno.
-3. **Struttura del file** (§7.5): `startxref`, xref table classica, trailer, catena `/Prev`,
-   **xref stream** (§7.5.8), **object stream** (§7.5.7), file ibridi (`/XRefStm`), linearizzazione
-   (solo lettura: si ignora l'hint table ma non si deve rompere).
-4. **Filtri minimi**: FlateDecode (+ predictor PNG/TIFF), necessario per xref/object stream. → zlib.
+3. ✅ **Struttura del file** (§7.5): `find_startxref` (ultimi 1024 byte, `%%EOF` obbligatorio),
+   `read_xref`: tabella classica (voci rigorose da 20 byte), xref stream (`/W`, `/Index`, tipi 0/1/2),
+   file ibridi (`/XRefStm`), catena `/Prev` con rilevamento dei cicli e limite di sezioni; la lista
+   delle sezioni (offset, forma) è conservata per il salvataggio incrementale. `ObjectStream` (§7.5.7)
+   e `ObjectLoader`: carica per numero dall'offset o dall'object stream, `/Length` e `/Filter`
+   indiretti risolti, riferimenti a oggetti liberi/assenti/generazione errata = null (§7.3.10), cicli
+   fermati da `max_load_depth`. Linearizzazione: letta come file normale.
+4. ✅ **Filtri minimi**: FlateDecode con zlib 1.3.1 (limite anti zip-bomb `max_decoded_stream_bytes`),
+   predittori PNG (tutti i tipi) e TIFF 2 a 8/16 bit, catena `/Filter` + `/DecodeParms`. Gli altri
+   filtri sono `kUnsupported` con il nome del filtro. `cpdf xref|object|stream|check`.
+   Fuzzer `fuzz_xref` (con controllo di determinismo del caricamento) e `fuzz_flate`.
+
+   **Prima misura su PDF reali** (238 articoli e guide pubbliche, 2026-09-26): `cpdf check` passa su
+   225; le varianti con xref stream e object stream generate da qpdf su 226. I casi non superati sono
+   6 file cifrati (fase 2e) e 7 malformazioni reali, tutte tollerate da qpdf con un avviso —
+   **input della fase 5**: chiavi duplicate (`/Type` due volte, 3 file), oggetto 0 elencato due
+   volte in una sezione (2), oggetto 0 marcato in uso (1), generazione 65536 sulla testa della lista
+   libera (1).
+   Filtri non ancora supportati incontrati (stream): DCT 170, CCITTFax 64, ASCII85 19, LZW 4, JBIG2 3,
+   JPX 2, ASCIIHex 2. ASCII85, ASCIIHex, LZW e RunLength sono piccoli e vanno anticipati (con la 2d);
+   DCT/JPX/CCITT/JBIG2 servono solo al rendering (fase 6).
 5. **Modello basso** (`model/`): `Document` con tabella degli oggetti `(num, gen) → slot`, caricamento
    lazy, stato per oggetto (`Unmodified/Modified/New/Deleted`), revisione di provenienza (quale
    sezione incrementale lo ha definito — serve a firme e salvataggi incrementali).
