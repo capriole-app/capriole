@@ -51,7 +51,8 @@ case "${1:-}" in
     fi
     [[ -f "$worktree/fuzz/campaign/summary.txt" ]] && { echo "finished targets:"; cat "$worktree/fuzz/campaign/summary.txt"; }
     current=$(ls -t "$worktree"/fuzz/campaign/*.log 2>/dev/null | head -1 || true)
-    [[ -n "$current" ]] && echo "current: $(basename "$current" .log) — $(grep -aoE '#[0-9]+ .*(cov|exec/s)[^\r]*' "$current" | tail -1 | cut -c1-120)"
+    # libFuzzer status lines: "#<executions> <event> cov: ... exec/s: ... rss: ...".
+    [[ -n "$current" ]] && echo "current: $(basename "$current" .log) — $(tail -c 4000 "$current" | tr '\r' '\n' | grep -aE '^#[0-9]+' | tail -1 | tr '\t' ' ' | cut -c1-110)"
     echo "findings so far: $(find "$worktree/fuzz/campaign/crashes" -type f 2>/dev/null | wc -l)"
     ;;
   stop)
