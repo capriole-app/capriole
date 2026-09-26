@@ -35,7 +35,9 @@ cmake --preset fuzz && cmake --build --preset fuzz   # richiede clang
 ./build/debug/tools/cpdf/cpdf header file.pdf
 ```
 
-**Prima di dire che una modifica è pronta, `scripts/check.sh` deve essere verde.**
+**Prima di dire che una modifica è pronta, `scripts/check.sh` deve essere verde.** L'hook `pre-push`
+(`git config core.hooksPath scripts/hooks`) lo esegue a ogni push. La CI GitHub è solo manuale
+(repo privato, minuti a consumo): non avviarla né riattivarne i trigger senza chiedere.
 
 ## Principi che NON si violano
 
@@ -68,5 +70,6 @@ cmake --preset fuzz && cmake --build --preset fuzz   # richiede clang
 
 ## Git
 
-Branch `main` (protetto) e `development`; lavoro su branch `feat/…`, `fix/…`. Conventional Commits.
+Si lavora su **`development`** (o branch `feat/…`, `fix/…` che confluiscono in `development`).
+`main` si aggiorna solo per merge da `development`; l'hook blocca il push diretto. Conventional Commits.
 Remote: `github.com/capriole-app/capriole` (privato).

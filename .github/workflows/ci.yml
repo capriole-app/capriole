@@ -1,9 +1,11 @@
 name: ci
 
+# Manual only: the repository is private and Actions minutes are metered. The real gate is local
+# (scripts/check.sh, run by the pre-push hook in scripts/hooks/). Run this from the Actions tab
+# ("Run workflow") before a release, or switch back to push/pull_request triggers if the repo
+# becomes public, where Actions is free.
 on:
-  push:
-    branches: [main, development]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read

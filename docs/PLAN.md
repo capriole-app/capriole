@@ -8,7 +8,7 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 
 ---
 
-## Fase 1 — Scheletro del repository ✅ (in chiusura)
+## Fase 1 — Scheletro del repository ✅
 
 - [x] Monorepo, CMake + preset (`debug`, `release`, `asan`, `fuzz`, `wasm`), C++23 (ADR 0001).
 - [x] `engine/core`: `Error`/`Result<T>`, `ByteSource` (memoria, file).
@@ -16,13 +16,14 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 - [x] `capi/` API C stabile, `bindings/wasm` ES module + smoke test Node.
 - [x] `tools/cpdf` CLI di sviluppo.
 - [x] GoogleTest, target libFuzzer `fuzz_header` con corpus seme.
-- [x] Gate `scripts/check.sh` (clang-format, ASan/UBSan, test, clang-tidy); CI GitHub Actions
-      (gate, release Clang, WASM, fuzz smoke).
-- [ ] Toolchain completa installata (apt), gate verde in locale, primo push, CI verde.
+- [x] Gate `scripts/check.sh` (clang-format, ASan/UBSan, test, clang-tidy) eseguito dall'hook `pre-push`;
+      CI GitHub Actions manuale (gate, release Clang, WASM, fuzz smoke).
+- [x] Toolchain installata (GCC 13, Clang 20, emsdk 6.0.10), gate completo verde in locale, primo push.
+- [x] Fuzzing: `fuzz_header` 10 minuti, ~300 milioni di esecuzioni, nessun problema.
 
-**Uscita:** CI verde su `main` con tutti e quattro i job.
+**Uscita:** gate completo verde in locale (WASM compreso) e fuzz smoke pulito. ✅
 
-## Fase 2 — Lexer, parser rigoroso, modello basso 🔜 (~4–6 settimane)
+## Fase 2 — Lexer, parser rigoroso, modello basso 🔜 (~4–6 settimane) — si lavora su `development`
 
 1. **Lexer** (ISO 32000-2 §7.2–7.3): whitespace/delimitatori, commenti, numeri (interi/reali, limiti),
    stringhe letterali (escape, bilanciamento parentesi, EOL), stringhe esadecimali, nomi (`#xx`),

@@ -22,6 +22,16 @@ sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld
   per i test differenziali**, usati come programmi esterni. Non si linkano mai (licenze, spec §7.3).
   PDFium e pdf.js arrivano alla fase 4 (binario precompilato / Node).
 
+## Hook git (obbligatorio, una volta per clone)
+
+```sh
+git config core.hooksPath scripts/hooks
+```
+
+`scripts/hooks/pre-push` è il gate: blocca il push diretto su `main` ed esegue `scripts/check.sh`,
+build WebAssembly compresa se `~/emsdk` è installato. La CI su GitHub è **solo manuale** (repo privato,
+minuti a consumo): il controllo che conta è questo.
+
 ## Emscripten (build WebAssembly)
 
 Installato in user space, senza sudo:
