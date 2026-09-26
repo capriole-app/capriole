@@ -170,24 +170,37 @@ riparazioni in ordine fisso e registra quelle applicate in `Document::repairs()`
 conto). `OpenOptions.repair = false` / `CAPRIOLE_STRICT=1` per la sola lettura rigorosa. L'harness conta
 i file aperti grazie a una riparazione e le riparazioni per tipo.
 
-**Casi reali raccolti finora** (dai 238 PDF pubblici, SafeDocs 0000, UNSAFE x002), in ordine di frequenza:
-1. ✅ byte spuri prima dell'header → offset relativi all'header: il file si legge attraverso una vista
-   che parte dall'header (`OffsetByteSource`). 35 file recuperati, 0 regressioni;
-2. voci xref "in uso" con offset 0 → trattarle come libere (23 file SafeDocs, qpdf avvisa);
-3. `startxref` assente o non seguito da `%%EOF`, file troncati (≥ 17);
-4. chiavi duplicate nei dizionari (`/Type`, `/Info`, `/Length`, ...);
-5. voci xref da 19 byte (EOL senza spazio);
-6. generazione 65536 sulla testa della lista libera; oggetto 0 elencato due volte o in uso;
-7. dati Flate troncati, ultima riga di predittore incompleta, LZW con codici errati (decodifica parziale);
-8. `endobj`/`endstream` mancanti o sbagliati, `/Length` errate o assenti.
+**Riparazioni implementate (2026-09-26)**, tutte registrate in `Document::repairs()` e provate
+dall'harness (0 regressioni tra un'esecuzione e l'altra):
+1. ✅ `header_offset` — byte spuri prima di `%PDF-` e offset relativi all'header: lettura attraverso
+   una vista che parte dall'header (`OffsetByteSource`).
+2. ✅ `xref_reconstructed` — xref mancante, troncata o malformata (niente `startxref`, voci da 19 byte,
+   generazioni fuori limite, oggetto 0 doppio): scansione del file (`repair/reconstruct`) per `n g obj`,
+   `trailer`, xref stream (chiavi del trailer) e object stream; per ogni oggetto vince la definizione
+   più avanti nel file, diretta o compressa (quella compressa datata dal suo object stream).
+3. ✅ `tolerant_parsing` — `ParseMode::kTolerant` del parser, usato solo dallo strato di riparazione:
+   chiavi duplicate (vince l'ultima), `stream` seguito da spazi / CR da solo, `/Length` mancante o
+   sbagliata (fino a `endstream`, o a fine file se il file è troncato), `endobj` mancante o storpiato.
+4. ✅ `object_relocated` / `missing_object` — voce xref che punta nel posto sbagliato: l'oggetto si prende
+   dove lo trova la scansione; se non esiste nel file (es. voce "in uso" con offset 0) vale null.
+5. ✅ `page_tree_type` — nodo dell'albero delle pagine senza `/Type` o con un `/Type` sbagliato:
+   `/Pages` se ha `/Kids`, `/Page` altrimenti.
+6. ✅ `partial_decode` — dati Flate/LZW troncati o corrotti, predittore con l'ultima riga incompleta,
+   filtri ASCII/RunLength senza marcatore di fine: si tiene la parte decodificata.
 
-- Ricostruzione della xref scansionando `N G obj`; `/Length` errati (ricerca di `endstream`);
-  stream corrotti con decompressione parziale; file troncati; offset relativi all'header spostato;
-  catene `/Prev` cicliche; trailer mancanti (ricerca di `/Root`).
-- Ogni riparazione è in `repair/`, attivata solo se il parser rigoroso fallisce, e annota cosa ha
-  riparato (diagnostica mostrabile e utile al §8 della spec).
+**Risultato** (con la sola lettura rigorosa → con le riparazioni):
 
-**Uscita:** sul campione, il numero di pagine coincide con la maggioranza dei riferimenti ≥ 99,5%.
+| Corpus | File sani aperti | Pagine = maggioranza | Pagine diverse | Crash |
+|---|---|---|---|---|
+| SafeDocs 0000 | 98,91% → **100%** | 977/996 → **996/996** | 0 | 0 |
+| UNSAFE x002 | 96,88% → **100%** | 1.293/1.414 → **1.408/1.414** | 0 | 0 |
+
+L'harness ha anche trovato un errore di precedenza nella ricostruzione (definizione diretta contro
+object stream più recente: 16 pagine invece di 21), corretto e coperto da test.
+
+**Limiti noti:** object stream non ricostruibili nei file cifrati (i dati non si decifrano prima che il
+gestore di sicurezza esista); dati attaccati alla parola `stream` (`streamDATA`) non riconosciuti; i 6 file
+x002 restanti sono troncati in modo grave.
 
 ## Fase 6 — Interprete dei content stream e renderer (~4–6 mesi, il grosso)
 

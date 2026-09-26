@@ -51,7 +51,7 @@ std::string zlib_message(const z_stream& stream, const char* fallback) { return 
 
 }  // namespace
 
-Result<std::vector<std::byte>> flate_decode(std::span<const std::byte> input, std::size_t max_output) {
+Result<std::vector<std::byte>> flate_decode(std::span<const std::byte> input, std::size_t max_output, bool lenient) {
   InflateStream inflater;
   if (!inflater.init()) {
     return make_error(ErrorCode::kLimitExceeded, "cannot initialise the inflater (out of memory)");
@@ -92,10 +92,18 @@ Result<std::vector<std::byte>> flate_decode(std::span<const std::byte> input, st
         // No progress possible: fine if only the output was full (it grows next round), fatal if the
         // input is exhausted.
         if (zs.avail_out != 0 && zs.avail_in == 0 && consumed == input.size()) {
+          if (lenient) {
+            out.resize(produced);
+            return out;
+          }
           return make_error(ErrorCode::kCorruptData, "truncated flate data");
         }
         break;
       default:
+        if (lenient) {
+          out.resize(produced);
+          return out;
+        }
         return make_error(ErrorCode::kCorruptData, "invalid flate data: " + zlib_message(zs, "unknown zlib error"));
     }
   }
@@ -141,7 +149,7 @@ Result<PredictorParams> predictor_params(const model::Dict* decode_parms) {
   return params;
 }
 
-Result<std::vector<std::byte>> apply_predictor(std::vector<std::byte> data, const PredictorParams& params) {
+Result<std::vector<std::byte>> apply_predictor(std::vector<std::byte> data, const PredictorParams& params, bool lenient) {
   if (params.predictor == 1) {
     return data;
   }
@@ -162,7 +170,10 @@ Result<std::vector<std::byte>> apply_predictor(std::vector<std::byte> data, cons
       return make_error(ErrorCode::kUnsupported, "TIFF predictor with /BitsPerComponent below 8");
     }
     if (data.size() % row_bytes != 0) {
-      return make_error(ErrorCode::kCorruptData, "TIFF predictor data is not a whole number of rows");
+      if (!lenient) {
+        return make_error(ErrorCode::kCorruptData, "TIFF predictor data is not a whole number of rows");
+      }
+      data.resize(data.size() - (data.size() % row_bytes));
     }
     for (std::size_t row = 0; row < data.size(); row += row_bytes) {
       if (params.bits_per_component == 8) {
@@ -184,7 +195,7 @@ Result<std::vector<std::byte>> apply_predictor(std::vector<std::byte> data, cons
 
   // PNG predictors (RFC 2083 §6): every row is prefixed by its filter type.
   const std::size_t stride = row_bytes + 1;
-  if (data.size() % stride != 0) {
+  if (data.size() % stride != 0 && !lenient) {
     return make_error(ErrorCode::kCorruptData, "PNG predictor data is not a whole number of rows");
   }
   const std::size_t rows = data.size() / stride;
@@ -229,7 +240,11 @@ Result<std::vector<std::byte>> apply_predictor(std::vector<std::byte> data, cons
           break;
         }
         default:
-          return make_error(ErrorCode::kCorruptData, "invalid PNG predictor filter type " + std::to_string(filter));
+          if (!lenient) {
+            return make_error(ErrorCode::kCorruptData, "invalid PNG predictor filter type " + std::to_string(filter));
+          }
+          value = x;  // unknown filter type: read the row as unfiltered
+          break;
       }
       cur[i] = static_cast<std::byte>(value & 0xFFU);
     }

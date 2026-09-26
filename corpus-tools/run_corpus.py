@@ -61,7 +61,9 @@ def run(cmd: list[str], timeout: float, env: dict[str, str] | None = None, cap_m
         except subprocess.TimeoutExpired:
             status, stdout, stderr = "timeout", "", ""
         seconds = (datetime.datetime.now() - start).total_seconds()
-    return {"status": status, "stdout": stdout[-4000:], "stderr": stderr[-4000:], "seconds": round(seconds, 3)}
+    # Full output: callers parse it (the page count is on the first line of `cpdf check`, which a
+    # file needing hundreds of repairs pushes far from the end) and keep only what they need.
+    return {"status": status, "stdout": stdout, "stderr": stderr, "seconds": round(seconds, 3)}
 
 
 def int_after(pattern: str, text: str) -> int | None:
@@ -82,7 +84,10 @@ def run_capriole(cpdf: str, path: str, timeout: float) -> dict:
         outcome = "ok"
     else:
         outcome = "error"
-    first_error = next((line for line in (err + "\n" + out).splitlines() if line and "objects loaded" not in line and "not supported yet" not in line), "")
+    first_error = next(
+        (line for line in (err + "\n" + out).splitlines() if line and "objects loaded" not in line and "not supported yet" not in line and not line.strip().startswith("repaired (")),
+        "",
+    )
     return {
         "outcome": outcome,
         "pages": int_after(r": (\d+) pages,", out),

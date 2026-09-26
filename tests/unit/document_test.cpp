@@ -117,7 +117,10 @@ TEST(Document, PageTreeErrors) {
   EXPECT_TRUE(open_ok(with_kids("3 0 R")).page_refs().has_value());
   EXPECT_EQ(open_ok(with_kids("2 0 R")).page_refs().error().code, ErrorCode::kSyntax);  // cycle
   EXPECT_EQ(open_ok(with_kids("3")).page_refs().error().code, ErrorCode::kSyntax);      // not a reference
-  EXPECT_EQ(open_ok(with_kids("3 0 R", "<</Type/Font>>")).page_refs().error().code, ErrorCode::kSyntax);
+  // A node with a wrong /Type is an error for strict reading (the repair layer takes it as a page).
+  auto strict = Document::open(source_of(with_kids("3 0 R", "<</Type/Font>>")), OpenOptions{.limits = kDefaultParseLimits, .password = "", .repair = false});
+  EXPECT_EQ(strict->page_refs().error().code, ErrorCode::kSyntax);
+  EXPECT_EQ(open_ok(with_kids("3 0 R", "<</Type/Font>>")).page_refs()->size(), 1U);
   EXPECT_EQ(open_ok(with_kids("3 0 R 3 0 R")).page_refs().error().code, ErrorCode::kSyntax);  // same page twice
 }
 

@@ -10,6 +10,14 @@ namespace capriole::filters {
 namespace {
 
 std::unexpected<Error> corrupt(const char* what) { return make_error(ErrorCode::kCorruptData, what); }
+
+// The end of decoding at a fault: the output so far when lenient, an error otherwise.
+Result<std::vector<std::byte>> fault(std::vector<std::byte>& out, bool lenient, const char* what) {
+  if (lenient) {
+    return std::move(out);
+  }
+  return corrupt(what);
+}
 std::unexpected<Error> too_large() { return make_error(ErrorCode::kLimitExceeded, "decoded stream exceeds max_decoded_stream_bytes"); }
 
 int hex_value(int c) noexcept {
@@ -29,7 +37,7 @@ int hex_value(int c) noexcept {
 
 // ── ASCIIHexDecode (§7.4.2) ─────────────────────────────────────────────────────────────────
 
-Result<std::vector<std::byte>> ascii_hex_decode(std::span<const std::byte> input, std::size_t max_output) {
+Result<std::vector<std::byte>> ascii_hex_decode(std::span<const std::byte> input, std::size_t max_output, bool lenient) {
   std::vector<std::byte> out;
   int high = -1;
   for (const std::byte b : input) {
@@ -48,7 +56,7 @@ Result<std::vector<std::byte>> ascii_hex_decode(std::span<const std::byte> input
     }
     const int value = hex_value(c);
     if (value < 0) {
-      return corrupt("invalid character in ASCIIHexDecode data");
+      return fault(out, lenient, "invalid character in ASCIIHexDecode data");
     }
     if (high < 0) {
       high = value;
@@ -60,12 +68,12 @@ Result<std::vector<std::byte>> ascii_hex_decode(std::span<const std::byte> input
     out.push_back(static_cast<std::byte>((high << 4) | value));
     high = -1;
   }
-  return corrupt("ASCIIHexDecode data has no '>' end marker");
+  return fault(out, lenient, "ASCIIHexDecode data has no '>' end marker");
 }
 
 // ── ASCII85Decode (§7.4.3) ──────────────────────────────────────────────────────────────────
 
-Result<std::vector<std::byte>> ascii85_decode(std::span<const std::byte> input, std::size_t max_output) {
+Result<std::vector<std::byte>> ascii85_decode(std::span<const std::byte> input, std::size_t max_output, bool lenient) {
   constexpr std::uint64_t kMaxGroup = 0xFFFFFFFFU;
   std::vector<std::byte> out;
   std::uint64_t value = 0;
@@ -88,10 +96,10 @@ Result<std::vector<std::byte>> ascii85_decode(std::span<const std::byte> input, 
     }
     if (c == '~') {
       if (i + 1 >= input.size() || std::to_integer<int>(input[i + 1]) != '>') {
-        return corrupt("'~' in ASCII85Decode data not followed by '>'");
+        return fault(out, lenient, "'~' in ASCII85Decode data not followed by '>'");
       }
       if (count == 1) {
-        return corrupt("ASCII85Decode data ends with a single-character group");
+        return fault(out, lenient, "ASCII85Decode data ends with a single-character group");
       }
       if (count > 0) {
         // Pad the partial group with 'u' (84) and keep count - 1 bytes.
@@ -99,7 +107,7 @@ Result<std::vector<std::byte>> ascii85_decode(std::span<const std::byte> input, 
           value = (value * 85) + 84;
         }
         if (value > kMaxGroup) {
-          return corrupt("ASCII85Decode group out of range");
+          return fault(out, lenient, "ASCII85Decode group out of range");
         }
         if (!emit(value, count - 1)) {
           return too_large();
@@ -109,7 +117,7 @@ Result<std::vector<std::byte>> ascii85_decode(std::span<const std::byte> input, 
     }
     if (c == 'z') {
       if (count != 0) {
-        return corrupt("'z' inside an ASCII85Decode group");
+        return fault(out, lenient, "'z' inside an ASCII85Decode group");
       }
       if (!emit(0, 4)) {
         return too_large();
@@ -117,12 +125,12 @@ Result<std::vector<std::byte>> ascii85_decode(std::span<const std::byte> input, 
       continue;
     }
     if (c < '!' || c > 'u') {
-      return corrupt("invalid character in ASCII85Decode data");
+      return fault(out, lenient, "invalid character in ASCII85Decode data");
     }
     value = (value * 85) + static_cast<std::uint64_t>(c - '!');
     if (++count == 5) {
       if (value > kMaxGroup) {
-        return corrupt("ASCII85Decode group out of range");
+        return fault(out, lenient, "ASCII85Decode group out of range");
       }
       if (!emit(value, 4)) {
         return too_large();
@@ -131,12 +139,12 @@ Result<std::vector<std::byte>> ascii85_decode(std::span<const std::byte> input, 
       count = 0;
     }
   }
-  return corrupt("ASCII85Decode data has no '~>' end marker");
+  return fault(out, lenient, "ASCII85Decode data has no '~>' end marker");
 }
 
 // ── LZWDecode (§7.4.4) ──────────────────────────────────────────────────────────────────────
 
-Result<std::vector<std::byte>> lzw_decode(std::span<const std::byte> input, bool early_change, std::size_t max_output) {
+Result<std::vector<std::byte>> lzw_decode(std::span<const std::byte> input, bool early_change, std::size_t max_output, bool lenient) {
   constexpr unsigned kClear = 256;
   constexpr unsigned kEnd = 257;
   constexpr unsigned kFirstFree = 258;
@@ -193,7 +201,7 @@ Result<std::vector<std::byte>> lzw_decode(std::span<const std::byte> input, bool
   for (;;) {
     const auto code = read_code(width);
     if (!code) {
-      return corrupt("LZWDecode data has no end-of-data code");
+      return fault(out, lenient, "LZWDecode data has no end-of-data code");
     }
     if (*code == kClear) {
       width = kMinWidth;
@@ -206,7 +214,7 @@ Result<std::vector<std::byte>> lzw_decode(std::span<const std::byte> input, bool
     }
     if (!previous) {
       if (*code > 255) {
-        return corrupt("LZWDecode data starts with an undefined code");
+        return fault(out, lenient, "LZWDecode data starts with an undefined code");
       }
       if (!emit(*code)) {
         return too_large();
@@ -216,7 +224,7 @@ Result<std::vector<std::byte>> lzw_decode(std::span<const std::byte> input, bool
     }
 
     if (*code > next || (*code == next && next >= kTableSize)) {
-      return corrupt("undefined code in LZWDecode data");
+      return fault(out, lenient, "undefined code in LZWDecode data");
     }
     if (next < kTableSize) {
       // The new entry is previous + the first byte of the current string; when the code is the one
@@ -240,7 +248,7 @@ Result<std::vector<std::byte>> lzw_decode(std::span<const std::byte> input, bool
 
 // ── RunLengthDecode (§7.4.5) ────────────────────────────────────────────────────────────────
 
-Result<std::vector<std::byte>> run_length_decode(std::span<const std::byte> input, std::size_t max_output) {
+Result<std::vector<std::byte>> run_length_decode(std::span<const std::byte> input, std::size_t max_output, bool lenient) {
   std::vector<std::byte> out;
   std::size_t i = 0;
   while (i < input.size()) {
@@ -251,7 +259,7 @@ Result<std::vector<std::byte>> run_length_decode(std::span<const std::byte> inpu
     if (length < 128) {
       const std::size_t count = length + 1;
       if (count > input.size() - i) {
-        return corrupt("RunLengthDecode literal run past the end of the data");
+        return fault(out, lenient, "RunLengthDecode literal run past the end of the data");
       }
       if (out.size() + count > max_output) {
         return too_large();
@@ -260,7 +268,7 @@ Result<std::vector<std::byte>> run_length_decode(std::span<const std::byte> inpu
       i += count;
     } else {
       if (i >= input.size()) {
-        return corrupt("RunLengthDecode repeat run past the end of the data");
+        return fault(out, lenient, "RunLengthDecode repeat run past the end of the data");
       }
       const std::size_t count = 257 - length;
       if (out.size() + count > max_output) {
@@ -269,7 +277,7 @@ Result<std::vector<std::byte>> run_length_decode(std::span<const std::byte> inpu
       out.insert(out.end(), count, input[i++]);
     }
   }
-  return corrupt("RunLengthDecode data has no end-of-data byte");
+  return fault(out, lenient, "RunLengthDecode data has no end-of-data byte");
 }
 
 }  // namespace capriole::filters

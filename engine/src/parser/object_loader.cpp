@@ -33,8 +33,8 @@ std::unexpected<Error> with_context(Error error, std::uint32_t number) {
 
 }  // namespace
 
-ObjectLoader::ObjectLoader(ByteSource& source, XrefTable xref, const ParseLimits& limits)
-    : source_(&source), xref_(std::move(xref)), limits_(limits), reader_(source) {}
+ObjectLoader::ObjectLoader(ByteSource& source, XrefTable xref, const ParseLimits& limits, ParseMode mode)
+    : source_(&source), xref_(std::move(xref)), limits_(limits), mode_(mode), reader_(source) {}
 
 Result<Object> ObjectLoader::load(std::uint32_t number) {
   const XrefEntry* entry = xref_.find(number);
@@ -81,7 +81,7 @@ Result<Object> ObjectLoader::load_entry(std::uint32_t number, const XrefEntry& e
 }
 
 Result<Object> ObjectLoader::load_at_offset(std::uint32_t number, const XrefEntry& entry) {
-  ObjectParser parser(reader_, limits_);
+  ObjectParser parser(reader_, limits_, mode_);
   if (auto moved = parser.seek(entry.offset); !moved) {
     return with_context(std::move(moved.error()), number);
   }
@@ -153,7 +153,7 @@ Result<const ObjectStream*> ObjectLoader::object_stream(std::uint32_t stream_num
   if (!decoded) {
     return std::unexpected(std::move(decoded.error()));
   }
-  auto parsed = ObjectStream::parse(std::move(*decoded), stream->dict, limits_);
+  auto parsed = ObjectStream::parse(std::move(*decoded), stream->dict, limits_, mode_);
   if (!parsed) {
     return std::unexpected(std::move(parsed.error()));
   }

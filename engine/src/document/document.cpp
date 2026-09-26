@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "capriole/filters/decode.hpp"
+#include "capriole/repair/reconstruct.hpp"
 #include "capriole/repair/repair.hpp"
 
 namespace capriole {
@@ -58,22 +59,34 @@ Result<Document> Document::open(std::unique_ptr<ByteSource> source, const OpenOp
     }
     source = view_ptr->release_base();
   }
+
+  // Repair of last resort: rebuild the cross-reference table by scanning the file.
+  if (auto table = repair::reconstruct_xref(*source, options.limits)) {
+    const std::size_t objects = table->entries.size() - 1;
+    auto rebuilt = build(source, options, &*table);
+    if (rebuilt) {
+      rebuilt->note(repair::RepairKind::kXrefReconstructed, "cross-reference table rebuilt by scanning the file (" + std::to_string(objects) +
+                                                                " objects; strict reading failed: " + strict.error().message + ")");
+      return rebuilt;
+    }
+  }
   return strict;
 }
 
-Result<Document> Document::build(std::unique_ptr<ByteSource>& source, const OpenOptions& options) {
+Result<Document> Document::build(std::unique_ptr<ByteSource>& source, const OpenOptions& options, const parser::XrefTable* rebuilt) {
   const ParseLimits& limits = options.limits;
   auto header = parser::find_header(*source);
   if (!header) {
     return std::unexpected(std::move(header.error()));
   }
-  auto xref = parser::read_xref(*source, limits);
+  auto xref = rebuilt != nullptr ? Result<parser::XrefTable>(*rebuilt) : parser::read_xref(*source, limits);
   if (!xref) {
     return std::unexpected(std::move(xref.error()));
   }
 
   Document document;
   document.limits_ = limits;
+  document.repair_enabled_ = options.repair;
   document.header_ = *header;
   document.trailer_ = xref->trailer;
   for (const std::string_view key : kSectionKeys) {
@@ -120,6 +133,7 @@ Result<Document> Document::build(std::unique_ptr<ByteSource>& source, const Open
     }
     document.security_ = std::make_shared<const crypto::StandardSecurityHandler>(std::move(*handler));
     document.loader_->set_security_handler(document.security_, encrypt_object);
+    document.encrypt_object_ = encrypt_object;
   }
   document.source_ = std::move(source);
   return document;
@@ -137,11 +151,66 @@ Result<Document::Slot*> Document::slot(std::uint32_t number) {
   }
   auto object = loader_->load(number);
   if (!object) {
-    return std::unexpected(std::move(object.error()));
+    if (!repair_enabled_ || !repair::may_help(object.error())) {
+      return std::unexpected(std::move(object.error()));
+    }
+    object = repair_object(number, object.error());
+    if (!object) {
+      return std::unexpected(std::move(object.error()));
+    }
   }
   const std::uint16_t generation = entry->type == parser::XrefEntryType::kCompressed ? 0 : entry->generation;
   auto [it, inserted] = slots_.emplace(number, Slot{.state = ObjectState::kUnmodified, .generation = generation, .object = std::move(*object)});
   return &it->second;
+}
+
+void Document::note(repair::RepairKind kind, std::string description) {
+  constexpr std::size_t kMaxNotes = 1000;
+  if (repairs_.size() < kMaxNotes) {
+    repairs_.push_back(repair::RepairNote{.kind = kind, .description = std::move(description)});
+  } else if (repairs_.size() == kMaxNotes) {
+    repairs_.push_back(repair::RepairNote{.kind = kind, .description = "further repairs are not listed"});
+  }
+}
+
+std::unique_ptr<parser::ObjectLoader> Document::make_loader(parser::XrefTable table, parser::ParseMode mode) const {
+  auto loader = std::make_unique<parser::ObjectLoader>(*source_, std::move(table), limits_, mode);
+  if (security_ != nullptr) {
+    loader->set_security_handler(security_, encrypt_object_);
+  }
+  return loader;
+}
+
+Result<Object> Document::repair_object(std::uint32_t number, const Error& strict_error) {
+  // 1. Same place, tolerant parser.
+  if (tolerant_loader_ == nullptr) {
+    tolerant_loader_ = make_loader(loader_->xref(), parser::ParseMode::kTolerant);
+  }
+  if (auto tolerant = tolerant_loader_->load(number)) {
+    note(repair::RepairKind::kTolerantParsing, "object " + std::to_string(number) + " read tolerantly (" + strict_error.message + ")");
+    return tolerant;
+  }
+
+  // 2. Where scanning the file finds its definition.
+  if (!scan_attempted_) {
+    scan_attempted_ = true;
+    if (auto table = repair::reconstruct_xref(*source_, limits_)) {
+      scan_loader_ = make_loader(std::move(*table), parser::ParseMode::kTolerant);
+    }
+  }
+  if (scan_loader_ != nullptr) {
+    const parser::XrefEntry* found = scan_loader_->xref().find(number);
+    if (found == nullptr || found->type == parser::XrefEntryType::kFree) {
+      note(repair::RepairKind::kMissingObject,
+           "object " + std::to_string(number) + " is not defined anywhere in the file; read as null (" + strict_error.message + ")");
+      return Object(model::Null{});
+    }
+    if (auto relocated = scan_loader_->load(number)) {
+      note(repair::RepairKind::kObjectRelocated, "object " + std::to_string(number) + " found by scanning the file (" + strict_error.message + ")");
+      return relocated;
+    }
+  }
+  return std::unexpected(strict_error);
 }
 
 Result<const Object*> Document::get(std::uint32_t number) {
@@ -208,7 +277,17 @@ Result<std::vector<std::byte>> Document::decode_stream(const model::Stream& stre
   if (!encoded) {
     return std::unexpected(std::move(encoded.error()));
   }
-  return filters::decode(std::move(*encoded), dict, limits_);
+  auto decoded = filters::decode(*encoded, dict, limits_);
+  if (decoded || !repair_enabled_ || decoded.error().code != ErrorCode::kCorruptData) {
+    return decoded;
+  }
+  // Repair: keep what decodes before the fault, as every reader does with damaged streams.
+  auto partial = filters::decode(std::move(*encoded), dict, limits_, true);
+  if (partial) {
+    note(repair::RepairKind::kPartialDecode, (stream.origin ? "stream of object " + std::to_string(stream.origin->number) : std::string("stream")) + ": " +
+                                                 decoded.error().message + "; kept the " + std::to_string(partial->size()) + " bytes before the fault");
+  }
+  return partial;
 }
 
 Result<const model::Dict*> Document::catalog() {
@@ -258,11 +337,21 @@ Result<std::vector<model::ObjectRef>> Document::page_refs() {
     }
     const model::Dict* node = (*node_object)->as_dict();
     const Object* type = node != nullptr ? node->find("Type") : nullptr;
-    if (type != nullptr && type->is_name("Page")) {
+    bool is_page = type != nullptr && type->is_name("Page");
+    bool is_pages = type != nullptr && type->is_name("Pages");
+    if (node != nullptr && !is_page && !is_pages && repair_enabled_) {
+      // Repair: a node without a usable /Type (absent, or e.g. /pagE) is a /Pages node if it has
+      // /Kids, a page otherwise — as the reference readers do.
+      is_pages = node->find("Kids") != nullptr;
+      is_page = !is_pages;
+      note(repair::RepairKind::kPageTreeType, "page tree node " + std::to_string(ref.number) + (type == nullptr ? " has no /Type" : " has a wrong /Type") +
+                                                  "; taken as /" + (is_pages ? "Pages" : "Page"));
+    }
+    if (is_page) {
       result.push_back(ref);
       continue;
     }
-    if (type == nullptr || !type->is_name("Pages")) {
+    if (!is_pages) {
       return make_error(ErrorCode::kSyntax, "page tree node " + std::to_string(ref.number) + " is neither /Type /Pages nor /Type /Page");
     }
     const Object* kids = node->find("Kids");

@@ -17,7 +17,9 @@ namespace capriole::filters {
 
 // Runs the /Filter chain of stream_dict (with /DecodeParms) over encoded. /Filter and /DecodeParms
 // must be direct objects: the caller resolves indirect references first. Filters not implemented yet
-// are ErrorCode::kUnsupported, naming the filter.
-[[nodiscard]] Result<std::vector<std::byte>> decode(std::vector<std::byte> encoded, const model::Dict& stream_dict, const ParseLimits& limits);
+// are ErrorCode::kUnsupported, naming the filter. lenient (repair layer only): truncated or corrupt
+// data yields what decoded before the fault.
+[[nodiscard]] Result<std::vector<std::byte>> decode(std::vector<std::byte> encoded, const model::Dict& stream_dict, const ParseLimits& limits,
+                                                    bool lenient = false);
 
 }  // namespace capriole::filters

@@ -13,7 +13,7 @@ namespace {
 using model::Dict;
 using model::Object;
 
-Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const std::string& name, const Dict* parms, const ParseLimits& limits) {
+Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const std::string& name, const Dict* parms, const ParseLimits& limits, bool lenient) {
   const std::size_t max = limits.max_decoded_stream_bytes;
   if (name == "FlateDecode" || name == "LZWDecode") {
     auto params = predictor_params(parms);
@@ -22,7 +22,7 @@ Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const s
     }
     Result<std::vector<std::byte>> expanded;
     if (name == "FlateDecode") {
-      expanded = flate_decode(data, max);
+      expanded = flate_decode(data, max, lenient);
     } else {
       // /EarlyChange defaults to 1 (§7.4.4.3, Table 8).
       bool early_change = true;
@@ -33,21 +33,21 @@ Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const s
         }
         early_change = *integer == 1;
       }
-      expanded = lzw_decode(data, early_change, max);
+      expanded = lzw_decode(data, early_change, max, lenient);
     }
     if (!expanded) {
       return expanded;
     }
-    return apply_predictor(std::move(*expanded), *params);
+    return apply_predictor(std::move(*expanded), *params, lenient);
   }
   if (name == "ASCIIHexDecode") {
-    return ascii_hex_decode(data, max);
+    return ascii_hex_decode(data, max, lenient);
   }
   if (name == "ASCII85Decode") {
-    return ascii85_decode(data, max);
+    return ascii85_decode(data, max, lenient);
   }
   if (name == "RunLengthDecode") {
-    return run_length_decode(data, max);
+    return run_length_decode(data, max, lenient);
   }
   if (name == "Crypt") {
     // Decryption happens before the filter chain (ObjectLoader::read_stream_data), which also reads
@@ -99,7 +99,7 @@ Result<std::vector<std::byte>> read_encoded(ByteSource& source, const model::Str
   return data;
 }
 
-Result<std::vector<std::byte>> decode(std::vector<std::byte> encoded, const Dict& stream_dict, const ParseLimits& limits) {
+Result<std::vector<std::byte>> decode(std::vector<std::byte> encoded, const Dict& stream_dict, const ParseLimits& limits, bool lenient) {
   if (stream_dict.contains("F")) {
     return make_error(ErrorCode::kUnsupported, "streams with external data (/F) are not supported");
   }
@@ -130,7 +130,7 @@ Result<std::vector<std::byte>> decode(std::vector<std::byte> encoded, const Dict
     if (!parms) {
       return std::unexpected(std::move(parms.error()));
     }
-    auto next = apply_filter(std::move(data), *names[i], *parms, limits);
+    auto next = apply_filter(std::move(data), *names[i], *parms, limits, lenient);
     if (!next) {
       return next;
     }

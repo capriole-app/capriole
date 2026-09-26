@@ -30,10 +30,19 @@ struct IndirectObject {
   std::uint64_t end_offset = 0;  // one past "endobj"
 };
 
+// Strict follows the standard to the letter. Tolerant is used ONLY by the repair layer (repair/),
+// after strict parsing failed, and accepts a closed list of common deviations, nothing else:
+//   - duplicate dictionary keys: the last one wins;
+//   - "stream" followed by spaces before the EOL, by a lone CR, or directly by the data;
+//   - a missing, invalid or wrong /Length: the data ends at the next "endstream" (or at the end of
+//     a file cut inside the stream);
+//   - a missing or misspelt "endobj".
+enum class ParseMode : std::uint8_t { kStrict, kTolerant };
+
 class ObjectParser {
  public:
   // The reader must outlive the parser. Parsing starts at the reader's current position.
-  explicit ObjectParser(SourceReader& reader, const ParseLimits& limits = kDefaultParseLimits);
+  explicit ObjectParser(SourceReader& reader, const ParseLimits& limits = kDefaultParseLimits, ParseMode mode = ParseMode::kStrict);
 
   // Parses one direct object. Streams only exist as indirect objects: after a dictionary, a following
   // `stream` keyword is left unconsumed (use parse_indirect_object for object definitions).
@@ -57,10 +66,15 @@ class ObjectParser {
   Result<model::Object> parse_array(std::size_t depth);
   Result<model::Dict> parse_dict(std::size_t depth);
   Result<model::Stream> parse_stream_data(model::Dict dict, std::uint64_t after_keyword, const LengthResolver& resolver);
+  // The declared /Length of a stream whose data starts at data_offset.
+  Result<std::uint64_t> declared_length(const model::Dict& dict, std::uint64_t data_offset, const LengthResolver& resolver);
+  // Tolerant mode: the stream data ends right before the next "endstream" (minus one EOL).
+  Result<std::uint64_t> length_by_scanning(std::uint64_t data_offset);
 
   SourceReader* reader_;
   Lexer lexer_;
   ParseLimits limits_;
+  ParseMode mode_;
   std::deque<Result<Token>> lookahead_;
 };
 

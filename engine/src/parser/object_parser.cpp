@@ -31,7 +31,8 @@ std::string describe(const Token& token) {
 
 }  // namespace
 
-ObjectParser::ObjectParser(SourceReader& reader, const ParseLimits& limits) : reader_(&reader), lexer_(reader, limits), limits_(limits) {}
+ObjectParser::ObjectParser(SourceReader& reader, const ParseLimits& limits, ParseMode mode)
+    : reader_(&reader), lexer_(reader, limits), limits_(limits), mode_(mode) {}
 
 Result<void> ObjectParser::seek(std::uint64_t offset) {
   lookahead_.clear();
@@ -165,8 +166,8 @@ Result<model::Dict> ObjectParser::parse_dict(std::size_t depth) {
     if (key->kind != TokenKind::kName) {
       return make_error(ErrorCode::kSyntax, "dictionary key must be a name, found " + describe(*key), key->offset);
     }
-    if (dict.contains(key->bytes)) {
-      // §7.3.7: keys are unique. Which duplicate wins is a repair decision, not the parser's.
+    if (dict.contains(key->bytes) && mode_ == ParseMode::kStrict) {
+      // §7.3.7: keys are unique. Which duplicate wins is a repair decision (tolerant mode: the last).
       return make_error(ErrorCode::kSyntax, "duplicate dictionary key /" + key->bytes, key->offset);
     }
 
@@ -244,6 +245,10 @@ Result<IndirectObject> ObjectParser::parse_indirect_object(const LengthResolver&
     return std::unexpected(std::move(end.error()));
   }
   if (!is_keyword(*end, "endobj")) {
+    if (mode_ == ParseMode::kTolerant) {
+      result.end_offset = end->offset;  // the object is complete; whatever follows is not ours
+      return result;
+    }
     return make_error(end->kind == TokenKind::kEnd ? ErrorCode::kUnexpectedEof : ErrorCode::kSyntax, "expected endobj, found " + describe(*end), end->offset);
   }
   result.end_offset = end->offset + end->length;
@@ -253,21 +258,56 @@ Result<IndirectObject> ObjectParser::parse_indirect_object(const LengthResolver&
 // §7.3.8.1: "stream" is followed by CR LF or LF (a lone CR is not allowed), then exactly /Length
 // bytes of data, an optional EOL, and "endstream".
 Result<model::Stream> ObjectParser::parse_stream_data(model::Dict dict, std::uint64_t after_keyword, const LengthResolver& resolver) {
+  const bool tolerant = mode_ == ParseMode::kTolerant;
   if (auto moved = seek(after_keyword); !moved) {
     return std::unexpected(std::move(moved.error()));
+  }
+  if (tolerant) {
+    while (reader_->peek() == ' ' || reader_->peek() == '\t') {
+      reader_->advance();
+    }
   }
   const int c = reader_->peek();
   if (c == '\r' && reader_->peek(1) == '\n') {
     reader_->advance(2);
-  } else if (c == '\n') {
+  } else if (c == '\n' || (tolerant && c == '\r')) {  // a lone CR only in tolerant mode
     reader_->advance();
   } else if (c == SourceReader::kEof && reader_->io_error()) {
     return std::unexpected(*reader_->io_error());
-  } else {
+  } else if (!tolerant) {
     return make_error(ErrorCode::kSyntax, "'stream' must be followed by CR LF or LF", after_keyword);
   }
   const std::uint64_t data_offset = reader_->position();
 
+  auto length = declared_length(dict, data_offset, resolver);
+  if (length) {
+    // The resolver may have moved the reader: position explicitly after the data.
+    if (auto moved = seek(data_offset + *length); !moved) {
+      return std::unexpected(std::move(moved.error()));
+    }
+    auto end = next_token();
+    if (end && is_keyword(*end, "endstream")) {
+      return model::Stream{.dict = std::move(dict), .data_offset = data_offset, .data_length = *length, .memory_data = nullptr, .origin = std::nullopt};
+    }
+    if (!tolerant) {
+      if (!end) {
+        return std::unexpected(std::move(end.error()));
+      }
+      return make_error(ErrorCode::kSyntax, "expected endstream after /Length bytes of data, found " + describe(*end), end->offset);
+    }
+  } else if (!tolerant || length.error().code == ErrorCode::kIo) {
+    return std::unexpected(std::move(length.error()));
+  }
+
+  // Tolerant: /Length is missing, invalid or wrong; the data ends at the next "endstream".
+  auto scanned = length_by_scanning(data_offset);
+  if (!scanned) {
+    return std::unexpected(std::move(scanned.error()));
+  }
+  return model::Stream{.dict = std::move(dict), .data_offset = data_offset, .data_length = *scanned, .memory_data = nullptr, .origin = std::nullopt};
+}
+
+Result<std::uint64_t> ObjectParser::declared_length(const model::Dict& dict, std::uint64_t data_offset, const LengthResolver& resolver) {
   const Object* length_object = dict.find("Length");
   if (length_object == nullptr) {
     return make_error(ErrorCode::kSyntax, "stream dictionary has no /Length", data_offset);
@@ -294,19 +334,42 @@ Result<model::Stream> ObjectParser::parse_stream_data(model::Dict dict, std::uin
   if (data_length > reader_->size() - data_offset) {
     return make_error(ErrorCode::kOutOfRange, "stream data extends beyond end of input", data_offset);
   }
+  return data_length;
+}
 
-  // The resolver may have moved the reader: position explicitly after the data.
-  if (auto moved = seek(data_offset + data_length); !moved) {
+Result<std::uint64_t> ObjectParser::length_by_scanning(std::uint64_t data_offset) {
+  constexpr std::string_view kKeyword = "endstream";
+  if (auto moved = seek(data_offset); !moved) {
     return std::unexpected(std::move(moved.error()));
   }
-  auto end = next_token();
-  if (!end) {
-    return std::unexpected(std::move(end.error()));
+  std::size_t matched = 0;
+  for (int c = reader_->next(); c != SourceReader::kEof; c = reader_->next()) {
+    if (std::cmp_equal(c, static_cast<unsigned char>(kKeyword[matched]))) {
+      if (++matched == kKeyword.size()) {
+        const std::uint64_t keyword_offset = reader_->position() - kKeyword.size();
+        std::uint64_t end = keyword_offset;
+        // The EOL before "endstream" is not part of the data.
+        if (end > data_offset && reader_->seek(end - 1).has_value() && reader_->peek() == '\n') {
+          --end;
+        }
+        if (end > data_offset && reader_->seek(end - 1).has_value() && reader_->peek() == '\r') {
+          --end;
+        }
+        if (auto moved = seek(keyword_offset + kKeyword.size()); !moved) {
+          return std::unexpected(std::move(moved.error()));
+        }
+        return end - data_offset;
+      }
+    } else {
+      matched = std::cmp_equal(c, static_cast<unsigned char>(kKeyword[0])) ? 1 : 0;
+    }
   }
-  if (!is_keyword(*end, "endstream")) {
-    return make_error(ErrorCode::kSyntax, "expected endstream after /Length bytes of data, found " + describe(*end), end->offset);
+  if (reader_->io_error()) {
+    return std::unexpected(*reader_->io_error());
   }
-  return model::Stream{.dict = std::move(dict), .data_offset = data_offset, .data_length = data_length, .memory_data = nullptr, .origin = std::nullopt};
+  // No "endstream" at all: the file was cut inside the stream. The data runs to the end of the file
+  // (the repair layer's partial decoding keeps what of it decodes).
+  return reader_->size() - data_offset;
 }
 
 }  // namespace capriole::parser

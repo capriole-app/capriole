@@ -20,6 +20,7 @@
 #include "capriole/core/source_reader.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/model/object.hpp"
+#include "capriole/parser/object_parser.hpp"
 #include "capriole/parser/object_stream.hpp"
 #include "capriole/parser/xref.hpp"
 
@@ -27,8 +28,8 @@ namespace capriole::parser {
 
 class ObjectLoader {
  public:
-  // The source must outlive the loader.
-  ObjectLoader(ByteSource& source, XrefTable xref, const ParseLimits& limits = kDefaultParseLimits);
+  // The source must outlive the loader. mode kTolerant is for the repair layer only (see ParseMode).
+  ObjectLoader(ByteSource& source, XrefTable xref, const ParseLimits& limits = kDefaultParseLimits, ParseMode mode = ParseMode::kStrict);
 
   [[nodiscard]] const XrefTable& xref() const noexcept { return xref_; }
 
@@ -66,6 +67,7 @@ class ObjectLoader {
   ByteSource* source_;
   XrefTable xref_;
   ParseLimits limits_;
+  ParseMode mode_;
   SourceReader reader_;
   std::map<std::uint32_t, ObjectStream> object_streams_;
   std::size_t depth_ = 0;

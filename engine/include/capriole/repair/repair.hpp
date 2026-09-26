@@ -23,6 +23,19 @@ enum class RepairKind : std::uint8_t {
   // Bytes precede %PDF- (e.g. HTML or a file path written by a web server) and the file's offsets
   // count from the header rather than from byte 0 (§7.5.2 puts the header at byte 0).
   kHeaderOffset,
+  // No usable cross-reference data: the table was rebuilt by scanning the file (reconstruct.hpp).
+  kXrefReconstructed,
+  // An object that strict parsing rejects was read with the tolerant parser (duplicate keys, a
+  // wrong /Length, a missing endobj, ...: see parser::ParseMode).
+  kTolerantParsing,
+  // An object the cross-reference table places wrongly was found elsewhere by scanning the file.
+  kObjectRelocated,
+  // An object the cross-reference table lists does not exist in the file: it reads as null.
+  kMissingObject,
+  // A page tree node without a usable /Type (absent or wrong): /Pages if it has /Kids, /Page otherwise.
+  kPageTreeType,
+  // Encoded data that is truncated or corrupt: the part that decodes is kept.
+  kPartialDecode,
 };
 
 std::string_view to_string(RepairKind kind) noexcept;

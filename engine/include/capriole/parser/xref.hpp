@@ -36,7 +36,8 @@ struct XrefEntry {
   friend bool operator==(const XrefEntry&, const XrefEntry&) = default;
 };
 
-enum class XrefForm : std::uint8_t { kTable, kStream, kHybrid };
+// kReconstructed: no section in the file could be used; the table was rebuilt by scanning (repair/).
+enum class XrefForm : std::uint8_t { kTable, kStream, kHybrid, kReconstructed };
 
 struct XrefSection {
   std::uint64_t offset = 0;  // where the section starts ("xref" keyword or "n g obj" of the stream)

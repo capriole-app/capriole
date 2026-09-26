@@ -88,6 +88,8 @@ std::string_view form_name(capriole::parser::XrefForm form) {
       return "stream";
     case capriole::parser::XrefForm::kHybrid:
       return "hybrid";
+    case capriole::parser::XrefForm::kReconstructed:
+      return "rebuilt";
   }
   return "?";
 }

@@ -8,6 +8,18 @@ std::string_view to_string(RepairKind kind) noexcept {
   switch (kind) {
     case RepairKind::kHeaderOffset:
       return "header_offset";
+    case RepairKind::kXrefReconstructed:
+      return "xref_reconstructed";
+    case RepairKind::kTolerantParsing:
+      return "tolerant_parsing";
+    case RepairKind::kObjectRelocated:
+      return "object_relocated";
+    case RepairKind::kMissingObject:
+      return "missing_object";
+    case RepairKind::kPageTreeType:
+      return "page_tree_type";
+    case RepairKind::kPartialDecode:
+      return "partial_decode";
   }
   return "unknown";
 }

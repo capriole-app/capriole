@@ -116,8 +116,15 @@ class Document {
   };
 
   Document() = default;
-  // One strict attempt. source is moved into the document only on success.
-  static Result<Document> build(std::unique_ptr<ByteSource>& source, const OpenOptions& options);
+  // One strict attempt. source is moved into the document only on success. With rebuilt, that table is
+  // used instead of the file's cross-reference sections (the reconstruction repair).
+  static Result<Document> build(std::unique_ptr<ByteSource>& source, const OpenOptions& options, const parser::XrefTable* rebuilt = nullptr);
+  // Records a repair (the list is capped: a badly broken file can need one per object).
+  void note(repair::RepairKind kind, std::string description);
+  // Repairs for an object whose strict load failed (tolerant parsing, then the scanned position).
+  Result<model::Object> repair_object(std::uint32_t number, const Error& strict_error);
+  // Loader with a security handler matching the document's.
+  [[nodiscard]] std::unique_ptr<parser::ObjectLoader> make_loader(parser::XrefTable table, parser::ParseMode mode) const;
   // The slot for an object that exists (loading it from the file if needed); nullptr otherwise.
   Result<Slot*> slot(std::uint32_t number);
 
@@ -125,6 +132,11 @@ class Document {
   std::unique_ptr<parser::ObjectLoader> loader_;
   std::shared_ptr<const crypto::StandardSecurityHandler> security_;
   std::vector<repair::RepairNote> repairs_;
+  bool repair_enabled_ = true;
+  std::optional<std::uint32_t> encrypt_object_;
+  std::unique_ptr<parser::ObjectLoader> tolerant_loader_;  // same table, tolerant parser (lazy)
+  std::unique_ptr<parser::ObjectLoader> scan_loader_;      // table rebuilt by scanning (lazy)
+  bool scan_attempted_ = false;
   ParseLimits limits_;
   parser::PdfHeader header_;
   model::Dict trailer_;
