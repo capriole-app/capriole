@@ -111,7 +111,7 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
 - campione SafeDocs (1.000 file): **99,38%** dei file sani aperti ✅ (98,91% con la sola lettura
   rigorosa; +3 file con la prima riparazione, gli offset relativi all'header); nessun numero di pagine
   diverso dai riferimenti; i 4 restanti sono violazioni della specifica verificate a mano;
-- UNSAFE-DOCS: **0 crash** su 1.417 file (x002: 99,90% dei file sani aperti); x008 da completare;
+- UNSAFE-DOCS: **0 crash, 0 timeout** su 2.490 file (x002: 100% dei file sani aperti; x008: 98,17%) ✅;
 - fuzzing di 24 h: in locale, a bassa intensità, con `scripts/fuzz_local.sh start 24` (1 core, 1,5 GB,
   nice 19, I/O idle; unità systemd utente `capriole-fuzz`). Esito da registrare qui.
 
@@ -197,6 +197,14 @@ dall'harness (0 regressioni tra un'esecuzione e l'altra):
 
 L'harness ha anche trovato un errore di precedenza nella ricostruzione (definizione diretta contro
 object stream più recente: 16 pagine invece di 21), corretto e coperto da test.
+
+**UNSAFE x008** (1.073 file TA3, malformazioni sintetiche, prima esecuzione con le riparazioni):
+**0 crash, 0 timeout**; pagine uguali alla maggioranza su 718/963, **16 diverse**, 229 senza conteggio,
+file sani 161/164. Quasi tutto viene da alberi delle pagine rotti ad arte (`/Pages` senza `/Kids`,
+`/Kids` verso oggetti assenti o già visitati, chiavi spazzatura): nei 16 casi Capriole trova *meno*
+pagine, perché segue l'albero alla lettera, mentre i riferimenti ricostruiscono l'elenco cercando gli
+oggetti `/Type /Page`. **Prossima riparazione:** ricostruzione dell'albero delle pagine per scansione
+quando l'albero è incoerente (da fare; i 16 casi diversi sono bug da chiudere).
 
 **Limiti noti:** object stream non ricostruibili nei file cifrati (i dati non si decifrano prima che il
 gestore di sicurezza esista); dati attaccati alla parola `stream` (`streamDATA`) non riconosciuti; i 6 file
