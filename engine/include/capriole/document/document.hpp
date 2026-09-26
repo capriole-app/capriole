@@ -123,6 +123,11 @@ class Document {
   void note(repair::RepairKind kind, std::string description);
   // Repairs for an object whose strict load failed (tolerant parsing, then the scanned position).
   Result<model::Object> repair_object(std::uint32_t number, const Error& strict_error);
+  // The page tree walked as it is (with the node /Type inference when repairs are on).
+  Result<std::vector<model::ObjectRef>> walk_page_tree(model::ObjectRef root);
+  // The page tree rebuilt from /Kids and /Parent links (repair); keep_unreadable counts /Kids entries
+  // that cannot be read as placeholder pages.
+  Result<std::vector<model::ObjectRef>> rebuild_page_tree(model::ObjectRef root, bool keep_unreadable);
   // Loader with a security handler matching the document's.
   [[nodiscard]] std::unique_ptr<parser::ObjectLoader> make_loader(parser::XrefTable table, parser::ParseMode mode) const;
   // The slot for an object that exists (loading it from the file if needed); nullptr otherwise.

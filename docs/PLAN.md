@@ -198,13 +198,19 @@ dall'harness (0 regressioni tra un'esecuzione e l'altra):
 L'harness ha anche trovato un errore di precedenza nella ricostruzione (definizione diretta contro
 object stream più recente: 16 pagine invece di 21), corretto e coperto da test.
 
-**UNSAFE x008** (1.073 file TA3, malformazioni sintetiche, prima esecuzione con le riparazioni):
-**0 crash, 0 timeout**; pagine uguali alla maggioranza su 718/963, **16 diverse**, 229 senza conteggio,
-file sani 161/164. Quasi tutto viene da alberi delle pagine rotti ad arte (`/Pages` senza `/Kids`,
-`/Kids` verso oggetti assenti o già visitati, chiavi spazzatura): nei 16 casi Capriole trova *meno*
-pagine, perché segue l'albero alla lettera, mentre i riferimenti ricostruiscono l'elenco cercando gli
-oggetti `/Type /Page`. **Prossima riparazione:** ricostruzione dell'albero delle pagine per scansione
-quando l'albero è incoerente (da fare; i 16 casi diversi sono bug da chiudere).
+7. ✅ `page_tree_rebuilt` — albero delle pagine che non torna (visita fallita, o meno pagine del
+   `/Count` della radice): si ricostruisce da `/Kids` più i collegamenti `/Parent` (recupera le pagine
+   che il genitore ha perso dal suo `/Kids`). Scelta fra tre candidati — visita, ricostruzione,
+   ricostruzione con i figli illeggibili tenuti come pagine segnaposto: vince quello che raggiunge
+   esattamente il `/Count`; altrimenti la ricostruzione, se recupera pagine **senza superare** il
+   `/Count` (più pagine del dichiarato = residui, es. pagine di revisioni vecchie); altrimenti la visita.
+
+**UNSAFE x008** (1.073 file TA3, malformazioni sintetiche): **0 crash, 0 timeout**; pagine uguali alla
+maggioranza 718 → **886/963**, file sani 164/164. I 30 conteggi diversi sono **tutti per difetto**
+(nessuna pagina inventata): 4 file con `/Count` gonfiato (278 dichiarate, 22 pagine nel file: il nostro
+conteggio è quello vero, i riferimenti riportano il `/Count`), 26 ricostruzioni parziali di alberi
+distrutti ad arte (prima: errore). Su SafeDocs 996/996 e x002 1.410/1.414 invariati o migliorati, 0
+regressioni in ogni esecuzione.
 
 **Limiti noti:** object stream non ricostruibili nei file cifrati (i dati non si decifrano prima che il
 gestore di sicurezza esista); dati attaccati alla parola `stream` (`streamDATA`) non riconosciuti; i 6 file

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <map>
 #include <ranges>
 #include <set>
 #include <string>
@@ -318,9 +319,55 @@ Result<std::vector<model::ObjectRef>> Document::page_refs() {
     return make_error(ErrorCode::kSyntax, "the catalog has no /Pages reference");
   }
 
+  auto walked = walk_page_tree(*pages_ref);
+  if (!repair_enabled_) {
+    return walked;
+  }
+  // The tree adds up when the walk succeeds and finds as many pages as the root declares.
+  std::optional<std::int64_t> declared;
+  if (auto root_node = get(*pages_ref); root_node && (*root_node)->as_dict() != nullptr) {
+    if (const Object* count = (*root_node)->as_dict()->find("Count")) {
+      declared = count->as_integer();
+    }
+  }
+  if (walked && (!declared || std::cmp_equal(walked->size(), *declared))) {
+    return walked;
+  }
+  // Candidates: the walk, the rebuild, and the rebuild that keeps unreadable /Kids entries as
+  // placeholder pages. One that matches the declared /Count exactly wins (in that order); otherwise
+  // the plain rebuild, if it recovers pages without exceeding /Count (more pages than the document
+  // claims means leftovers, e.g. pages of older revisions); otherwise the walk as it is.
+  auto rebuilt = rebuild_page_tree(*pages_ref, false);
+  auto with_placeholders = rebuild_page_tree(*pages_ref, true);
+  const auto adopt = [&](Result<std::vector<model::ObjectRef>>& chosen, std::string_view how) -> Result<std::vector<model::ObjectRef>> {
+    note(repair::RepairKind::kPageTreeRebuilt,
+         "page tree rebuilt from /Kids and /Parent links" + std::string(how) + ": " + (walked ? std::to_string(walked->size()) : std::string("unreadable")) +
+             " -> " + std::to_string(chosen->size()) + " pages" + (declared ? " (root /Count " + std::to_string(*declared) + ")" : std::string()));
+    return std::move(chosen);
+  };
+  const auto matches = [&](const Result<std::vector<model::ObjectRef>>& candidate) {
+    return candidate && !candidate->empty() && declared && std::cmp_equal(candidate->size(), *declared);
+  };
+  if (matches(walked)) {
+    return walked;
+  }
+  if (matches(rebuilt)) {
+    return adopt(rebuilt, "");
+  }
+  if (matches(with_placeholders)) {
+    return adopt(with_placeholders, ", unreadable entries kept as pages");
+  }
+  const bool within_count = !declared || (rebuilt && std::cmp_less_equal(rebuilt->size(), *declared));
+  if (rebuilt && !rebuilt->empty() && within_count && (!walked || rebuilt->size() > walked->size())) {
+    return adopt(rebuilt, "");
+  }
+  return walked;
+}
+
+Result<std::vector<model::ObjectRef>> Document::walk_page_tree(model::ObjectRef root) {
   // Depth-first, children pushed in reverse so that pages come out in document order.
   std::vector<model::ObjectRef> result;
-  std::vector<std::pair<model::ObjectRef, std::size_t>> stack{{*pages_ref, 0}};
+  std::vector<std::pair<model::ObjectRef, std::size_t>> stack{{root, 0}};
   std::set<std::uint32_t> visited;
   while (!stack.empty()) {
     const auto [ref, depth] = stack.back();
@@ -365,6 +412,77 @@ Result<std::vector<model::ObjectRef>> Document::page_refs() {
         return make_error(ErrorCode::kSyntax, "page tree node " + std::to_string(ref.number) + " has a /Kids entry that is not a reference");
       }
       stack.emplace_back(*kid, depth + 1);
+    }
+  }
+  return result;
+}
+
+Result<std::vector<model::ObjectRef>> Document::rebuild_page_tree(model::ObjectRef root, bool keep_unreadable) {
+  // Children of every node by /Parent, in object-number order: the links that survive when a
+  // parent's /Kids has lost them.
+  std::map<std::uint32_t, std::vector<model::ObjectRef>> children;
+  for (const auto& [number, entry] : loader_->xref().entries) {
+    if (entry.type == parser::XrefEntryType::kFree) {
+      continue;
+    }
+    auto object = get(number);
+    const model::Dict* dict = object ? (*object)->as_dict() : nullptr;
+    if (dict == nullptr) {
+      continue;
+    }
+    const Object* parent = dict->find("Parent");
+    const auto parent_ref = parent != nullptr ? parent->as_ref() : std::nullopt;
+    const Object* type = dict->find("Type");
+    const bool node_like = (type != nullptr && (type->is_name("Page") || type->is_name("Pages"))) || dict->contains("Kids");
+    if (parent_ref && node_like) {
+      const std::uint16_t generation = entry.type == parser::XrefEntryType::kCompressed ? 0 : entry.generation;
+      children[parent_ref->number].push_back(model::ObjectRef{.number = number, .generation = generation});
+    }
+  }
+
+  // Walk again: each node's valid /Kids first, then the nodes that name it as /Parent.
+  std::vector<model::ObjectRef> result;
+  std::vector<std::pair<model::ObjectRef, std::size_t>> stack{{root, 0}};
+  std::set<std::uint32_t> visited;
+  while (!stack.empty()) {
+    const auto [ref, depth] = stack.back();
+    stack.pop_back();
+    if (!visited.insert(ref.number).second || depth > limits_.max_nesting_depth) {
+      continue;
+    }
+    auto object = get(ref);
+    const model::Dict* node = object ? (*object)->as_dict() : nullptr;
+    if (node == nullptr) {
+      // With keep_unreadable, a /Kids entry that cannot be read keeps its place as a page (as the
+      // reference readers do): it will not display, but the numbering of the others stays right.
+      if (keep_unreadable && ref.number != root.number) {
+        result.push_back(ref);
+      }
+      continue;
+    }
+    const Object* type = node->find("Type");
+    std::vector<model::ObjectRef> kids;
+    if (const Object* kids_object = node->find("Kids"); kids_object != nullptr && kids_object->as_array() != nullptr) {
+      for (const Object& kid : *kids_object->as_array()) {
+        if (const auto kid_ref = kid.as_ref(); kid_ref && !visited.contains(kid_ref->number)) {
+          kids.push_back(*kid_ref);
+        }
+      }
+    }
+    if (const auto linked = children.find(ref.number); linked != children.end()) {
+      for (const model::ObjectRef& child : linked->second) {
+        if (std::ranges::none_of(kids, [&](const model::ObjectRef& k) { return k.number == child.number; })) {
+          kids.push_back(child);
+        }
+      }
+    }
+    const bool is_page = (type != nullptr && type->is_name("Page")) || (ref.number != root.number && kids.empty() && !node->contains("Kids"));
+    if (is_page) {
+      result.push_back(ref);
+      continue;
+    }
+    for (const model::ObjectRef& kid : std::views::reverse(kids)) {
+      stack.emplace_back(kid, depth + 1);
     }
   }
   return result;

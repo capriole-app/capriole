@@ -36,6 +36,10 @@ enum class RepairKind : std::uint8_t {
   kPageTreeType,
   // Encoded data that is truncated or corrupt: the part that decodes is kept.
   kPartialDecode,
+  // The page tree does not add up (walk fails, or finds fewer pages than the root's /Count): it is
+  // rebuilt from /Kids plus the /Parent links of the nodes, which recovers pages whose parent lost
+  // them from its /Kids.
+  kPageTreeRebuilt,
 };
 
 std::string_view to_string(RepairKind kind) noexcept;

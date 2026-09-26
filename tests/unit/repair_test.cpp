@@ -324,6 +324,40 @@ TEST(RepairObjects, PageTreeNodesWithoutType) {
   EXPECT_TRUE(has_repair(*document, repair::RepairKind::kPageTreeType));
 }
 
+TEST(RepairObjects, PagesLostFromKidsAreRecoveredThroughParentLinks) {
+  // Node 3 declares /Count 2 but its /Kids is empty; its pages still name it as /Parent.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R 6 0 R]/Count 3>>");
+  b.add_object(3, "<</Type/Pages/Parent 2 0 R/Kids[]/Count 2>>");
+  b.add_object(4, "<</Type/Page/Parent 3 0 R>>");
+  b.add_object(5, "<</Type/Page/Parent 3 0 R>>");
+  b.add_object(6, "<</Type/Page/Parent 2 0 R>>");
+  b.finish_table("/Size 7/Root 1 0 R");
+  EXPECT_EQ(open_strict(b.str())->page_refs()->size(), 1U);  // strict: the tree as written
+  auto document = Document::open(source_of(b.str()));
+  const auto pages = document->page_refs();
+  ASSERT_TRUE(pages.has_value()) << pages.error().message;
+  ASSERT_EQ(pages->size(), 3U);
+  EXPECT_EQ((*pages)[0].number, 4U);  // in tree order: node 3's pages first, then page 6
+  EXPECT_EQ((*pages)[1].number, 5U);
+  EXPECT_EQ((*pages)[2].number, 6U);
+  EXPECT_TRUE(has_repair(*document, repair::RepairKind::kPageTreeRebuilt));
+}
+
+TEST(RepairObjects, InflatedCountDoesNotInventPages) {
+  // The root claims 50 pages but only 2 exist: the rebuild finds no more, the walk stands.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R 4 0 R]/Count 50>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  b.add_object(4, "<</Type/Page/Parent 2 0 R>>");
+  b.finish_table("/Size 5/Root 1 0 R");
+  auto document = Document::open(source_of(b.str()));
+  EXPECT_EQ(document->page_refs()->size(), 2U);
+  EXPECT_FALSE(has_repair(*document, repair::RepairKind::kPageTreeRebuilt));
+}
+
 TEST(RepairObjects, TruncatedStreamDecodesPartially) {
   std::string original;
   for (int i = 0; i < 4000; ++i) {

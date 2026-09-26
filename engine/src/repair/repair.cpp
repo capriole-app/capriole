@@ -20,6 +20,8 @@ std::string_view to_string(RepairKind kind) noexcept {
       return "page_tree_type";
     case RepairKind::kPartialDecode:
       return "partial_decode";
+    case RepairKind::kPageTreeRebuilt:
+      return "page_tree_rebuilt";
   }
   return "unknown";
 }
