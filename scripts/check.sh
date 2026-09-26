@@ -49,8 +49,12 @@ if [[ "$SKIP_TIDY" != 1 ]]; then
   fi
   [[ -n "${CLANG_TIDY:-}" ]] || die "clang-tidy >= 19 not found — see docs/SETUP.md"
   mapfile -t TIDY_SOURCES < <(printf '%s\n' "${SOURCES[@]}" | grep -E '^(engine|capi|tools)/.*\.cpp$')
+  # HeaderFilterRegex is read from .clang-tidy and passed explicitly: clang-tidy 20 did not apply
+  # it from the config file, so headers went unchecked until 2026-09-26.
+  HEADER_FILTER=$(sed -n "s/^HeaderFilterRegex: '\(.*\)'\$/\1/p" .clang-tidy)
+  [[ -n "$HEADER_FILTER" ]] || die "HeaderFilterRegex not found in .clang-tidy"
   # The compile database comes from the GCC build: ignore GCC-only warning flags.
-  "$CLANG_TIDY" -p build/asan --quiet --extra-arg=-Wno-unknown-warning-option "${TIDY_SOURCES[@]}"
+  "$CLANG_TIDY" -p build/asan --quiet --extra-arg=-Wno-unknown-warning-option --header-filter="$HEADER_FILTER" "${TIDY_SOURCES[@]}"
 else
   printf '\033[1;33m(clang-tidy skipped by SKIP_TIDY=1)\033[0m\n'
 fi

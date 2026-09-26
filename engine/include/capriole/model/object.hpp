@@ -78,7 +78,7 @@ class Dict {
   // Removes key. Returns whether it was present.
   bool erase(std::string_view key);
 
-  friend bool operator==(const Dict&, const Dict&);
+  friend bool operator==(const Dict& a, const Dict& b);
 
  private:
   std::vector<DictEntry> entries_;

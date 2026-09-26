@@ -86,9 +86,9 @@ class Lexer {
   Result<Token> lex_hex_string(std::uint64_t start);
   Result<Token> lex_name(std::uint64_t start);
   Result<Token> lex_number_or_keyword(std::uint64_t start);
-  Token make_token(TokenKind kind, std::uint64_t start) const;
+  [[nodiscard]] Token make_token(TokenKind kind, std::uint64_t start) const;
   // Error for input that ended inside a construct: the reader's I/O error if that is the cause.
-  std::unexpected<Error> end_of_input_error(std::string what, std::uint64_t offset) const;
+  [[nodiscard]] std::unexpected<Error> end_of_input_error(std::string what, std::uint64_t offset) const;
 
   SourceReader* reader_;
   ParseLimits limits_;

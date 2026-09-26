@@ -40,7 +40,7 @@ template <typename T>
 using Result = std::expected<T, Error>;
 
 inline std::unexpected<Error> make_error(ErrorCode code, std::string message, std::uint64_t offset = Error::kNoOffset) {
-  return std::unexpected(Error{code, std::move(message), offset});
+  return std::unexpected(Error{.code = code, .message = std::move(message), .offset = offset});
 }
 
 }  // namespace capriole

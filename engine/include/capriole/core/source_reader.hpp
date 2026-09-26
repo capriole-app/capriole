@@ -23,7 +23,7 @@ namespace capriole {
 class SourceReader {
  public:
   static constexpr int kEof = -1;
-  static constexpr std::size_t kDefaultWindow = 64 * 1024;
+  static constexpr std::size_t kDefaultWindow = std::size_t{64} * 1024;
   // peek() lookahead must stay below the window size; lexers need a couple of bytes at most.
   static constexpr std::size_t kMinWindow = 16;
 
