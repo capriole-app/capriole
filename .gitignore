@@ -28,3 +28,4 @@ slow-unit-*
 # Python
 __pycache__/
 *.pyc
+/fuzz/campaign/

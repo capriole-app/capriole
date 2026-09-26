@@ -1,0 +1,50 @@
+// Jenkins pipeline — capriole fuzzing campaign (manual, long-running).
+//
+// Not part of the per-push CI: it builds the libFuzzer targets in the CI image and runs
+// scripts/fuzz_campaign.sh for HOURS of wall-clock time with WORKERS fuzzers at a time, at the lowest
+// CPU priority. The working corpora live in the job workspace (fuzz/corpus-work) and grow from one
+// campaign to the next. Crashing inputs are archived; any finding fails the build.
+//
+// WORKERS is the number of CPU cores the campaign takes. Keep it below the host's core count minus
+// what the other projects' CI needs: the campaign also holds one Jenkins executor for its duration.
+
+pipeline {
+  agent none
+
+  parameters {
+    string(name: 'HOURS', defaultValue: '24', description: 'Wall-clock duration of the campaign, in hours')
+    string(name: 'WORKERS', defaultValue: '2', description: 'Fuzzers running at the same time (= CPU cores used)')
+  }
+
+  options {
+    disableConcurrentBuilds()
+    timestamps()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    timeout(time: 30, unit: 'HOURS')
+  }
+
+  stages {
+    stage('Fuzz campaign') {
+      agent {
+        dockerfile {
+          filename 'ci/Dockerfile'
+          dir '.'
+          args '-e HOME=/tmp'
+        }
+      }
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          cmake --preset fuzz
+          cmake --build --preset fuzz
+          scripts/fuzz_campaign.sh "$HOURS" "$WORKERS"
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'fuzz/campaign/**', allowEmptyArchive: true
+        }
+      }
+    }
+  }
+}
