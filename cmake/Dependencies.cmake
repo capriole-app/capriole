@@ -1,6 +1,6 @@
 # Third-party dependencies.
 #
-# Rule (DOCS/CAPRIOLE.md §4.2): only permissive licenses may be linked into the engine. Every new
+# Rule (docs/CAPRIOLE.md §4.2): only permissive licenses may be linked into the engine. Every new
 # dependency is added here with a pinned version + SHA-256 and recorded in docs/DEPENDENCIES.md
 # with its license, before any code uses it.
 

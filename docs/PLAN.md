@@ -1,6 +1,6 @@
 # Piano di implementazione
 
-Deriva da `../DOCS/CAPRIOLE.md` §9. Ogni fase chiude con qualcosa di **verificabile** (criterio di uscita)
+Deriva da `CAPRIOLE.md` §9. Ogni fase chiude con qualcosa di **verificabile** (criterio di uscita)
 e non si passa alla successiva con il gate rosso. Le stime sono ordini di grandezza per una persona con
 assistenza AI e servono a vedere le proporzioni, non a promettere date.
 

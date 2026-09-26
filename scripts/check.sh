@@ -38,9 +38,19 @@ ctest --preset asan
 
 if [[ "$SKIP_TIDY" != 1 ]]; then
   step "clang-tidy"
-  need clang-tidy
+  # Needs clang-tidy >= 19: Clang 18 cannot see std::expected in libstdc++ 13 (it gates it on
+  # __cpp_concepts >= 202002, which Clang reports only from 19). Ubuntu ships versioned binaries.
+  if [[ -z "${CLANG_TIDY:-}" ]]; then
+    for candidate in clang-tidy clang-tidy-20 clang-tidy-19; do
+      command -v "$candidate" >/dev/null || continue
+      major=$("$candidate" --version | grep -oE 'version [0-9]+' | grep -oE '[0-9]+')
+      if (( major >= 19 )); then CLANG_TIDY=$candidate; break; fi
+    done
+  fi
+  [[ -n "${CLANG_TIDY:-}" ]] || die "clang-tidy >= 19 not found — see docs/SETUP.md"
   mapfile -t TIDY_SOURCES < <(printf '%s\n' "${SOURCES[@]}" | grep -E '^(engine|capi|tools)/.*\.cpp$')
-  clang-tidy -p build/asan --quiet "${TIDY_SOURCES[@]}"
+  # The compile database comes from the GCC build: ignore GCC-only warning flags.
+  "$CLANG_TIDY" -p build/asan --quiet --extra-arg=-Wno-unknown-warning-option "${TIDY_SOURCES[@]}"
 else
   printf '\033[1;33m(clang-tidy skipped by SKIP_TIDY=1)\033[0m\n'
 fi

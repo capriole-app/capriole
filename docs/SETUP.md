@@ -5,16 +5,19 @@ Riferimento: Ubuntu 24.04. Le versioni minime sono quelle verificate dal gate e 
 ## Pacchetti di sistema
 
 ```sh
-sudo apt install cmake ninja-build clang-18 clang-tidy-18 libclang-rt-18-dev lld-18 \
+sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld-20 clang-format-18 \
                  gdb ccache pkg-config \
                  qpdf mupdf-tools poppler-utils
 ```
 
 - `cmake` (3.28), `ninja-build`: build.
-- `clang-18`, `libclang-rt-18-dev`: libFuzzer e sanitizer con Clang (preset `fuzz`).
-- `clang-tidy-18`: analisi statica nel gate. Ubuntu installa i binari con suffisso; se `clang-tidy`
-  non è nel PATH: `sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-18 100`
-  (idem `clang`/`clang++` se servono senza suffisso).
+- **Clang ≥ 19 obbligatorio** (usiamo 20, nei repository ufficiali di Ubuntu 24.04). Clang 18 non vede
+  `std::expected` negli header di libstdc++ 13, che lo abilitano solo con `__cpp_concepts >= 202002`,
+  dichiarato da Clang solo dalla 19. Vale per `clang-tidy` e per il preset `fuzz`.
+- `clang-20`, `libclang-rt-20-dev`: libFuzzer e sanitizer (preset `fuzz`, che usa `clang-20` per nome).
+- `clang-tidy-20`: analisi statica nel gate; `scripts/check.sh` lo trova da solo anche con il suffisso.
+- `clang-format-18`: formattazione (il gate e la CI usano la 18; cambiarla solo in entrambi i posti).
+- Non servono alias senza suffisso (`update-alternatives`): preset e script usano i nomi versionati.
 - `qpdf`, `mupdf-tools` (`mutool`), `poppler-utils` (`pdftoppm`, `pdfinfo`): **motori di riferimento
   per i test differenziali**, usati come programmi esterni. Non si linkano mai (licenze, spec §7.3).
   PDFium e pdf.js arrivano alla fase 4 (binario precompilato / Node).

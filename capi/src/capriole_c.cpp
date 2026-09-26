@@ -44,7 +44,7 @@ capriole_status fail(const capriole::Error& error) { return fail(to_status(error
 
 extern "C" {
 
-const char* capriole_version(void) { return CAPRIOLE_VERSION_STRING; }
+const char* capriole_version(void) { return capriole::build::kVersionString.data(); }
 
 int capriole_abi_version(void) { return CAPRIOLE_ABI_VERSION; }
 

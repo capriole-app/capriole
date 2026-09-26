@@ -42,8 +42,8 @@
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "CMAKE_C_COMPILER": "clang",
-        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_COMPILER": "clang-20",
+        "CMAKE_CXX_COMPILER": "clang++-20",
         "CAPRIOLE_BUILD_FUZZERS": "ON",
         "CAPRIOLE_BUILD_TESTS": "OFF",
         "CAPRIOLE_SANITIZERS": "address;undefined"

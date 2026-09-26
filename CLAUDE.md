@@ -1,6 +1,6 @@
 # CLAUDE.md — capriole
 
-Istruzioni per lavorare in questo repository. Specifica di prodotto: `../DOCS/CAPRIOLE.md`.
+Istruzioni per lavorare in questo repository. Specifica di prodotto: `docs/CAPRIOLE.md`.
 Piano di lavoro: `docs/PLAN.md`. Decisioni: `docs/adr/`.
 
 ## Cos'è

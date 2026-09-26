@@ -4,6 +4,6 @@
 
 namespace capriole {
 
-std::string_view version() noexcept { return CAPRIOLE_VERSION_STRING; }
+std::string_view version() noexcept { return build::kVersionString; }
 
 }  // namespace capriole

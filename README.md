@@ -9,7 +9,7 @@ WebAssembly in the browser.
 
 ## Building
 
-Requirements: CMake ≥ 3.28, Ninja, a C++23 compiler (GCC ≥ 13 or Clang ≥ 18).
+Requirements: CMake ≥ 3.28, Ninja, a C++23 compiler (GCC ≥ 13 or Clang ≥ 19).
 Optional: Clang for fuzzing, [emsdk](https://emscripten.org) for the WebAssembly build.
 See [docs/SETUP.md](docs/SETUP.md).
 

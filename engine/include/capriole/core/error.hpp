@@ -15,7 +15,7 @@
 
 namespace capriole {
 
-enum class ErrorCode : std::uint16_t {
+enum class ErrorCode : std::uint8_t {
   kIo,             // The underlying byte source failed.
   kOutOfRange,     // An offset or length points outside the source.
   kUnexpectedEof,  // The input ended before a complete construct was read.

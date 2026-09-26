@@ -8,7 +8,8 @@ Data: 2026-09-26 · Stato: accettata
    convenzione del workspace). Motore, API C, binding WASM e in futuro le app vivono insieme perché il
    confine tra motore e UI deve cambiare in un solo commit.
 2. **C++23** (non C++20 come nella bozza della spec): `std::expected` per gli errori senza eccezioni.
-   Minimo: GCC 13, Clang 18, Emscripten recente. `<print>` non si usa finché il minimo è GCC 13.
+   Minimo: GCC 13, **Clang 19** (Clang 18 non vede `std::expected` in libstdc++ 13; si usa Clang 20),
+   Emscripten 6.0.10. `<print>` non si usa finché il minimo è GCC 13.
 3. **CMake ≥ 3.28 + preset** (`debug`, `release`, `asan`, `fuzz`, `wasm`), generatore Ninja.
 4. **Dipendenze via FetchContent con versione e SHA-256 fissati**; nessun package manager per ora.
    Da rivalutare (vcpkg) quando arrivano le librerie di immagini e font, che servono anche in WASM.

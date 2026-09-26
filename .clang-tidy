@@ -32,7 +32,7 @@ Checks: >
 #  - identifier-length / cognitive-complexity: judged in review, not by a threshold.
 #  - cert-err58-cpp: fires on GoogleTest registration macros.
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(engine|capi|tools|bindings)/.*'
+HeaderFilterRegex: '.*/(engine/(include|src)|capi/src|tools|bindings)/.*'
 CheckOptions:
   - { key: readability-identifier-naming.NamespaceCase,        value: lower_case }
   - { key: readability-identifier-naming.ClassCase,            value: CamelCase }
