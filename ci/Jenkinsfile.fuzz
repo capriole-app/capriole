@@ -5,8 +5,10 @@
 // CPU priority. The working corpora live in the job workspace (fuzz/corpus-work) and grow from one
 // campaign to the next. Crashing inputs are archived; any finding fails the build.
 //
-// WORKERS is the number of CPU cores the campaign takes. Keep it below the host's core count minus
-// what the other projects' CI needs: the campaign also holds one Jenkins executor for its duration.
+// The Jenkins host is shared (6 cores, ~6 GB of free RAM, no swap, 2 executors). The campaign takes
+// one executor and is capped at container level, not only by nice: --cpus = WORKERS, --memory =
+// MEMORY for the whole container, 1 GB per fuzzer (the measured peak is ~550 MB). Without swap, an
+// uncapped fuzzer that ran away could get CI jobs or services killed by the kernel's OOM killer.
 
 pipeline {
   agent none
@@ -14,6 +16,7 @@ pipeline {
   parameters {
     string(name: 'HOURS', defaultValue: '24', description: 'Wall-clock duration of the campaign, in hours')
     string(name: 'WORKERS', defaultValue: '2', description: 'Fuzzers running at the same time (= CPU cores used)')
+    string(name: 'MEMORY', defaultValue: '3g', description: 'Memory cap of the whole container (docker --memory)')
   }
 
   options {
@@ -29,8 +32,12 @@ pipeline {
         dockerfile {
           filename 'ci/Dockerfile'
           dir '.'
-          args '-e HOME=/tmp'
+          args "-e HOME=/tmp --cpus=${params.WORKERS} --memory=${params.MEMORY} --memory-swap=${params.MEMORY}"
         }
+      }
+      environment {
+        CMAKE_BUILD_PARALLEL_LEVEL = "${params.WORKERS}"
+        RSS_LIMIT_MB = '1024'
       }
       steps {
         sh '''#!/usr/bin/env bash

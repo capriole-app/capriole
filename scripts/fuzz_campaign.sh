@@ -8,6 +8,7 @@
 # corpora persist in fuzz/corpus-work/<target> (seeded from fuzz/corpus/<target>), so successive
 # campaigns build on each other. Crashing inputs, logs and a summary go to fuzz/campaign/.
 # Exits 1 if any target found a crash, leak, timeout or OOM.
+# RSS_LIMIT_MB (default 2048) caps each fuzzer's memory; exceeding it is reported as a finding.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -31,7 +32,7 @@ run_target() {
   local name=${target#fuzz_}
   mkdir -p "fuzz/corpus-work/$name" "$out/crashes"
   # -rss_limit_mb and -timeout turn memory blow-ups and hangs into reported findings.
-  nice -n 19 "$build/$target" -max_total_time="$seconds" -rss_limit_mb=2048 -timeout=30 -print_final_stats=1 \
+  nice -n 19 "$build/$target" -max_total_time="$seconds" -rss_limit_mb="${RSS_LIMIT_MB:-2048}" -timeout=30 -print_final_stats=1 \
     -artifact_prefix="$out/crashes/$name-" "fuzz/corpus-work/$name" "fuzz/corpus/$name" >"$out/$name.log" 2>&1
   local status=$?
   local runs
