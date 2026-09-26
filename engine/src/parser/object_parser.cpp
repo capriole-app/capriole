@@ -226,6 +226,7 @@ Result<IndirectObject> ObjectParser::parse_indirect_object(const LengthResolver&
       if (!stream) {
         return std::unexpected(std::move(stream.error()));
       }
+      stream->origin = result.ref;
       result.object = Object(std::move(*stream));
     } else {
       result.object = Object(std::move(*dict));
@@ -305,7 +306,7 @@ Result<model::Stream> ObjectParser::parse_stream_data(model::Dict dict, std::uin
   if (!is_keyword(*end, "endstream")) {
     return make_error(ErrorCode::kSyntax, "expected endstream after /Length bytes of data, found " + describe(*end), end->offset);
   }
-  return model::Stream{.dict = std::move(dict), .data_offset = data_offset, .data_length = data_length, .memory_data = nullptr};
+  return model::Stream{.dict = std::move(dict), .data_offset = data_offset, .data_length = data_length, .memory_data = nullptr, .origin = std::nullopt};
 }
 
 }  // namespace capriole::parser

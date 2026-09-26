@@ -102,10 +102,11 @@ TEST(Decode, Errors) {
 
 TEST(ReadEncoded, ReadsTheStreamSpan) {
   auto source = MemoryByteSource::from_string("0123456789");
-  const auto data = read_encoded(source, model::Stream{.dict = {}, .data_offset = 3, .data_length = 4, .memory_data = nullptr});
+  const auto data = read_encoded(source, model::Stream{.dict = {}, .data_offset = 3, .data_length = 4, .memory_data = nullptr, .origin = std::nullopt});
   ASSERT_TRUE(data.has_value());
   EXPECT_EQ(*data, bytes("3456"));
-  EXPECT_EQ(read_encoded(source, model::Stream{.dict = {}, .data_offset = 8, .data_length = 4, .memory_data = nullptr}).error().code, ErrorCode::kOutOfRange);
+  EXPECT_EQ(read_encoded(source, model::Stream{.dict = {}, .data_offset = 8, .data_length = 4, .memory_data = nullptr, .origin = std::nullopt}).error().code,
+            ErrorCode::kOutOfRange);
 }
 
 }  // namespace

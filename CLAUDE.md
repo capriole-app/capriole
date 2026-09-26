@@ -22,9 +22,11 @@ cmake/       moduli CMake     scripts/check.sh  IL GATE     scripts/hooks/  pre-
 ci/          immagine della CI (Jenkinsfile alla radice)     docs/  piano, setup, ADR, dipendenze
 ```
 
-Aree previste in `engine/`: `core` (errori, ByteSource), `parser` (lexer, xref, oggetti — rigoroso),
-`repair` (tolleranza, SEPARATO da parser), `model` (modello basso con stato modifiche), `writer`,
-`filters`, `crypto`, `content` (interprete), `render`, `text`, `edit`.
+Aree in `engine/`: `core` (errori, ByteSource, SourceReader, limiti), `parser` (lexer, oggetti, xref,
+object stream, loader — rigoroso), `model` (Object), `document` (Document: modello basso con stato delle
+modifiche), `filters`, `crypto` (primitive + security handler). Previste: `repair` (tolleranza, SEPARATO
+da parser), `writer`, `content` (interprete), `render`, `text`, `edit`.
+Dati di test in `tests/data/` (fixture generate da script versionati), helper in `tests/support/`.
 
 ## Comandi
 

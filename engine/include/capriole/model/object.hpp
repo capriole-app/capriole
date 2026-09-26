@@ -93,6 +93,9 @@ struct Stream {
   std::uint64_t data_length = 0;
   // Encoded data held in memory; when set, data_offset and data_length are not used.
   std::shared_ptr<const std::vector<std::byte>> memory_data;
+  // The indirect object this stream was read as. Encrypted files derive the stream's decryption key
+  // from it (§7.6.2, Algorithm 1). Unset for streams created in memory.
+  std::optional<ObjectRef> origin;
 
   [[nodiscard]] bool in_memory() const noexcept { return memory_data != nullptr; }
   // Equal dictionaries and equal data (by content for in-memory data, by location otherwise).

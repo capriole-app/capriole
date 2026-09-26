@@ -22,6 +22,7 @@
 #include "capriole/core/byte_source.hpp"
 #include "capriole/core/error.hpp"
 #include "capriole/core/limits.hpp"
+#include "capriole/crypto/security_handler.hpp"
 #include "capriole/model/object.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/parser/object_loader.hpp"
@@ -36,10 +37,19 @@ enum class ObjectState : std::uint8_t {
   kDeleted,     // exists in the file, removed in this session
 };
 
+struct OpenOptions {
+  ParseLimits limits = kDefaultParseLimits;
+  // Tried as the user password, then as the owner password. Most encrypted files open with the
+  // empty user password (they only restrict permissions).
+  std::string password;
+};
+
 class Document {
  public:
-  // Opens a document from a source it takes ownership of: header, then cross-reference sections.
-  [[nodiscard]] static Result<Document> open(std::unique_ptr<ByteSource> source, const ParseLimits& limits = kDefaultParseLimits);
+  // Opens a document from a source it takes ownership of: header, cross-reference sections and,
+  // for an encrypted file, the security handler. ErrorCode::kPasswordRequired when the file is
+  // encrypted and the password does not open it.
+  [[nodiscard]] static Result<Document> open(std::unique_ptr<ByteSource> source, const OpenOptions& options = {});
 
   Document(Document&&) noexcept;
   Document& operator=(Document&&) noexcept;
@@ -51,6 +61,8 @@ class Document {
   // The cross-reference sections as read from the file (never changed by edits).
   [[nodiscard]] const parser::XrefTable& xref() const noexcept { return loader_->xref(); }
   [[nodiscard]] ByteSource& source() noexcept { return *source_; }
+  // The security handler of an encrypted document (permissions, revision); nullptr otherwise.
+  [[nodiscard]] const crypto::StandardSecurityHandler* security() const noexcept { return security_.get(); }
 
   // ── Reading ─────────────────────────────────────────────────────────────────────────────
 
@@ -103,6 +115,7 @@ class Document {
 
   std::unique_ptr<ByteSource> source_;
   std::unique_ptr<parser::ObjectLoader> loader_;
+  std::shared_ptr<const crypto::StandardSecurityHandler> security_;
   ParseLimits limits_;
   parser::PdfHeader header_;
   model::Dict trailer_;

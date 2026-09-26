@@ -86,7 +86,7 @@ TEST(Object, DebugString) {
   dict.set("Kids", Array{ObjectRef{.number = 4, .generation = 0}, Null{}, true});
   dict.set("Title", String{.bytes = "A (b)"});
   EXPECT_EQ(debug_string(Object(dict)), "<</Type /Page/Kids [4 0 R null true]/Title (A\\x20\\x28b\\x29)>>");
-  EXPECT_EQ(debug_string(Object(Stream{.dict = {}, .data_offset = 10, .data_length = 5, .memory_data = nullptr})), "<<>> stream[10+5]");
+  EXPECT_EQ(debug_string(Object(Stream{.dict = {}, .data_offset = 10, .data_length = 5, .memory_data = nullptr, .origin = std::nullopt})), "<<>> stream[10+5]");
   EXPECT_EQ(to_string(ObjectKind::kDictionary), "dictionary");
 }
 

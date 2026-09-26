@@ -49,6 +49,11 @@ Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const s
   if (name == "RunLengthDecode") {
     return run_length_decode(data, max);
   }
+  if (name == "Crypt") {
+    // Decryption happens before the filter chain (ObjectLoader::read_stream_data), which also reads
+    // this filter's /Name to choose the crypt filter: here it is a pass-through.
+    return data;
+  }
   return make_error(ErrorCode::kUnsupported, "filter /" + name + " is not supported yet");
 }
 

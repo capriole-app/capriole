@@ -27,7 +27,7 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 ## Fase 2 — Lexer, parser rigoroso, modello basso 🔜 (~4–6 settimane) — si lavora su `development`
 
 Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/object stream + FlateDecode ✅ ·
-**2d** ✅ `Document` con stato delle modifiche · **2e** 🔜 cifratura in lettura. Un branch `feat/…` per passo.
+**2d** ✅ `Document` con stato delle modifiche · **2e** cifratura in lettura ✅. Un branch `feat/…` per passo.
 
 1. ✅ **Lexer** (ISO 32000-2 §7.2–7.3): whitespace/delimitatori, commenti, numeri (interi/reali, limiti),
    stringhe letterali (escape, bilanciamento parentesi, EOL), stringhe esadecimali, nomi (`#xx`),
@@ -77,14 +77,39 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
    fase 5); numero di pagine uguale a qpdf su 229, **nessun file con un conteggio diverso**; i 9 senza
    conteggio sono 6 cifrati (2e) e 3 con xref malformata. Filtri ancora da fare: solo immagini
    (DCT 162 stream, CCITT 57, JBIG2 3, JPX 2).
-6. **Cifratura in lettura** (§7.6): Standard security handler R2–R6, RC4/AES-128/AES-256,
-   `/Identity` crypt filter; implementazione propria di MD5, RC4, AES, SHA-256/384/512 (piccole,
-   testate con vettori NIST). Password utente/proprietario.
-7. `cpdf`: `info`, `xref`, `object <n>`, `dump`.
-8. Fuzzer: `fuzz_lexer`, `fuzz_object`, `fuzz_document` (apertura completa).
+6. ✅ **Cifratura in lettura** (§7.6): `crypto/` con MD5, SHA-256/384/512, RC4, AES-128/256 CBC
+   scritti in casa e verificati con i vettori RFC 1321, FIPS 180-4, FIPS 197, SP 800-38A, RFC 6229
+   (più valori ai confini dei blocchi calcolati con Python). `StandardSecurityHandler`: /V 1, 2, 4, 5,
+   /R 2–6 (incluso l'algoritmo 2.B iterato di R6), crypt filter /V2, /AESV2, /AESV3, /Identity,
+   password utente e proprietario, `/EncryptMetadata`, filtro `/Crypt` per stream. Decifratura nel
+   loader: stringhe degli oggetti nel file (non negli object stream, non nel dizionario `/Encrypt`,
+   non il `/Contents` delle firme), dati degli stream (mai gli xref stream). `Document::open` con
+   `OpenOptions.password`; `ErrorCode::kPasswordRequired`. Fixture: 10 varianti generate con qpdf
+   (`tests/data/encrypted/make_fixtures.sh`). Fuzzer `fuzz_security`. `cpdf` legge la password da
+   `CAPRIOLE_PASSWORD`.
+   **Primo bug reale trovato dal fuzzing** (`fuzz_security` e `fuzz_xref`, entrambi in pochi minuti):
+   `/V 5` con `/R 2–4` chiedeva alla derivazione MD5 una chiave da 32 byte, leggendo oltre un digest
+   da 16 (stack-buffer-overflow). Corretto validando la coppia /V–/R (Tabella 21) più un controllo
+   difensivo; gli input sono in `tests/regression/security/`, riprodotti da `regression_test.cpp`
+   (verificato: senza la correzione ASan interrompe la suite).
+   **Limiti noti:** password non normalizzate (niente SASLprep per R6, niente conversione UTF-8 →
+   PDFDocEncoding per R2–4); `/Perms` di R6 non verificato; AES non a tempo costante (va bene per
+   aprire documenti, non per un servizio che decifra su richiesta).
+7. ✅ `cpdf`: `header`, `tokens`, `xref`, `object`, `object-at`, `stream`, `pages`, `check`.
+8. ✅ Fuzzer: `fuzz_header`, `fuzz_lexer`, `fuzz_object`, `fuzz_xref` (con `Document`), `fuzz_filters`,
+   `fuzz_security`.
+
+   **Misura finale della fase 2 (238 PDF pubblici, 2026-09-26):** numero di pagine uguale a qpdf su
+   235, **mai diverso**; i 3 restanti hanno la xref malformata (fase 5). `cpdf check` pulito su 231
+   (i 7 restanti: malformazioni della fase 5). Stream non decodificati: solo immagini (DCT, CCITT,
+   JBIG2, JPX → fase 6).
 
 **Uscita:** apre correttamente (confronto con `qpdf --check` e `qpdf --json`) ≥ 99% di un campione di
 1.000 file SafeDocs *non* malformati; zero crash/ASan su UNSAFE-DOCS campione; fuzzer 24 h senza crash.
+
+**Stato (2026-09-26):** tutte le funzionalità della fase sono fatte; il criterio d'uscita **non è ancora
+verificato**: servono il campione SafeDocs/UNSAFE-DOCS (harness della fase 4) e un fuzzing di 24 h.
+Finora: 238 PDF reali e ~10 minuti per fuzzer ad ogni passo.
 
 ## Fase 3 — Writer (~2 settimane)
 

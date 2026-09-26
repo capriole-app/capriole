@@ -31,6 +31,8 @@ capriole_status to_status(capriole::ErrorCode code) noexcept {
       return CAPRIOLE_ERROR_LIMIT_EXCEEDED;
     case capriole::ErrorCode::kCorruptData:
       return CAPRIOLE_ERROR_CORRUPT_DATA;
+    case capriole::ErrorCode::kPasswordRequired:
+      return CAPRIOLE_ERROR_PASSWORD_REQUIRED;
   }
   return CAPRIOLE_ERROR_INTERNAL;
 }

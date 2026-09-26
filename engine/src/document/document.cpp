@@ -33,7 +33,8 @@ Document::Document(Document&&) noexcept = default;
 Document& Document::operator=(Document&&) noexcept = default;
 Document::~Document() = default;
 
-Result<Document> Document::open(std::unique_ptr<ByteSource> source, const ParseLimits& limits) {
+Result<Document> Document::open(std::unique_ptr<ByteSource> source, const OpenOptions& options) {
+  const ParseLimits& limits = options.limits;
   if (source == nullptr) {
     return make_error(ErrorCode::kIo, "no source to open");
   }
@@ -63,6 +64,36 @@ Result<Document> Document::open(std::unique_ptr<ByteSource> source, const ParseL
 
   document.source_ = std::move(source);
   document.loader_ = std::make_unique<parser::ObjectLoader>(*document.source_, std::move(*xref), limits);
+
+  if (const Object* encrypt = document.trailer_.find("Encrypt")) {
+    // The /Encrypt dictionary itself is never encrypted: load it before enabling decryption.
+    std::optional<std::uint32_t> encrypt_object;
+    Object encrypt_dict = *encrypt;
+    if (const auto ref = encrypt->as_ref()) {
+      encrypt_object = ref->number;
+      auto loaded = document.loader_->resolve(*ref);
+      if (!loaded) {
+        return std::unexpected(std::move(loaded.error()));
+      }
+      encrypt_dict = std::move(*loaded);
+    }
+    if (encrypt_dict.as_dict() == nullptr) {
+      return make_error(ErrorCode::kSyntax, "/Encrypt is not a dictionary");
+    }
+    // The first /ID string enters the key derivation of revisions 2-4.
+    std::span<const std::byte> first_id;
+    const Object* id = document.trailer_.find("ID");
+    if (id != nullptr && id->as_array() != nullptr && !id->as_array()->empty() && id->as_array()->front().as_string() != nullptr) {
+      const std::string& bytes = id->as_array()->front().as_string()->bytes;
+      first_id = std::as_bytes(std::span(bytes.data(), bytes.size()));
+    }
+    auto handler = crypto::StandardSecurityHandler::create(*encrypt_dict.as_dict(), first_id, options.password);
+    if (!handler) {
+      return std::unexpected(std::move(handler.error()));
+    }
+    document.security_ = std::make_shared<const crypto::StandardSecurityHandler>(std::move(*handler));
+    document.loader_->set_security_handler(document.security_, encrypt_object);
+  }
   return document;
 }
 
@@ -120,9 +151,6 @@ Result<Object> Document::resolve(const Object& object) {
 }
 
 Result<std::vector<std::byte>> Document::decode_stream(const model::Stream& stream) {
-  if (!stream.in_memory() && trailer_.contains("Encrypt")) {
-    return make_error(ErrorCode::kUnsupported, "encrypted documents cannot be decoded yet (decryption is phase 2e)");
-  }
   // /Filter and /DecodeParms may be (or contain) references: resolve them through the document, so
   // that edited objects are seen too.
   model::Dict dict = stream.dict;
@@ -147,17 +175,12 @@ Result<std::vector<std::byte>> Document::decode_stream(const model::Stream& stre
     }
   }
 
-  std::vector<std::byte> encoded;
-  if (stream.in_memory()) {
-    encoded = *stream.memory_data;
-  } else {
-    auto read = filters::read_encoded(*source_, stream);
-    if (!read) {
-      return std::unexpected(std::move(read.error()));
-    }
-    encoded = std::move(*read);
+  // Reading (and decrypting) is the loader's job; the filter chain uses the resolved dictionary.
+  auto encoded = loader_->read_stream_data(stream);
+  if (!encoded) {
+    return std::unexpected(std::move(encoded.error()));
   }
-  return filters::decode(std::move(encoded), dict, limits_);
+  return filters::decode(std::move(*encoded), dict, limits_);
 }
 
 Result<const model::Dict*> Document::catalog() {

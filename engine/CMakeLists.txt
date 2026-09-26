@@ -3,6 +3,9 @@ add_library(capriole_engine STATIC
   src/core/error.cpp
   src/core/source_reader.cpp
   src/core/version.cpp
+  src/crypto/cipher.cpp
+  src/crypto/hash.cpp
+  src/crypto/security_handler.cpp
   src/document/document.cpp
   src/filters/basic.cpp
   src/filters/decode.cpp

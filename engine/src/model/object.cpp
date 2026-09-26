@@ -51,7 +51,7 @@ bool operator==(const Dict& a, const Dict& b) { return a.entries_ == b.entries_;
 // ── Stream ──────────────────────────────────────────────────────────────────────────────────
 
 bool operator==(const Stream& a, const Stream& b) {
-  if (!(a.dict == b.dict) || a.in_memory() != b.in_memory()) {
+  if (!(a.dict == b.dict) || a.in_memory() != b.in_memory() || a.origin != b.origin) {
     return false;
   }
   if (a.in_memory()) {

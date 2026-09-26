@@ -5,6 +5,7 @@
 
 #include <charconv>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <iostream>
 #include <map>
@@ -47,7 +48,9 @@ void print_usage() {
                "                  write the decoded data of a stream object to stdout\n"
                "  pages <file>    print the page count and the page object references\n"
                "  check <file>    load every object, decode every stream, walk the page tree;\n"
-               "                  exit 1 on any error\n";
+               "                  exit 1 on any error\n"
+               "\n"
+               "Encrypted files: set CAPRIOLE_PASSWORD (user or owner password; empty by default).\n";
 }
 
 int fail(std::string_view context, const capriole::Error& error) {
@@ -64,7 +67,12 @@ capriole::Result<capriole::Document> open_document(std::string_view path) {
   if (!source) {
     return std::unexpected(std::move(source.error()));
   }
-  return capriole::Document::open(std::move(*source));
+  // Encrypted files: the password comes from the environment, so it does not end up in shell history.
+  capriole::OpenOptions options;
+  if (const char* password = std::getenv("CAPRIOLE_PASSWORD")) {  // NOLINT(concurrency-mt-unsafe): single-threaded tool
+    options.password = password;
+  }
+  return capriole::Document::open(std::move(*source), options);
 }
 
 std::string_view form_name(capriole::parser::XrefForm form) {

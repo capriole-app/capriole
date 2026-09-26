@@ -106,6 +106,13 @@ Result<Object> ObjectLoader::load_at_offset(std::uint32_t number, const XrefEntr
                           std::to_string(object->ref.number) + " " + std::to_string(object->ref.generation),
                       entry.offset);
   }
+  // Strings of objects stored directly in the file are encrypted one by one; objects inside object
+  // streams are not (the whole object stream is encrypted instead, §7.6.2).
+  if (security_ != nullptr && encrypt_object_ != number) {
+    if (auto decrypted = decrypt_strings(object->object, object->ref); !decrypted) {
+      return with_context(std::move(decrypted.error()), number);
+    }
+  }
   return std::move(object->object);
 }
 
@@ -154,10 +161,103 @@ Result<const ObjectStream*> ObjectLoader::object_stream(std::uint32_t stream_num
   return &inserted.first->second;
 }
 
-Result<std::vector<std::byte>> ObjectLoader::decode_stream(const model::Stream& stream) {
-  if (encrypted()) {
-    return make_error(ErrorCode::kUnsupported, "encrypted documents cannot be decoded yet (decryption is phase 2e)");
+void ObjectLoader::set_security_handler(std::shared_ptr<const crypto::StandardSecurityHandler> handler, std::optional<std::uint32_t> encrypt_object) {
+  security_ = std::move(handler);
+  encrypt_object_ = encrypt_object;
+}
+
+Result<void> ObjectLoader::decrypt_strings(Object& object, model::ObjectRef ref) const {
+  if (const model::String* string = object.as_string()) {
+    auto plain = security_->decrypt(std::as_bytes(std::span(string->bytes.data(), string->bytes.size())), ref, security_->string_method());
+    if (!plain) {
+      return std::unexpected(std::move(plain.error()));
+    }
+    object = Object(
+        model::String{.bytes = std::string(reinterpret_cast<const char*>(plain->data()), plain->size()),  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+                      .form = string->form});
+    return {};
   }
+  if (model::Array* array = object.as_array()) {
+    for (Object& element : *array) {
+      if (auto done = decrypt_strings(element, ref); !done) {
+        return done;
+      }
+    }
+    return {};
+  }
+  model::Dict* dict = object.as_dict();
+  if (model::Stream* stream = object.as_stream()) {
+    // Cross-reference streams are never encrypted (§7.5.8.1).
+    const Object* type = stream->dict.find("Type");
+    if (type != nullptr && type->is_name("XRef")) {
+      return {};
+    }
+    dict = &stream->dict;
+  }
+  if (dict == nullptr) {
+    return {};
+  }
+  // The /Contents of a signature dictionary is not encrypted (§7.6.2): the signed byte range must
+  // be verifiable without the key.
+  const bool signature = dict->contains("ByteRange") && dict->contains("Contents");
+  for (const auto& entry : dict->entries()) {
+    if (signature && entry.key == "Contents") {
+      continue;
+    }
+    Object* value = dict->find(entry.key);
+    if (auto done = decrypt_strings(*value, ref); !done) {
+      return done;
+    }
+  }
+  return {};
+}
+
+Result<std::vector<std::byte>> ObjectLoader::read_stream_data(const model::Stream& stream) {
+  if (stream.in_memory()) {
+    return *stream.memory_data;
+  }
+  auto encoded = filters::read_encoded(*source_, stream);
+  if (!encoded || !encrypted()) {
+    return encoded;
+  }
+  if (security_ == nullptr) {
+    return make_error(ErrorCode::kUnsupported, "the document is encrypted and no security handler is set");
+  }
+  const Object* type = stream.dict.find("Type");
+  if (type != nullptr && type->is_name("XRef")) {
+    return encoded;  // cross-reference streams are never encrypted
+  }
+  if (type != nullptr && type->is_name("Metadata") && !security_->encrypt_metadata()) {
+    return encoded;
+  }
+  if (!stream.origin) {
+    return make_error(ErrorCode::kSyntax, "stream of an encrypted file has no object number to derive its key");
+  }
+
+  // A /Crypt filter first in the chain selects the crypt filter for this stream (§7.4.10).
+  crypto::CryptMethod method = security_->stream_method();
+  // /Filter and /DecodeParms are a single value or an array of them: the first element either way.
+  const auto first_of = [&](std::string_view key) -> const Object* {
+    const Object* value = stream.dict.find(key);
+    if (value == nullptr || value->as_array() == nullptr) {
+      return value;
+    }
+    return value->as_array()->empty() ? nullptr : &value->as_array()->front();
+  };
+  const Object* first_filter = first_of("Filter");
+  if (first_filter != nullptr && first_filter->is_name("Crypt")) {
+    const Object* first_parms = first_of("DecodeParms");
+    const Object* name = first_parms != nullptr && first_parms->as_dict() != nullptr ? first_parms->as_dict()->find("Name") : nullptr;
+    auto selected = security_->crypt_filter(name != nullptr && name->as_name() != nullptr ? name->as_name()->bytes : "Identity");
+    if (!selected) {
+      return std::unexpected(std::move(selected.error()));
+    }
+    method = *selected;
+  }
+  return security_->decrypt(*encoded, *stream.origin, method);
+}
+
+Result<std::vector<std::byte>> ObjectLoader::decode_stream(const model::Stream& stream) {
   // /Filter and /DecodeParms may be (or contain) references; the decoder wants direct objects.
   model::Dict dict = stream.dict;
   for (const char* key : {"Filter", "DecodeParms"}) {
@@ -180,7 +280,7 @@ Result<std::vector<std::byte>> ObjectLoader::decode_stream(const model::Stream& 
       }
     }
   }
-  auto encoded = filters::read_encoded(*source_, stream);
+  auto encoded = read_stream_data(stream);
   if (!encoded) {
     return std::unexpected(std::move(encoded.error()));
   }

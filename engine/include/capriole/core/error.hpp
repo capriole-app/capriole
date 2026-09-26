@@ -16,13 +16,14 @@
 namespace capriole {
 
 enum class ErrorCode : std::uint8_t {
-  kIo,             // The underlying byte source failed.
-  kOutOfRange,     // An offset or length points outside the source.
-  kUnexpectedEof,  // The input ended before a complete construct was read.
-  kSyntax,         // The input violates the PDF grammar.
-  kUnsupported,    // Valid input using a feature the engine does not implement yet.
-  kLimitExceeded,  // A resource limit (depth, size, count) guarding against hostile input.
-  kCorruptData,    // Encoded data (e.g. a compressed stream) cannot be decoded.
+  kIo,                // The underlying byte source failed.
+  kOutOfRange,        // An offset or length points outside the source.
+  kUnexpectedEof,     // The input ended before a complete construct was read.
+  kSyntax,            // The input violates the PDF grammar.
+  kUnsupported,       // Valid input using a feature the engine does not implement yet.
+  kLimitExceeded,     // A resource limit (depth, size, count) guarding against hostile input.
+  kCorruptData,       // Encoded data (e.g. a compressed stream) cannot be decoded.
+  kPasswordRequired,  // The document is encrypted and the password is missing or wrong.
 };
 
 std::string_view to_string(ErrorCode code) noexcept;

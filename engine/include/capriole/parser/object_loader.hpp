@@ -10,12 +10,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
+#include <optional>
 #include <vector>
 
 #include "capriole/core/byte_source.hpp"
 #include "capriole/core/error.hpp"
 #include "capriole/core/limits.hpp"
 #include "capriole/core/source_reader.hpp"
+#include "capriole/crypto/security_handler.hpp"
 #include "capriole/model/object.hpp"
 #include "capriole/parser/object_stream.hpp"
 #include "capriole/parser/xref.hpp"
@@ -29,9 +32,14 @@ class ObjectLoader {
 
   [[nodiscard]] const XrefTable& xref() const noexcept { return xref_; }
 
-  // True when the trailer has /Encrypt. Until decryption exists (phase 2e), decoding streams of an
-  // encrypted file — object streams included — is ErrorCode::kUnsupported.
+  // True when the trailer has /Encrypt. Without a security handler (set_security_handler), decoding
+  // streams of an encrypted file — object streams included — is ErrorCode::kUnsupported.
   [[nodiscard]] bool encrypted() const noexcept { return xref_.trailer.contains("Encrypt"); }
+
+  // Enables decryption: strings of objects loaded from then on, and stream data, are decrypted.
+  // encrypt_object is the number of the /Encrypt dictionary when it is indirect (it is never
+  // encrypted itself).
+  void set_security_handler(std::shared_ptr<const crypto::StandardSecurityHandler> handler, std::optional<std::uint32_t> encrypt_object);
 
   // The object as the xref defines it; null when free or absent.
   [[nodiscard]] Result<model::Object> load(std::uint32_t number);
@@ -45,11 +53,15 @@ class ObjectLoader {
   // Decoded data of a stream of this file (indirect /Filter and /DecodeParms are resolved).
   [[nodiscard]] Result<std::vector<std::byte>> decode_stream(const model::Stream& stream);
 
+  // The stream's encoded data, decrypted when the file is encrypted, before its /Filter chain.
+  [[nodiscard]] Result<std::vector<std::byte>> read_stream_data(const model::Stream& stream);
+
  private:
   Result<model::Object> load_entry(std::uint32_t number, const XrefEntry& entry);
   Result<model::Object> load_at_offset(std::uint32_t number, const XrefEntry& entry);
   Result<model::Object> load_compressed(std::uint32_t number, const XrefEntry& entry);
   Result<const ObjectStream*> object_stream(std::uint32_t stream_number);
+  Result<void> decrypt_strings(model::Object& object, model::ObjectRef ref) const;
 
   ByteSource* source_;
   XrefTable xref_;
@@ -57,6 +69,8 @@ class ObjectLoader {
   SourceReader reader_;
   std::map<std::uint32_t, ObjectStream> object_streams_;
   std::size_t depth_ = 0;
+  std::shared_ptr<const crypto::StandardSecurityHandler> security_;
+  std::optional<std::uint32_t> encrypt_object_;
 };
 
 }  // namespace capriole::parser

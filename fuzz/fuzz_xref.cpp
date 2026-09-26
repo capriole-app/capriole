@@ -51,7 +51,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   }
 
   // The same input through the document model: open, page tree, and a round of edits.
-  auto document = capriole::Document::open(std::make_unique<capriole::MemoryByteSource>(std::vector<std::byte>(bytes.begin(), bytes.end())), limits);
+  auto document = capriole::Document::open(std::make_unique<capriole::MemoryByteSource>(std::vector<std::byte>(bytes.begin(), bytes.end())),
+                                           capriole::OpenOptions{.limits = limits, .password = ""});
   if (!document) {
     return 0;
   }
