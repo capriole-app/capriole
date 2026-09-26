@@ -107,9 +107,11 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
 **Uscita:** apre correttamente (confronto con `qpdf --check` e `qpdf --json`) ≥ 99% di un campione di
 1.000 file SafeDocs *non* malformati; zero crash/ASan su UNSAFE-DOCS campione; fuzzer 24 h senza crash.
 
-**Stato (2026-09-26):** tutte le funzionalità della fase sono fatte; il criterio d'uscita **non è ancora
-verificato**: servono il campione SafeDocs/UNSAFE-DOCS (harness della fase 4) e un fuzzing di 24 h.
-Finora: 238 PDF reali e ~10 minuti per fuzzer ad ogni passo.
+**Stato (2026-09-26):** tutte le funzionalità della fase sono fatte. Criterio d'uscita:
+- campione SafeDocs (1.000 file): **98,91%** dei file sani aperti — sotto il 99% per 7 file, tutti
+  violazioni della specifica verificate a mano (fase 5); nessun numero di pagine diverso dai riferimenti;
+- UNSAFE-DOCS: **0 crash** su 1.417 file (x002); x008 da completare;
+- fuzzing di 24 h: **non ancora fatto**.
 
 ## Fase 3 — Writer (~2 settimane)
 
@@ -125,7 +127,27 @@ Finora: 238 PDF reali e ~10 minuti per fuzzer ad ogni passo.
 
 **Uscita:** i tre test sopra verdi sul campione della fase 2.
 
-## Fase 4 — Harness di test sul corpus (~2 settimane, in parallelo alla 3)
+## Fase 4 — Harness di test sul corpus (~2 settimane, in parallelo alla 3) — 🟡 prima versione attiva
+
+**Fatto (2026-09-26):** `corpus-tools/fetch_corpus.sh` (SafeDocs 0000, UNSAFE x002 e x008 in
+`../CORPORA/`, fuori dal repo) e `corpus-tools/run_corpus.py`: `cpdf check` sotto ASan + qpdf, MuPDF
+(`mutool info`), Poppler (`pdfinfo`) come programmi esterni, maggioranza sul numero di pagine, report
+`summary.md` + `results.jsonl` per esecuzione, confronto con l'esecuzione precedente. Isolamento:
+processo separato, cartella vuota, timeout, `prlimit` 4 GB; **niente namespace di rete** (non
+disponibile senza privilegi). Mancano: PDFium e pdf.js come riferimenti, file dai bug tracker, scala
+10.000 file.
+
+**Risultati della prima esecuzione:**
+
+| Corpus | File | Crash (ASan/UBSan) | Timeout | Pagine = maggioranza | Pagine diverse | File "sani"* aperti |
+|---|---|---|---|---|---|---|
+| SafeDocs 0000 | 1.000 | **0** | 0 | 977 / 996 | **0** | 637 / 644 (98,91%) |
+| UNSAFE x002 (evalFour) | 1.417 | **0** | 0 | 1.293 / 1.413 | **0** | 995 / 1.027 (96,88%) |
+
+\* "sani" = `qpdf --check` senza avvisi e i tre riferimenti concordi. **Tutti** i file sani non aperti
+sono stati verificati a mano: sono violazioni della specifica che qpdf ripara in silenzio, nessun bug
+di Capriole. Il caso dominante sono i **byte spuri prima di `%PDF-`** (3 su 7 in SafeDocs, 32 su 32 in
+x002), che spostano tutti gli offset. Con quella sola riparazione SafeDocs passerebbe al 99,38%.
 
 - `corpus-tools/` (Python): download di un sottoinsieme deterministico di SafeDocs (per shard/indice,
   non tutti gli 8 TB), UNSAFE-DOCS, raccolta dei file dai bug tracker (pdf.js, PDFium, Poppler, MuPDF,
@@ -139,6 +161,16 @@ Finora: 238 PDF reali e ~10 minuti per fuzzer ad ogni passo.
 **Uscita:** un comando produce il report di un campione di 10.000 file in < 1 ora.
 
 ## Fase 5 — Strato di riparazione (continuo, guidato dal report)
+
+**Casi reali raccolti finora** (dai 238 PDF pubblici, SafeDocs 0000, UNSAFE x002), in ordine di frequenza:
+1. byte spuri prima dell'header → offset relativi all'header (35 file);
+2. voci xref "in uso" con offset 0 → trattarle come libere (23 file SafeDocs, qpdf avvisa);
+3. `startxref` assente o non seguito da `%%EOF`, file troncati (≥ 17);
+4. chiavi duplicate nei dizionari (`/Type`, `/Info`, `/Length`, ...);
+5. voci xref da 19 byte (EOL senza spazio);
+6. generazione 65536 sulla testa della lista libera; oggetto 0 elencato due volte o in uso;
+7. dati Flate troncati, ultima riga di predittore incompleta, LZW con codici errati (decodifica parziale);
+8. `endobj`/`endstream` mancanti o sbagliati, `/Length` errate o assenti.
 
 - Ricostruzione della xref scansionando `N G obj`; `/Length` errati (ricerca di `endstream`);
   stream corrotti con decompressione parziale; file troncati; offset relativi all'header spostato;

@@ -47,8 +47,10 @@ La versione è fissata anche in `ci/Dockerfile` (`EMSDK_VERSION`): locale e CI d
 
 ## Corpora di test
 
-I corpora (SafeDocs, UNSAFE-DOCS, file dai bug tracker) **non stanno nel repo**: si indica la cartella
-con `CAPRIOLE_CORPUS_DIR` (default suggerito `~/corpora/capriole`). Vanno trattati come input ostile:
+I corpora (SafeDocs, UNSAFE-DOCS, file dai bug tracker) **non stanno nel repo**: stanno in `CORPORA/`
+nella cartella contenitore (`../CORPORA` dal repo), oppure dove indica `CAPRIOLE_CORPUS_DIR`.
+Si scaricano con `corpus-tools/fetch_corpus.sh` e si analizzano con `corpus-tools/run_corpus.py`
+(vedi `corpus-tools/README.md`). Vanno trattati come input ostile:
 non si aprono con visualizzatori di sistema, si processano solo con i nostri strumenti.
 
 ## Editor
