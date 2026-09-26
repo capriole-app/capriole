@@ -8,7 +8,9 @@ add_executable(capriole_unit_tests
   unit/object_test.cpp
   unit/source_reader_test.cpp
   unit/capi_test.cpp
+  unit/basic_filters_test.cpp
   unit/decode_test.cpp
+  unit/document_test.cpp
   unit/flate_test.cpp
   unit/xref_test.cpp)
 # support/ holds test helpers (PdfBuilder); zlib is linked to build compressed test data.

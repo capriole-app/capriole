@@ -3,6 +3,8 @@ add_library(capriole_engine STATIC
   src/core/error.cpp
   src/core/source_reader.cpp
   src/core/version.cpp
+  src/document/document.cpp
+  src/filters/basic.cpp
   src/filters/decode.cpp
   src/filters/flate.cpp
   src/model/object.cpp

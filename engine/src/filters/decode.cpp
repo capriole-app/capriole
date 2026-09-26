@@ -3,6 +3,7 @@
 #include <string>
 #include <utility>
 
+#include "capriole/filters/basic.hpp"
 #include "capriole/filters/flate.hpp"
 
 namespace capriole::filters {
@@ -13,16 +14,40 @@ using model::Dict;
 using model::Object;
 
 Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const std::string& name, const Dict* parms, const ParseLimits& limits) {
-  if (name == "FlateDecode") {
+  const std::size_t max = limits.max_decoded_stream_bytes;
+  if (name == "FlateDecode" || name == "LZWDecode") {
     auto params = predictor_params(parms);
     if (!params) {
       return std::unexpected(std::move(params.error()));
     }
-    auto inflated = flate_decode(data, limits.max_decoded_stream_bytes);
-    if (!inflated) {
-      return inflated;
+    Result<std::vector<std::byte>> expanded;
+    if (name == "FlateDecode") {
+      expanded = flate_decode(data, max);
+    } else {
+      // /EarlyChange defaults to 1 (§7.4.4.3, Table 8).
+      bool early_change = true;
+      if (const model::Object* value = parms != nullptr ? parms->find("EarlyChange") : nullptr) {
+        const auto integer = value->as_integer();
+        if (!integer || (*integer != 0 && *integer != 1)) {
+          return make_error(ErrorCode::kSyntax, "/EarlyChange must be 0 or 1");
+        }
+        early_change = *integer == 1;
+      }
+      expanded = lzw_decode(data, early_change, max);
     }
-    return apply_predictor(std::move(*inflated), *params);
+    if (!expanded) {
+      return expanded;
+    }
+    return apply_predictor(std::move(*expanded), *params);
+  }
+  if (name == "ASCIIHexDecode") {
+    return ascii_hex_decode(data, max);
+  }
+  if (name == "ASCII85Decode") {
+    return ascii85_decode(data, max);
+  }
+  if (name == "RunLengthDecode") {
+    return run_length_decode(data, max);
   }
   return make_error(ErrorCode::kUnsupported, "filter /" + name + " is not supported yet");
 }

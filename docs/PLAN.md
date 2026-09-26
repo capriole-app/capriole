@@ -27,7 +27,7 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 ## Fase 2 — Lexer, parser rigoroso, modello basso 🔜 (~4–6 settimane) — si lavora su `development`
 
 Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/object stream + FlateDecode ✅ ·
-**2d** 🔜 `Document` con stato delle modifiche · **2e** cifratura in lettura. Un branch `feat/…` per passo.
+**2d** ✅ `Document` con stato delle modifiche · **2e** 🔜 cifratura in lettura. Un branch `feat/…` per passo.
 
 1. ✅ **Lexer** (ISO 32000-2 §7.2–7.3): whitespace/delimitatori, commenti, numeri (interi/reali, limiti),
    stringhe letterali (escape, bilanciamento parentesi, EOL), stringhe esadecimali, nomi (`#xx`),
@@ -63,9 +63,20 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
    Filtri non ancora supportati incontrati (stream): DCT 170, CCITTFax 64, ASCII85 19, LZW 4, JBIG2 3,
    JPX 2, ASCIIHex 2. ASCII85, ASCIIHex, LZW e RunLength sono piccoli e vanno anticipati (con la 2d);
    DCT/JPX/CCITT/JBIG2 servono solo al rendering (fase 6).
-5. **Modello basso** (`model/`): `Document` con tabella degli oggetti `(num, gen) → slot`, caricamento
-   lazy, stato per oggetto (`Unmodified/Modified/New/Deleted`), revisione di provenienza (quale
-   sezione incrementale lo ha definito — serve a firme e salvataggi incrementali).
+5. ✅ **Modello basso** (`document/`): `Document::open` possiede la sorgente; oggetti caricati lazy e in
+   cache, stato per oggetto (`Unmodified/Modified/New/Deleted`), `set/add/remove`, trailer del
+   documento (senza le chiavi della xref stream) con modifiche tracciate, `changed_objects()` = ciò
+   che il salvataggio incrementale scriverà; numeri mai riutilizzati, `/Size` ostile gestito.
+   Stream con dati in memoria (`Stream::memory_data`) per gli stream nuovi/riscritti. Albero delle
+   pagine (§7.7.3) con rilevamento dei cicli. Filtri anticipati: ASCIIHex, ASCII85, LZW (con
+   `EarlyChange` e predittori), RunLength. `cpdf pages`, `cpdf check` con conteggio pagine.
+   **Rimandato alla fase 3:** la "revisione di provenienza" per oggetto — le sezioni xref sono già
+   conservate, l'informazione si ricava lì quando il writer e le firme ne avranno bisogno.
+
+   **Misura (238 PDF pubblici):** `cpdf check` passa su 231 (i 7 restanti sono le malformazioni della
+   fase 5); numero di pagine uguale a qpdf su 229, **nessun file con un conteggio diverso**; i 9 senza
+   conteggio sono 6 cifrati (2e) e 3 con xref malformata. Filtri ancora da fare: solo immagini
+   (DCT 162 stream, CCITT 57, JBIG2 3, JPX 2).
 6. **Cifratura in lettura** (§7.6): Standard security handler R2–R6, RC4/AES-128/AES-256,
    `/Identity` crypt filter; implementazione propria di MD5, RC4, AES, SHA-256/384/512 (piccole,
    testate con vettori NIST). Password utente/proprietario.

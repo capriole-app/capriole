@@ -60,6 +60,22 @@ TEST(Decode, DecodeParmsApplyThePredictor) {
   EXPECT_EQ(*out, bytes(std::string("\x01\x02\x02\x03", 4)));
 }
 
+TEST(Decode, AllBasicFiltersChained) {
+  // RunLength("xxxx") -> ASCII85 "rHNh~>" -> ASCIIHex; decoding runs the filters in the listed order.
+  const auto out =
+      decode(bytes("72484E687E3E>"), with_filter(Array{Name{"ASCIIHexDecode"}, Name{"ASCII85Decode"}, Name{"RunLengthDecode"}}), kDefaultParseLimits);
+  ASSERT_TRUE(out.has_value()) << out.error().message;
+  EXPECT_EQ(*out, bytes("xxxx"));
+}
+
+TEST(Decode, LzwWithEarlyChangeParameter) {
+  Dict dict = with_filter(Name{"LZWDecode"});
+  Dict parms;
+  parms.set("EarlyChange", 2);
+  dict.set("DecodeParms", parms);
+  EXPECT_EQ(decode(bytes("x"), dict, kDefaultParseLimits).error().code, ErrorCode::kSyntax);
+}
+
 TEST(Decode, DecodeParmsArrayWithNull) {
   Dict dict = with_filter(Array{Name{"FlateDecode"}});
   dict.set("DecodeParms", Array{model::Null{}});
@@ -67,10 +83,10 @@ TEST(Decode, DecodeParmsArrayWithNull) {
 }
 
 TEST(Decode, Errors) {
-  const auto unsupported = decode(bytes("41>"), with_filter(Name{"ASCIIHexDecode"}), kDefaultParseLimits);
+  const auto unsupported = decode(bytes("\xFF\xD8"), with_filter(Name{"DCTDecode"}), kDefaultParseLimits);
   ASSERT_FALSE(unsupported.has_value());
   EXPECT_EQ(unsupported.error().code, ErrorCode::kUnsupported);
-  EXPECT_NE(unsupported.error().message.find("ASCIIHexDecode"), std::string::npos);
+  EXPECT_NE(unsupported.error().message.find("DCTDecode"), std::string::npos);
 
   EXPECT_EQ(decode(bytes("x"), with_filter(5), kDefaultParseLimits).error().code, ErrorCode::kSyntax);
   EXPECT_EQ(decode(bytes("x"), with_filter(Array{5}), kDefaultParseLimits).error().code, ErrorCode::kSyntax);
@@ -86,10 +102,10 @@ TEST(Decode, Errors) {
 
 TEST(ReadEncoded, ReadsTheStreamSpan) {
   auto source = MemoryByteSource::from_string("0123456789");
-  const auto data = read_encoded(source, model::Stream{.dict = {}, .data_offset = 3, .data_length = 4});
+  const auto data = read_encoded(source, model::Stream{.dict = {}, .data_offset = 3, .data_length = 4, .memory_data = nullptr});
   ASSERT_TRUE(data.has_value());
   EXPECT_EQ(*data, bytes("3456"));
-  EXPECT_EQ(read_encoded(source, model::Stream{.dict = {}, .data_offset = 8, .data_length = 4}).error().code, ErrorCode::kOutOfRange);
+  EXPECT_EQ(read_encoded(source, model::Stream{.dict = {}, .data_offset = 8, .data_length = 4, .memory_data = nullptr}).error().code, ErrorCode::kOutOfRange);
 }
 
 }  // namespace

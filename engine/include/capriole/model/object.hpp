@@ -6,7 +6,9 @@
 // order, strings remember whether they were literal or hexadecimal, streams remember where their data
 // lies instead of loading it. The writer relies on this to reproduce unmodified content exactly.
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -82,13 +84,19 @@ class Dict {
   std::vector<DictEntry> entries_;
 };
 
-// Stream (§7.3.8): a dictionary plus the location of its (still encoded) data in the source.
-// The data is not loaded: files can hold gigabytes of images.
+// Stream (§7.3.8): a dictionary plus its encoded data. Data read from a file stays in the file
+// (offset + length: files can hold gigabytes of images); data of new or rewritten streams lives in
+// memory, shared and immutable so that copying an Object stays cheap.
 struct Stream {
   Dict dict;
   std::uint64_t data_offset = 0;
   std::uint64_t data_length = 0;
-  friend bool operator==(const Stream&, const Stream&) = default;
+  // Encoded data held in memory; when set, data_offset and data_length are not used.
+  std::shared_ptr<const std::vector<std::byte>> memory_data;
+
+  [[nodiscard]] bool in_memory() const noexcept { return memory_data != nullptr; }
+  // Equal dictionaries and equal data (by content for in-memory data, by location otherwise).
+  friend bool operator==(const Stream& a, const Stream& b);
 };
 
 enum class ObjectKind : std::uint8_t { kNull, kBoolean, kInteger, kReal, kString, kName, kArray, kDictionary, kStream, kReference };

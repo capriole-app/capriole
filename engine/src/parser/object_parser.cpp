@@ -305,7 +305,7 @@ Result<model::Stream> ObjectParser::parse_stream_data(model::Dict dict, std::uin
   if (!is_keyword(*end, "endstream")) {
     return make_error(ErrorCode::kSyntax, "expected endstream after /Length bytes of data, found " + describe(*end), end->offset);
   }
-  return model::Stream{.dict = std::move(dict), .data_offset = data_offset, .data_length = data_length};
+  return model::Stream{.dict = std::move(dict), .data_offset = data_offset, .data_length = data_length, .memory_data = nullptr};
 }
 
 }  // namespace capriole::parser

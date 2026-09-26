@@ -48,6 +48,18 @@ bool Dict::erase(std::string_view key) {
 
 bool operator==(const Dict& a, const Dict& b) { return a.entries_ == b.entries_; }
 
+// ── Stream ──────────────────────────────────────────────────────────────────────────────────
+
+bool operator==(const Stream& a, const Stream& b) {
+  if (!(a.dict == b.dict) || a.in_memory() != b.in_memory()) {
+    return false;
+  }
+  if (a.in_memory()) {
+    return *a.memory_data == *b.memory_data;
+  }
+  return a.data_offset == b.data_offset && a.data_length == b.data_length;
+}
+
 // ── Object ──────────────────────────────────────────────────────────────────────────────────
 
 std::string_view to_string(ObjectKind kind) noexcept {
@@ -167,7 +179,11 @@ struct DebugVisitor {
   }
   void operator()(const Stream& value) const {
     (*this)(value.dict);
-    *out += std::format(" stream[{}+{}]", value.data_offset, value.data_length);
+    if (value.in_memory()) {
+      *out += std::format(" stream[memory {}]", value.memory_data->size());
+    } else {
+      *out += std::format(" stream[{}+{}]", value.data_offset, value.data_length);
+    }
   }
   void operator()(ObjectRef value) const { *out += std::format("{} {} R", value.number, value.generation); }
 };
