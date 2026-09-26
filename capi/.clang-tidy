@@ -1,0 +1,8 @@
+# The C API follows C naming (capriole_*), and its header must stay valid C.
+InheritParentConfig: true
+Checks: >
+  -readability-identifier-naming,
+  -modernize-use-using,
+  -modernize-deprecated-headers,
+  -modernize-use-trailing-return-type,
+  -modernize-redundant-void-arg

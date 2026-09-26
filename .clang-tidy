@@ -1,0 +1,57 @@
+# clang-tidy runs in the gate (scripts/check.sh) on first-party code.
+# Disabled checks carry a reason; do not add a check to the list without one.
+Checks: >
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -cert-err58-cpp
+# Why the exclusions:
+#  - easily-swappable-parameters: (offset, size) pairs are everywhere in a binary-format parser.
+#  - magic-numbers: PDF is full of spec-mandated constants; naming each one hurts readability.
+#  - pro-bounds-*: a parser indexes buffers; bounds are enforced by ByteSource/span + fuzzing + ASan.
+#  - include-cleaner: noisy with the standard library across libstdc++/libc++/Emscripten.
+#  - non-private-member-variables: plain structs (Error, PdfHeader) are intended.
+#  - trailing-return-type: not our style.
+#  - identifier-length / cognitive-complexity: judged in review, not by a threshold.
+#  - cert-err58-cpp: fires on GoogleTest registration macros.
+WarningsAsErrors: '*'
+HeaderFilterRegex: '(engine|capi|tools|bindings)/.*'
+CheckOptions:
+  - { key: readability-identifier-naming.NamespaceCase,        value: lower_case }
+  - { key: readability-identifier-naming.ClassCase,            value: CamelCase }
+  - { key: readability-identifier-naming.StructCase,           value: CamelCase }
+  - { key: readability-identifier-naming.EnumCase,             value: CamelCase }
+  - { key: readability-identifier-naming.EnumConstantCase,     value: CamelCase }
+  - { key: readability-identifier-naming.EnumConstantPrefix,   value: k }
+  - { key: readability-identifier-naming.FunctionCase,         value: lower_case }
+  - { key: readability-identifier-naming.MethodCase,           value: lower_case }
+  - { key: readability-identifier-naming.VariableCase,         value: lower_case }
+  - { key: readability-identifier-naming.ParameterCase,        value: lower_case }
+  - { key: readability-identifier-naming.PrivateMemberCase,    value: lower_case }
+  - { key: readability-identifier-naming.PrivateMemberSuffix,  value: _ }
+  - { key: readability-identifier-naming.ProtectedMemberCase,  value: lower_case }
+  - { key: readability-identifier-naming.ProtectedMemberSuffix, value: _ }
+  - { key: readability-identifier-naming.ConstexprVariableCase, value: CamelCase }
+  - { key: readability-identifier-naming.ConstexprVariablePrefix, value: k }
+  - { key: readability-identifier-naming.GlobalConstantCase,   value: CamelCase }
+  - { key: readability-identifier-naming.GlobalConstantPrefix, value: k }
+  - { key: readability-identifier-naming.StaticConstantCase,   value: CamelCase }
+  - { key: readability-identifier-naming.StaticConstantPrefix, value: k }
+  - { key: readability-identifier-naming.MacroDefinitionCase,  value: UPPER_CASE }

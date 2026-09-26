@@ -1,0 +1,80 @@
+name: ci
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep in step with the version used locally (docs/SETUP.md).
+  EMSDK_VERSION: "6.0.10"
+
+jobs:
+  gate:
+    name: gate (format, ASan/UBSan, clang-tidy)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build clang-18 clang-tidy-18 clang-format-18
+          sudo ln -sf /usr/bin/clang-tidy-18 /usr/local/bin/clang-tidy
+          sudo ln -sf /usr/bin/clang-format-18 /usr/local/bin/clang-format
+      - name: Gate
+        run: scripts/check.sh
+
+  release-clang:
+    name: release build (clang)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build clang-18
+      - run: cmake --preset release -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCAPRIOLE_WARNINGS_AS_ERRORS=ON
+      - run: cmake --build --preset release
+      - run: ctest --preset release
+
+  wasm:
+    name: webassembly
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Install emsdk
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          "$HOME/emsdk/emsdk" install "$EMSDK_VERSION"
+          "$HOME/emsdk/emsdk" activate "$EMSDK_VERSION"
+      - name: Build and test
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          cmake --preset wasm
+          cmake --build --preset wasm
+          ctest --preset wasm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capriole-wasm
+          path: build/wasm/bindings/wasm/capriole.*
+
+  fuzz-smoke:
+    name: fuzz smoke (60 s per target)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build clang-18 libclang-rt-18-dev
+      - run: cmake --preset fuzz -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+      - run: cmake --build --preset fuzz
+      - name: Run fuzzers
+        run: |
+          for target in build/fuzz/fuzz/fuzz_*; do
+            name=$(basename "$target"); name=${name#fuzz_}
+            mkdir -p "fuzz/corpus-work/$name"
+            "$target" -max_total_time=60 "fuzz/corpus-work/$name" "fuzz/corpus/$name"
+          done

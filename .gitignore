@@ -1,0 +1,25 @@
+# Build trees (one per CMake preset)
+/build/
+/out/
+CMakeUserPresets.json
+
+# Editors / tooling
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.cache/
+compile_commands.json
+
+# Fuzzing artefacts (the seed corpus in fuzz/corpus/ IS versioned)
+crash-*
+leak-*
+timeout-*
+oom-*
+slow-unit-*
+/fuzz/corpus-work/
+
+# Test corpora live outside the repo (see docs/PLAN.md, CAPRIOLE_CORPUS_DIR)
+/corpora/
+
+# OS
+.DS_Store

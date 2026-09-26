@@ -1,0 +1,15 @@
+# Same base style as the other C++ projects in the workspace (autocam).
+BasedOnStyle: Google
+IndentWidth: 2
+ColumnLimit: 160
+Standard: Latest
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<gtest/'
+    Priority: 2
+  - Regex: '^<[a-z_]+>$'
+    Priority: 3
+  - Regex: '^<'
+    Priority: 4
+  - Regex: '^"'
+    Priority: 5
