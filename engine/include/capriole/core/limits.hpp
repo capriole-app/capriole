@@ -16,7 +16,9 @@ struct ParseLimits {
   std::size_t max_token_bytes = 4 * 1024;
   // Longest decoded string, in bytes.
   std::size_t max_string_bytes = 64 * 1024 * 1024;
-  // Deepest nesting of arrays and dictionaries.
+  // Deepest nesting of arrays and dictionaries. Parsing recurses once per level, so this also bounds
+  // stack use; the WebAssembly stack (1 MB, set in the root CMakeLists) must hold this depth, and the
+  // WASM unit tests verify it with stack overflow checks enabled.
   std::size_t max_nesting_depth = 256;
 };
 

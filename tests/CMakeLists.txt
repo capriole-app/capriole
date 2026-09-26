@@ -4,10 +4,17 @@ add_executable(capriole_unit_tests
   unit/byte_source_test.cpp
   unit/header_test.cpp
   unit/lexer_test.cpp
+  unit/object_parser_test.cpp
+  unit/object_test.cpp
   unit/source_reader_test.cpp
   unit/capi_test.cpp)
 target_link_libraries(capriole_unit_tests PRIVATE capriole::engine capriole::capi GTest::gtest_main)
 capriole_set_warnings(capriole_unit_tests)
+if(EMSCRIPTEN)
+  # Trap on stack overflow instead of corrupting memory: the nesting-limit tests then prove that the
+  # deepest recursion allowed by ParseLimits fits the WebAssembly stack (see the root CMakeLists).
+  target_link_options(capriole_unit_tests PRIVATE "-sSTACK_OVERFLOW_CHECK=2")
+endif()
 
 # PRE_TEST: discover at ctest time, so cross-compiled (WASM) test binaries are not run during the build.
 gtest_discover_tests(capriole_unit_tests DISCOVERY_MODE PRE_TEST)

@@ -14,3 +14,4 @@ endfunction()
 
 capriole_add_fuzzer(fuzz_header fuzz_header.cpp)
 capriole_add_fuzzer(fuzz_lexer fuzz_lexer.cpp)
+capriole_add_fuzzer(fuzz_object fuzz_object.cpp)

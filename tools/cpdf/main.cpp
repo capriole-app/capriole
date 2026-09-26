@@ -17,6 +17,7 @@
 #include "capriole/core/version.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/parser/lexer.hpp"
+#include "capriole/parser/object_parser.hpp"
 
 namespace {
 
@@ -31,7 +32,9 @@ void print_usage() {
                "  version         print the engine version\n"
                "  header <file>   print the PDF version declared in the file header\n"
                "  tokens <file> [offset] [count]\n"
-               "                  print up to count tokens (default 100) starting at offset (default 0)\n";
+               "                  print up to count tokens (default 100) starting at offset (default 0)\n"
+               "  object <file> <offset>\n"
+               "                  parse the indirect object (n g obj ... endobj) that starts at offset\n";
 }
 
 std::optional<std::uint64_t> parse_uint(std::string_view text) {
@@ -120,6 +123,30 @@ int cmd_tokens(std::string_view path, std::uint64_t offset, std::uint64_t count)
   return kExitOk;
 }
 
+int cmd_object(std::string_view path, std::uint64_t offset) {
+  auto source = capriole::FileByteSource::open(path);
+  if (!source) {
+    std::cerr << "cpdf: " << source.error().message << '\n';
+    return kExitFailure;
+  }
+  capriole::SourceReader reader(**source);
+  capriole::parser::ObjectParser parser(reader);
+  if (auto seek = parser.seek(offset); !seek) {
+    std::cerr << std::format("cpdf: {}\n", seek.error().message);
+    return kExitFailure;
+  }
+  // Without a document there is no xref: an indirect /Length cannot be resolved yet (phase 2c).
+  const auto object = parser.parse_indirect_object();
+  if (!object) {
+    std::cerr << std::format("cpdf: {} at offset {} ({})\n", object.error().message, object.error().offset, capriole::to_string(object.error().code));
+    return kExitFailure;
+  }
+  std::cout << std::format("{} {} obj  [{}..{})  {}\n", object->ref.number, object->ref.generation, object->offset, object->end_offset,
+                           capriole::model::to_string(object->object.kind()));
+  std::cout << capriole::model::debug_string(object->object) << '\n';
+  return kExitOk;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -136,6 +163,11 @@ int main(int argc, char** argv) {
   }
   if (command == "header" && args.size() == 3) {
     return cmd_header(args[2]);
+  }
+  if (command == "object" && args.size() == 4) {
+    if (const auto offset = parse_uint(args[3])) {
+      return cmd_object(args[2], *offset);
+    }
   }
   if (command == "tokens" && args.size() >= 3 && args.size() <= 5) {
     const auto offset = args.size() >= 4 ? parse_uint(args[3]) : std::optional<std::uint64_t>(0);

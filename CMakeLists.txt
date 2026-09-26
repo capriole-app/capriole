@@ -22,6 +22,13 @@ include(CaprioleWarnings)
 include(CaprioleSanitizers)
 include(Dependencies)
 
+if(EMSCRIPTEN)
+  # The WebAssembly stack is fixed (64 KB by default) and has no guard page: overflowing it silently
+  # corrupts memory. Parsing recurses up to ParseLimits::max_nesting_depth levels, so the stack must
+  # hold that depth with margin. tests/ links with STACK_OVERFLOW_CHECK=2 to prove it does.
+  add_link_options("-sSTACK_SIZE=1MB")
+endif()
+
 if(CAPRIOLE_BUILD_TESTS)
   # Before any add_subdirectory: add_test() calls made earlier are silently ignored.
   enable_testing()

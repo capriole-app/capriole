@@ -26,7 +26,7 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 
 ## Fase 2 — Lexer, parser rigoroso, modello basso 🔜 (~4–6 settimane) — si lavora su `development`
 
-Passi: **2a** lexer ✅ · **2b** oggetti + parser 🔜 · **2c** xref/trailer/object stream + FlateDecode ·
+Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** 🔜 xref/trailer/object stream + FlateDecode ·
 **2d** `Document` con stato delle modifiche · **2e** cifratura in lettura. Un branch `feat/…` per passo.
 
 1. ✅ **Lexer** (ISO 32000-2 §7.2–7.3): whitespace/delimitatori, commenti, numeri (interi/reali, limiti),
@@ -34,9 +34,14 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser 🔜 · **2c** xref/trailer/o
    parole chiave. Lavora su `ByteSource` tramite `SourceReader` (finestra scorrevole); ogni token porta
    offset e lunghezza. Limiti in `ParseLimits`. Fuzzer `fuzz_lexer` con controllo differenziale sulla
    dimensione della finestra. `cpdf tokens`.
-2. **Oggetti** (§7.3): null, bool, int, real, string, name, array, dict, stream, riferimento indiretto.
-   Rappresentazione: `Object` come variant compatto; stringhe/nomi in arena o interning dei nomi.
-   Limiti anti-ostile: profondità di annidamento, dimensione array/dict, lunghezza token.
+2. ✅ **Oggetti** (§7.3): `model::Object` (variant: null, bool, int64, real, string con forma
+   letterale/esadecimale, name, array, `Dict` ordinato, `Stream` con posizione dei dati non caricati,
+   `ObjectRef`). `parser::ObjectParser`: oggetti diretti, `n g R` con lookahead a errori differiti,
+   oggetti indiretti `n g obj … endobj`, stream con EOL rigoroso e `/Length` diretto o tramite
+   `LengthResolver`. Chiavi duplicate = errore (la scelta spetta alla riparazione). Limite di
+   annidamento, verificato anche contro lo stack WASM (1 MB, test con `STACK_OVERFLOW_CHECK=2`).
+   Fuzzer `fuzz_object`. `cpdf object <file> <offset>`. Interning dei nomi / arena: rimandati a quando
+   le misure sul corpus li giustificheranno.
 3. **Struttura del file** (§7.5): `startxref`, xref table classica, trailer, catena `/Prev`,
    **xref stream** (§7.5.8), **object stream** (§7.5.7), file ibridi (`/XRefStm`), linearizzazione
    (solo lettura: si ignora l'hint table ma non si deve rompere).
