@@ -10,6 +10,8 @@
 # campaigns build on each other. Crashing inputs, logs and a summary go to fuzz/campaign/.
 # Exits 1 if any target found a crash, leak, timeout or OOM.
 # RSS_LIMIT_MB (default 2048) caps each fuzzer's memory; exceeding it is reported as a finding.
+# FUZZ_TARGETS (optional, e.g. "object xref") limits the campaign to those targets — to resume one
+# that was interrupted without repeating the targets already done.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -23,7 +25,8 @@ rm -f "$out"/*.log "$out"/summary.txt
 # A target counts only if it has a seed corpus: stale binaries left in the build tree by renamed
 # targets are ignored.
 mapfile -t targets < <(find "$build" -maxdepth 1 -type f -name 'fuzz_*' -perm -u+x -printf '%f\n' | sort |
-  while read -r t; do [[ -d "fuzz/corpus/${t#fuzz_}" ]] && echo "$t"; done)
+  while read -r t; do [[ -d "fuzz/corpus/${t#fuzz_}" ]] && echo "$t"; done |
+  while read -r t; do [[ -z "${FUZZ_TARGETS:-}" || " $FUZZ_TARGETS " == *" ${t#fuzz_} "* ]] && echo "$t"; done)
 [[ ${#targets[@]} -gt 0 ]] || { echo "no fuzz targets in $build: run cmake --preset fuzz && cmake --build --preset fuzz" >&2; exit 2; }
 seconds=$(python3 -c "print(max(60, int($hours * 3600 * $workers / ${#targets[@]})))")
 echo "campaign: ${#targets[@]} targets, $workers at a time, ${seconds}s each (≈ $hours h wall clock)"

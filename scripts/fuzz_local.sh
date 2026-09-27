@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Low-intensity fuzzing campaign on this machine, in the background (PLAN.md phase 2 exit: 24 h).
 #
-#   scripts/fuzz_local.sh start [hours]   build the fuzzers and start the campaign (default 24 h)
+#   scripts/fuzz_local.sh start [hours] [target...]
+#                                         build the fuzzers and start the campaign (default 24 h, all
+#                                         targets; naming targets resumes an interrupted campaign)
 #   scripts/fuzz_local.sh status          is it running, and the progress so far
 #   scripts/fuzz_local.sh stop            stop it (the accumulated corpus is kept)
 #   scripts/fuzz_local.sh report          summary and findings of the last campaign
@@ -23,6 +25,7 @@ worktree="$common_dir/capriole-fuzz-worktree"
 case "${1:-}" in
   start)
     hours="${2:-24}"
+    targets="${*:3}"
     if systemctl --user is-active --quiet "$unit"; then
       echo "a campaign is already running: scripts/fuzz_local.sh status" >&2
       exit 1
@@ -38,9 +41,9 @@ case "${1:-}" in
     systemd-run --user --unit="$unit" --collect --quiet \
       -p CPUQuota=100% -p MemoryMax=1536M -p MemorySwapMax=0 -p Nice=19 -p IOSchedulingClass=idle \
       -p WorkingDirectory="$worktree" \
-      -E PATH="$PATH" -E RSS_LIMIT_MB=1024 -E CMAKE_BUILD_PARALLEL_LEVEL=1 \
+      -E PATH="$PATH" -E RSS_LIMIT_MB=1024 -E CMAKE_BUILD_PARALLEL_LEVEL=1 -E FUZZ_TARGETS="$targets" \
       -- bash -c 'cmake --preset fuzz >/dev/null && cmake --build --preset fuzz >/dev/null && exec scripts/fuzz_campaign.sh "$0" 1' "$hours"
-    echo "started: $hours h at $(git log -1 --format='%h %s' "$ref")"
+    echo "started: $hours h${targets:+ ($targets)} at $(git log -1 --format='%h %s' "$ref")"
     echo "follow:  scripts/fuzz_local.sh status   (stop: scripts/fuzz_local.sh stop)"
     ;;
   status)
