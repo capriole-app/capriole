@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <limits>
 #include <map>
 #include <ranges>
@@ -30,6 +31,33 @@ const Object& null_object() {
 constexpr std::array<std::string_view, 12> kSectionKeys = {"Type", "W",       "Index",        "Length", "Filter", "DecodeParms",
                                                            "F",    "FFilter", "FDecodeParms", "DL",     "Prev",   "XRefStm"};
 
+// The /Kids array of a page tree node. With repair, a misspelt key counts too — "Kid", or "Kids" in
+// another case — as long as its value is an array; misspelt tells the caller to note the repair.
+const model::Array* kids_of(const model::Dict& node, bool repair, bool* misspelt = nullptr) {
+  if (const Object* kids = node.find("Kids"); kids != nullptr) {
+    return kids->as_array();
+  }
+  if (!repair) {
+    return nullptr;
+  }
+  for (const model::DictEntry& entry : node.entries()) {
+    std::string key = entry.key;
+    std::ranges::transform(key, key.begin(), [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); });
+    if ((key == "kids" || key == "kid") && entry.value.as_array() != nullptr) {
+      if (misspelt != nullptr) {
+        *misspelt = true;
+      }
+      return entry.value.as_array();
+    }
+  }
+  return nullptr;
+}
+
+// Table trust check at open (repair mode): how many entries are sampled, and the fewest that make
+// the check meaningful.
+constexpr std::size_t kTableSample = 32;
+constexpr std::size_t kMinTableSample = 8;
+
 }  // namespace
 
 Document::Document(Document&&) noexcept = default;
@@ -42,6 +70,32 @@ Result<Document> Document::open(std::unique_ptr<ByteSource> source, const OpenOp
   }
   // Strict reading first (§7.1 of the project specification); repairs only if it fails.
   auto strict = build(source, options);
+  std::string distrust;
+  if (strict && options.repair) {
+    if (!strict->root_is_dictionary()) {
+      distrust = "the table's /Root is not a dictionary";
+    } else if (const auto [misplaced, sampled] = strict->sample_table(); sampled >= kMinTableSample && misplaced * 4 >= sampled) {
+      distrust = std::to_string(misplaced) + " of " + std::to_string(sampled) + " sampled entries do not lead to their object";
+    }
+  }
+  if (!distrust.empty()) {
+    // The table reads, but cannot be trusted (/Root marked free, entries shifted by a few objects, ...).
+    // Rebuilt by scanning, if that leads to a catalog.
+    std::unique_ptr<ByteSource> own = std::move(strict->source_);
+    if (auto table = repair::reconstruct_xref(*own, options.limits)) {
+      const std::size_t objects = table->entries.size() - 1;
+      auto rebuilt = build(own, options, &*table);
+      if (rebuilt && rebuilt->root_is_dictionary()) {
+        rebuilt->note(repair::RepairKind::kXrefReconstructed,
+                      "cross-reference table rebuilt by scanning the file (" + std::to_string(objects) + " objects; " + distrust + ")");
+        return rebuilt;
+      }
+      if (rebuilt) {
+        own = std::move(rebuilt->source_);  // build() took the source: take it back before discarding
+      }
+    }
+    strict->source_ = std::move(own);
+  }
   if (strict || !options.repair || !repair::may_help(strict.error())) {
     return strict;
   }
@@ -291,6 +345,36 @@ Result<std::vector<std::byte>> Document::decode_stream(const model::Stream& stre
   return partial;
 }
 
+std::pair<std::size_t, std::size_t> Document::sample_table() {
+  // Up to kTableSample in-use entries spread evenly over the table, loaded tolerantly (not cached):
+  // what counts is whether the entry leads to its object, not whether the object is well formed.
+  std::vector<std::uint32_t> in_use;
+  for (const auto& [number, entry] : loader_->xref().entries) {
+    if (entry.type == parser::XrefEntryType::kInUse) {
+      in_use.push_back(number);
+    }
+  }
+  const std::size_t step = std::max<std::size_t>(1, in_use.size() / kTableSample);
+  std::size_t misplaced = 0;
+  std::size_t sampled = 0;
+  for (std::size_t i = 0; i < in_use.size() && sampled < kTableSample; i += step, ++sampled) {
+    if (tolerant_loader_ == nullptr) {
+      tolerant_loader_ = make_loader(loader_->xref(), parser::ParseMode::kTolerant);
+    }
+    if (!tolerant_loader_->load(in_use[i])) {
+      ++misplaced;
+    }
+  }
+  return {misplaced, sampled};
+}
+
+bool Document::root_is_dictionary() {
+  const Object* root = trailer_.find("Root");
+  const auto root_ref = root != nullptr ? root->as_ref() : std::nullopt;
+  auto object = root_ref ? get(*root_ref) : Result<const Object*>(nullptr);
+  return object && *object != nullptr && (*object)->as_dict() != nullptr;
+}
+
 Result<const model::Dict*> Document::catalog() {
   const Object* root = trailer_.find("Root");
   const auto root_ref = root != nullptr ? root->as_ref() : std::nullopt;
@@ -298,14 +382,36 @@ Result<const model::Dict*> Document::catalog() {
     return make_error(ErrorCode::kSyntax, "the trailer has no /Root reference");
   }
   auto object = get(*root_ref);
+  if (object && (*object)->as_dict() != nullptr) {
+    return (*object)->as_dict();
+  }
+  if (repair_enabled_ && !catalog_search_done_) {
+    // Repair: the object /Root names is missing or is something else. The catalog is the object with
+    // /Type /Catalog and /Pages — the highest-numbered when there are several (the newest, usually).
+    catalog_search_done_ = true;
+    std::optional<model::ObjectRef> found;
+    for (const auto& [number, entry] : loader_->xref().entries) {
+      if (entry.type == parser::XrefEntryType::kFree || number == root_ref->number) {
+        continue;
+      }
+      auto candidate = get(number);
+      const model::Dict* dict = candidate ? (*candidate)->as_dict() : nullptr;
+      const Object* type = dict != nullptr ? dict->find("Type") : nullptr;
+      if (type != nullptr && type->is_name("Catalog") && dict->contains("Pages")) {
+        found = model::ObjectRef{.number = number, .generation = generation(number)};
+      }
+    }
+    if (found) {
+      note(repair::RepairKind::kCatalogFound,
+           "/Root " + std::to_string(root_ref->number) + " is not a dictionary; the catalog is object " + std::to_string(found->number));
+      trailer_.set("Root", *found);  // a repair of what the file says, not an edit: trailer_modified_ stays
+      return catalog();
+    }
+  }
   if (!object) {
     return std::unexpected(std::move(object.error()));
   }
-  const model::Dict* dict = (*object)->as_dict();
-  if (dict == nullptr) {
-    return make_error(ErrorCode::kSyntax, "the document catalog (/Root) is not a dictionary");
-  }
-  return dict;
+  return make_error(ErrorCode::kSyntax, "the document catalog (/Root) is not a dictionary");
 }
 
 Result<std::vector<model::ObjectRef>> Document::page_refs() {
@@ -387,11 +493,13 @@ Result<std::vector<model::ObjectRef>> Document::walk_page_tree(model::ObjectRef 
     bool is_page = type != nullptr && type->is_name("Page");
     bool is_pages = type != nullptr && type->is_name("Pages");
     // A node typed /Page that has /Kids is an intermediate node with a wrong /Type (pages have no /Kids).
-    const bool page_with_kids = is_page && node->find("Kids") != nullptr && node->find("Kids")->as_array() != nullptr;
+    bool misspelt_kids = false;
+    const model::Array* array = node != nullptr ? kids_of(*node, infer_types, &misspelt_kids) : nullptr;
+    const bool page_with_kids = is_page && array != nullptr;
     if (node != nullptr && !is_pages && (!is_page || page_with_kids) && infer_types) {
       // Repair: a node without a usable /Type (absent, e.g. /pagE, or /Page with /Kids) is a /Pages
       // node if it has /Kids, a page otherwise — as the reference readers do.
-      is_pages = node->find("Kids") != nullptr;
+      is_pages = array != nullptr || node->find("Kids") != nullptr;
       is_page = !is_pages;
       note(repair::RepairKind::kPageTreeType, "page tree node " + std::to_string(ref.number) + (type == nullptr ? " has no /Type" : " has a wrong /Type") +
                                                   "; taken as /" + (is_pages ? "Pages" : "Page"));
@@ -408,10 +516,11 @@ Result<std::vector<model::ObjectRef>> Document::walk_page_tree(model::ObjectRef 
     if (!is_pages) {
       return make_error(ErrorCode::kSyntax, "page tree node " + std::to_string(ref.number) + " is neither /Type /Pages nor /Type /Page");
     }
-    const Object* kids = node->find("Kids");
-    const model::Array* array = kids != nullptr ? kids->as_array() : nullptr;
     if (array == nullptr) {
       return make_error(ErrorCode::kSyntax, "page tree node " + std::to_string(ref.number) + " has no /Kids array");
+    }
+    if (misspelt_kids) {
+      note(repair::RepairKind::kPageTreeType, "page tree node " + std::to_string(ref.number) + " has its /Kids under a misspelt key");
     }
     for (const Object& entry : std::views::reverse(*array)) {
       const auto kid = entry.as_ref();
@@ -440,7 +549,7 @@ Result<std::vector<model::ObjectRef>> Document::rebuild_page_tree(model::ObjectR
     const Object* parent = dict->find("Parent");
     const auto parent_ref = parent != nullptr ? parent->as_ref() : std::nullopt;
     const Object* type = dict->find("Type");
-    const bool node_like = (type != nullptr && (type->is_name("Page") || type->is_name("Pages"))) || dict->contains("Kids");
+    const bool node_like = (type != nullptr && looks_like_page(*dict)) || kids_of(*dict, true) != nullptr;
     if (parent_ref && node_like) {
       const std::uint16_t generation = entry.type == parser::XrefEntryType::kCompressed ? 0 : entry.generation;
       children[parent_ref->number].push_back(model::ObjectRef{.number = number, .generation = generation});
@@ -459,6 +568,18 @@ Result<std::vector<model::ObjectRef>> Document::rebuild_page_tree(model::ObjectR
     }
     auto object = get(ref);
     const model::Dict* node = object ? (*object)->as_dict() : nullptr;
+    const auto linked_children = children.find(ref.number);
+    const bool lost_node = node == nullptr || (kids_of(*node, true) == nullptr && !looks_like_page(*node));
+    if (lost_node && linked_children != children.end()) {
+      // Not a node (unreadable, or another object under this number), yet pages name it as their
+      // /Parent: the node was lost, its pages were not — they take its place.
+      for (const model::ObjectRef& child : std::views::reverse(linked_children->second)) {
+        if (!visited.contains(child.number)) {
+          stack.emplace_back(child, depth + 1);
+        }
+      }
+      continue;
+    }
     if (node == nullptr) {
       // With keep_unreadable, a /Kids entry that cannot be read keeps its place as a page (as the
       // reference readers do): it will not display, but the numbering of the others stays right.
@@ -469,8 +590,8 @@ Result<std::vector<model::ObjectRef>> Document::rebuild_page_tree(model::ObjectR
     }
     const Object* type = node->find("Type");
     std::vector<model::ObjectRef> kids;
-    if (const Object* kids_object = node->find("Kids"); kids_object != nullptr && kids_object->as_array() != nullptr) {
-      for (const Object& kid : *kids_object->as_array()) {
+    if (const model::Array* kids_array = kids_of(*node, true); kids_array != nullptr) {
+      for (const Object& kid : *kids_array) {
         if (const auto kid_ref = kid.as_ref(); kid_ref && !visited.contains(kid_ref->number)) {
           kids.push_back(*kid_ref);
         }
@@ -483,8 +604,15 @@ Result<std::vector<model::ObjectRef>> Document::rebuild_page_tree(model::ObjectR
         }
       }
     }
-    const Object* kids_entry = node->find("Kids");
-    const bool has_kids = kids_entry != nullptr && kids_entry->as_array() != nullptr;
+    const bool has_kids = kids_of(*node, true) != nullptr;
+    // A dictionary with another /Type (e.g. a font where a page should be) is not a page; with
+    // keep_unreadable it keeps its place, like an entry that cannot be read.
+    if (ref.number != root.number && !has_kids && !looks_like_page(*node)) {
+      if (keep_unreadable) {
+        result.push_back(ref);
+      }
+      continue;
+    }
     const bool is_page = ref.number != root.number && !has_kids && ((type != nullptr && type->is_name("Page")) || kids.empty());
     if (is_page) {
       result.push_back(ref);
@@ -580,6 +708,19 @@ std::vector<model::ObjectRef> Document::live_objects() const {
     }
   }
   return result;
+}
+
+bool looks_like_page(const model::Dict& dict) {
+  const Object* type = dict.find("Type");
+  if (type == nullptr || type->is_name("Page") || type->is_name("Pages")) {
+    return true;  // /Pages here: a node without /Kids, which the readers take as a page
+  }
+  // A misspelling of /Page, or a /MediaBox (only pages have one: annotations, fonts and the other
+  // objects with /Parent, /Contents or /Resources do not).
+  const model::Name* name = type->as_name();
+  const bool page_in_other_case = name != nullptr && std::ranges::equal(name->bytes, std::string_view("page"),
+                                                                        [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == b; });
+  return page_in_other_case || dict.contains("MediaBox");
 }
 
 bool Document::page_tree_conforms(const std::vector<model::ObjectRef>& pages) {

@@ -48,6 +48,12 @@ struct OpenOptions {
   bool repair = true;
 };
 
+// Whether a dictionary in a page's place can be taken as a page: /Type /Page (or /Pages without
+// /Kids, as the readers do), no /Type, /Page in another case (/pagE), or another /Type on something
+// with a /MediaBox. Another object that ended up there (a font descriptor, say) cannot — the repairs
+// and the writer keep it as it is.
+[[nodiscard]] bool looks_like_page(const model::Dict& dict);
+
 class Document {
  public:
   // Opens a document from a source it takes ownership of: header, cross-reference sections and,
@@ -132,6 +138,11 @@ class Document {
   // One strict attempt. source is moved into the document only on success. With rebuilt, that table is
   // used instead of the file's cross-reference sections (the reconstruction repair).
   static Result<Document> build(std::unique_ptr<ByteSource>& source, const OpenOptions& options, const parser::XrefTable* rebuilt = nullptr);
+  // Whether the trailer's /Root leads to a dictionary (without the catalog repair).
+  bool root_is_dictionary();
+  // (misplaced, sampled): of a sample of in-use entries, how many do not load — a table
+  // shifted by a few objects fails most of them, a valid one none.
+  std::pair<std::size_t, std::size_t> sample_table();
   // Records a repair (the list is capped: a badly broken file can need one per object).
   void note(repair::RepairKind kind, std::string description);
   // Repairs for an object whose strict load failed (tolerant parsing, then the scanned position).
@@ -156,6 +167,7 @@ class Document {
   std::unique_ptr<parser::ObjectLoader> tolerant_loader_;  // same table, tolerant parser (lazy)
   std::unique_ptr<parser::ObjectLoader> scan_loader_;      // table rebuilt by scanning (lazy)
   bool scan_attempted_ = false;
+  bool catalog_search_done_ = false;  // the kCatalogFound repair runs once
   ParseLimits limits_;
   parser::PdfHeader header_;
   model::Dict trailer_;

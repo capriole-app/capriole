@@ -9,6 +9,10 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "capriole/core/error.hpp"
 #include "capriole/core/limits.hpp"
@@ -65,6 +69,11 @@ class ObjectParser {
   Result<model::Object> parse_integer_or_reference(const Token& first);
   Result<model::Object> parse_array(std::size_t depth);
   Result<model::Dict> parse_dict(std::size_t depth);
+  // Tolerant mode: tokens where a dictionary key belongs, starting with `first` (see the .cpp).
+  // Tolerant mode: after a token that cannot be lexed at all (a lone ')' or '>'), moves past its
+  // first byte. Returns false (nothing done) for any other error, or in strict mode.
+  bool skip_unlexable(const Error& error);
+  Result<void> recover_stray_tokens(model::Dict& dict, const std::optional<std::string>& last_key, Token first, std::size_t depth);
   Result<model::Stream> parse_stream_data(model::Dict dict, std::uint64_t after_keyword, const LengthResolver& resolver);
   // The declared /Length of a stream whose data starts at data_offset.
   Result<std::uint64_t> declared_length(const model::Dict& dict, std::uint64_t data_offset, const LengthResolver& resolver);
@@ -76,6 +85,9 @@ class ObjectParser {
   ParseLimits limits_;
   ParseMode mode_;
   std::deque<Result<Token>> lookahead_;
+  // Tolerant mode: key/value pairs recovered from the tail of an array that lost its ']', for the
+  // dictionary that holds the array (see parse_array).
+  std::vector<std::pair<std::string, model::Object>> recovered_pairs_;
 };
 
 }  // namespace capriole::parser

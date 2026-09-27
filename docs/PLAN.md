@@ -279,17 +279,44 @@ object stream più recente: 16 pagine invece di 21), corretto e coperto da test.
    `/Count` (più pagine del dichiarato = residui, es. pagine di revisioni vecchie); altrimenti la visita.
 
 **UNSAFE x008** (1.073 file TA3, malformazioni sintetiche): **0 crash, 0 timeout**; pagine uguali alla
-maggioranza 718 → **887/963** (886 prima della regola sui nodi `/Page` con `/Kids`), file sani 164/164. I 29 conteggi diversi sono **tutti per difetto**
+maggioranza 718 → 887/963 (poi **959/963**, vedi sotto), file sani 164/164. I 29 conteggi diversi di allora erano **tutti per difetto**
 (nessuna pagina inventata): 4 file con `/Count` gonfiato (278 dichiarate, 22 pagine nel file: il nostro
 conteggio è quello vero, i riferimenti riportano il `/Count`), 25 ricostruzioni parziali di alberi
 distrutti ad arte (prima: errore). Su SafeDocs 996/996 e x002 1.410/1.414 invariati o migliorati, 0
 regressioni in ogni esecuzione.
 
-**Da migliorare (annotato 2026-09-27):** su x008 le pagine uguali alla maggioranza sono 887/963; i 29
-conteggi diversi (tutti per difetto) e i 47 file senza conteggio sono il margine residuo della
-ricostruzione dell'albero delle pagine. Idee da valutare: pagine orfane (`/Type /Page` senza genitore
-raggiungibile) come candidato in più, radici alternative quando il catalogo punta a un nodo sbagliato,
-confronto con il comportamento di MuPDF/pdf.js sui singoli casi. Da riprendere dopo la fase 3.
+**Miglioramento x008 (2026-09-27)**, dopo l'annotazione "da migliorare" (887/963). Analisi caso per
+caso: su questi file qpdf `--show-npages` e pdfinfo riportano il `/Count` della radice (la visita di qpdf
+trova meno pagine, e conta come pagine anche stream e font); ogni file contiene inoltre un secondo
+albero orfano con le stesse pagine. Il riferimento affidabile è quindi il numero di oggetti pagina
+dell'albero vero, verificato a mano sui casi. Riparazioni aggiunte:
+8. ✅ ricostruzione dell'albero: un figlio che non è più un nodo (illeggibile, o un altro oggetto con
+   quel numero: stream, font) ma che le pagine nominano come `/Parent` passa loro il posto; un oggetto
+   estraneo al posto di una pagina (`looks_like_page`: `/Type` diverso da Page senza `/MediaBox`) non è
+   una pagina — e il writer lo lascia com'è, scrivendo una pagina bianca al suo posto se serve; `/Kids`
+   scritto male (`/Kid`, altre maiuscole) vale come `/Kids`; un nodo `/Page` con `/Kids` è `/Pages`.
+9. ✅ `tolerant_parsing` più robusto: array senza `[` (`/MediaBox 0 0 612 792 ]`, `/ProcSet /PDF /Text ]`)
+   o senza `]` (l'array finisce dove ricominciano le chiavi, che tornano al dizionario), riferimenti
+   senza generazione (`66 R`), stringhe senza `(` (valore null, parole e `)` saltate), token estranei
+   saltati fino alla chiave successiva; intestazioni `n g obj` illeggibili o storpiate (numero oltre
+   64 bit, `0 90 obj`, `87 80 obj`) prese come l'oggetto che la tabella indica in quel punto.
+10. ✅ tabella xref inaffidabile: se la lettura rigorosa riesce ma `/Root` non porta a un dizionario, o
+   se su un campione di 32 voci almeno un quarto non porta al proprio oggetto (tabella spostata di
+   qualche oggetto), la tabella si ricostruisce per scansione — adottata solo se porta a un catalogo.
+11. ✅ `catalog_found` — `/Root` che non è un dizionario: il catalogo è l'oggetto `/Type /Catalog` con
+   `/Pages` (il numero più alto se più d'uno); `/Root` corretto in memoria, così il salvataggio completo
+   lo scrive giusto.
+
+**Risultato su x008:** pagine uguali alla maggioranza **887 → 959/963**, file senza conteggio 47 → **0**,
+0 crash, 0 regressioni. I 4 file diversi hanno un `/Count` gonfiato (278, 157, 109, 2) che qpdf e pdfinfo
+ripetono: il nostro conteggio è quello delle pagine realmente nell'albero (22, 22, 60, 1), verificato
+contando gli oggetti pagina del file. Round-trip x008: salvati 1.039/1.039 (prima 941: più file ora
+leggibili), pagine conservate 100% sia nel salvataggio completo sia nell'incrementale.
+SafeDocs invariato (996/996, nessun falso allarme del controllo della tabella: l'incrementale salva
+ancora 958 file). x002: 1.410/1.414 invariato; un file cambia da 4 a 9 pagine — troncato, il nodo 469
+manca ma le sue 5 pagine esistono e lo nominano come `/Parent`: 9 è il `/Count` e il conteggio di qpdf,
+4 quello di MuPDF e Poppler (la "maggioranza" dell'harness). Lo teniamo: è l'effetto voluto della
+riparazione 8.
 
 **Limiti noti:** object stream non ricostruibili nei file cifrati (i dati non si decifrano prima che il
 gestore di sicurezza esista); dati attaccati alla parola `stream` (`streamDATA`) non riconosciuti; i 6 file

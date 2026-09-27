@@ -266,6 +266,22 @@ TEST(FullSave, PageWithoutAnyMediaBoxGetsTheDefault) {
   EXPECT_EQ(box->as_array()->size(), 4U);
 }
 
+TEST(FullSave, AnotherObjectInAPagesPlaceIsKeptAndTheSlotBecomesABlankPage) {
+  // Kid 4 is a font descriptor, but /Count 2 keeps its slot: the font stays a font.
+  PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R 4 0 R]/Count 2>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 10 10]>>");
+  b.add_object(4, "<</Type/FontDescriptor/FontName/Arial>>");
+  b.finish_table("/Size 5/Root 1 0 R");
+  Document original = open(b.str());
+  ASSERT_EQ(original.page_refs()->size(), 2U);
+  Document saved = open(save(original), false);
+  expect_same_pages(original, saved);
+  EXPECT_TRUE((*saved.get(4))->as_dict()->find("Type")->is_name("FontDescriptor"));
+  EXPECT_NE((*saved.page_refs())[1].number, 4U);
+}
+
 TEST(FullSave, WrongRootCountAndRootParentAreCorrected) {
   PdfBuilder b;
   b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");

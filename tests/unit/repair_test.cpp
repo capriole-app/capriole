@@ -164,6 +164,116 @@ Result<parser::IndirectObject> parse_tolerant(const std::string& text) {
   return parser.parse_indirect_object();
 }
 
+TEST(TolerantParsing, ArrayThatLostItsOpeningBracket) {
+  const auto object = parse_tolerant("1 0 obj <</Type/Page/MediaBox 0 0 612 792 ]/Rotate 90>> endobj");
+  ASSERT_TRUE(object.has_value()) << object.error().message;
+  const auto* dict = object->object.as_dict();
+  const auto* box = dict->find("MediaBox")->as_array();
+  ASSERT_NE(box, nullptr);
+  ASSERT_EQ(box->size(), 4U);
+  EXPECT_EQ((*box)[3], model::Object(792));
+  EXPECT_EQ(dict->find("Rotate")->as_integer(), 90);  // the keys after it are read as usual
+  auto source = source_of("1 0 obj <</MediaBox 0 0 612 792 ]>> endobj");
+  SourceReader reader(*source);
+  parser::ObjectParser strict(reader, kDefaultParseLimits, parser::ParseMode::kStrict);
+  EXPECT_FALSE(strict.parse_indirect_object().has_value());  // strict: an error, as before
+}
+
+TEST(TolerantParsing, ArrayThatLostItsClosingBracket) {
+  const auto object = parse_tolerant("1 0 obj <</MediaBox [0 0 612 792 /Resources <</ProcSet [/PDF /Text /ExtGState <</GS0 5 0 R>> >> /Type /Page>> endobj");
+  ASSERT_TRUE(object.has_value()) << object.error().message;
+  const auto* dict = object->object.as_dict();
+  EXPECT_EQ(dict->find("MediaBox")->as_array()->size(), 4U);
+  EXPECT_TRUE(dict->find("Type")->is_name("Page"));
+  const auto* resources = dict->find("Resources")->as_dict();
+  ASSERT_NE(resources, nullptr);
+  EXPECT_EQ(resources->find("ProcSet")->as_array()->size(), 2U);  // /PDF /Text: names stay in the array
+  EXPECT_NE(resources->find("ExtGState"), nullptr);
+}
+
+TEST(TolerantParsing, ReferenceThatLostItsGeneration) {
+  const auto object = parse_tolerant("1 0 obj <</Parent 66 R/Type/Page>> endobj");
+  ASSERT_TRUE(object.has_value()) << object.error().message;
+  EXPECT_EQ(object->object.as_dict()->find("Parent")->as_ref()->number, 66U);
+}
+
+TEST(TolerantParsing, StrayTokensAreSkippedToTheNextKey) {
+  // A string that lost its parentheses, and a stray ']' with nothing before it.
+  const auto object = parse_tolerant("1 0 obj <</Producer Microsoft Word 2010 /Title (t) ] /Count 3>> endobj");
+  ASSERT_TRUE(object.has_value()) << object.error().message;
+  const auto* dict = object->object.as_dict();
+  EXPECT_TRUE(dict->find("Producer")->is_null());
+  EXPECT_EQ(dict->find("Title")->as_string()->bytes, "t");
+  EXPECT_EQ(dict->find("Count")->as_integer(), 3);
+}
+
+TEST(TolerantParsing, StringsThatLostTheirOpeningParenthesis) {
+  const auto object = parse_tolerant("1 0 obj <</Creator Microsoft Word 2010)/Author olgasifa)/Lang el-GR)/Pages 2 0 R>> endobj");
+  ASSERT_TRUE(object.has_value()) << object.error().message;
+  const auto* dict = object->object.as_dict();
+  EXPECT_TRUE(dict->find("Creator")->is_null());
+  EXPECT_TRUE(dict->find("Author")->is_null());
+  EXPECT_EQ(dict->find("Pages")->as_ref()->number, 2U);  // what matters survives
+}
+
+TEST(TolerantParsing, ArrayOfNamesThatLostItsOpeningBracket) {
+  const auto object = parse_tolerant("1 0 obj <</ProcSet /PDF /Text ]/Font 9 0 R>> endobj");
+  ASSERT_TRUE(object.has_value()) << object.error().message;
+  const auto* dict = object->object.as_dict();
+  const auto* procset = dict->find("ProcSet")->as_array();
+  ASSERT_NE(procset, nullptr);
+  ASSERT_EQ(procset->size(), 2U);
+  EXPECT_TRUE((*procset)[1].is_name("Text"));
+  EXPECT_FALSE(dict->contains("Text"));
+  EXPECT_EQ(dict->find("Font")->as_ref()->number, 9U);
+}
+
+TEST(RepairObjects, ObjectNumberWithDigitsInFrontIsTakenFromTheTable) {
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.raw("195467450737095516");  // glued to the header of object 3, whose table entry points here
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  b.finish_table("/Size 4/Root 1 0 R");
+  std::string pdf = b.str();
+  // The builder recorded the offset of "3 0 obj"; the table must point at the start of the digits.
+  const std::size_t glued = pdf.find("1954674507370955163 0 obj");
+  ASSERT_NE(glued, std::string::npos);
+  const std::string wrong = std::to_string(glued + 18);
+  const std::string right = std::to_string(glued);
+  const std::size_t entry = pdf.find(std::string(10 - wrong.size(), '0') + wrong + " 00000 n");
+  ASSERT_NE(entry, std::string::npos);
+  pdf.replace(entry, 10, std::string(10 - right.size(), '0') + right);
+  auto document = Document::open(source_of(pdf));
+  ASSERT_TRUE(document.has_value());
+  const auto pages = document->page_refs();
+  ASSERT_TRUE(pages.has_value()) << pages.error().message;
+  EXPECT_EQ(pages->size(), 1U);
+  std::string notes;
+  for (const auto& note : document->repairs()) {
+    notes += std::string(repair::to_string(note.kind)) + ": " + note.description + "\n";
+  }
+  EXPECT_TRUE(has_repair(*document, repair::RepairKind::kTolerantParsing)) << notes;
+}
+
+TEST(RepairObjects, GarbledHeadersAtTheTablesOffsetsAreTheTablesObjects) {
+  // "87 80 obj" and "0 4 obj" where the table puts 3 0 and 4 0.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R 4 0 R]/Count 2>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  b.add_object(4, "<</Type/Page/Parent 2 0 R>>");
+  b.finish_table("/Size 5/Root 1 0 R");
+  std::string pdf = b.str();
+  pdf.replace(pdf.find("\n3 0 obj") + 1, 7, "8 7 obj");
+  pdf.replace(pdf.find("\n4 0 obj") + 1, 7, "0 4 obj");
+  EXPECT_FALSE(open_strict(pdf)->page_refs().has_value());
+  auto document = Document::open(source_of(pdf));
+  const auto pages = document->page_refs();
+  ASSERT_TRUE(pages.has_value()) << pages.error().message;
+  EXPECT_EQ(pages->size(), 2U);
+}
+
 TEST(TolerantParsing, DuplicateKeysLastWins) {
   const auto object = parse_tolerant("1 0 obj <</A 1 /B 2 /A 3>> endobj");
   ASSERT_TRUE(object.has_value()) << object.error().message;
@@ -376,6 +486,142 @@ TEST(RepairObjects, PagesLostFromKidsAreRecoveredThroughParentLinks) {
   EXPECT_EQ((*pages)[1].number, 5U);
   EXPECT_EQ((*pages)[2].number, 6U);
   EXPECT_TRUE(has_repair(*document, repair::RepairKind::kPageTreeRebuilt));
+}
+
+TEST(RepairObjects, PagesOfANodeThatIsNoLongerANodeAreRecovered) {
+  // Kid 4 was an intermediate node; its number now holds a stream. Its pages still name it as /Parent.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R 4 0 R]/Count 3>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  b.add_stream(4, "not a node");
+  b.add_object(5, "<</Type/Page/Parent 4 0 R>>");
+  b.add_object(6, "<</Type/Page/Parent 4 0 R>>");
+  b.finish_table("/Size 7/Root 1 0 R");
+  {
+    // The same with a dictionary of another kind under the node's number.
+    test::PdfBuilder d;
+    d.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+    d.add_object(2, "<</Type/Pages/Kids[3 0 R 4 0 R]/Count 3>>");
+    d.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+    d.add_object(4, "<</Type/FontDescriptor/FontName/Arial>>");
+    d.add_object(5, "<</Type/Page/Parent 4 0 R>>");
+    d.add_object(6, "<</Type/Page/Parent 4 0 R>>");
+    d.finish_table("/Size 7/Root 1 0 R");
+    EXPECT_EQ(Document::open(source_of(d.str()))->page_refs()->size(), 3U);
+  }
+  auto document = Document::open(source_of(b.str()));
+  const auto pages = document->page_refs();
+  ASSERT_TRUE(pages.has_value()) << pages.error().message;
+  ASSERT_EQ(pages->size(), 3U);
+  EXPECT_EQ((*pages)[0].number, 3U);
+  EXPECT_EQ((*pages)[1].number, 5U);
+  EXPECT_EQ((*pages)[2].number, 6U);
+  EXPECT_TRUE(has_repair(*document, repair::RepairKind::kPageTreeRebuilt));
+}
+
+TEST(RepairObjects, AnotherObjectInAPagesPlaceIsNotAPage) {
+  // Kid 4 is a font descriptor (the fuzzer's renumbering); page 5 is lost from /Kids but names 2 as
+  // /Parent. The rebuild recovers pages 5 and 6 and does not count the font.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R 4 0 R]/Count 3>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  b.add_object(4, "<</Type/FontDescriptor/FontName/Arial>>");
+  b.add_object(5, "<</Type/Page/Parent 2 0 R>>");
+  b.add_object(6, "<</Type/pagE/Parent 2 0 R/Contents 7 0 R>>");   // a misspelled page is still a page
+  b.add_object(8, "<</Type/Annot/Parent 2 0 R/Contents(note)>>");  // names 2 as /Parent, not a page
+  b.add_stream(7, "q Q");
+  b.finish_table("/Size 9/Root 1 0 R");
+  auto document = Document::open(source_of(b.str()));
+  const auto pages = document->page_refs();
+  ASSERT_TRUE(pages.has_value()) << pages.error().message;
+  ASSERT_EQ(pages->size(), 3U);
+  EXPECT_EQ((*pages)[0].number, 3U);
+  EXPECT_EQ((*pages)[1].number, 5U);
+  EXPECT_EQ((*pages)[2].number, 6U);
+  EXPECT_TRUE(looks_like_page(*(*document->get(6))->as_dict()));
+  EXPECT_FALSE(looks_like_page(*(*document->get(4))->as_dict()));
+  EXPECT_FALSE(looks_like_page(*(*document->get(8))->as_dict()));
+}
+
+TEST(RepairObjects, MisspeltKidsKey) {
+  // /Typ and /Kid: the root is still the /Pages node with its children.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Typ/Pages/Kid[3 0 R 4 0 R 5 0 R]/Count 3>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  b.add_object(4, "<</Type/Page/Parent 2 0 R>>");
+  b.add_object(5, "<</Type/Page>>");  // no /Parent: reachable only through /Kid
+  b.finish_table("/Size 6/Root 1 0 R");
+  EXPECT_FALSE(open_strict(b.str())->page_refs().has_value());
+  auto document = Document::open(source_of(b.str()));
+  const auto pages = document->page_refs();
+  ASSERT_TRUE(pages.has_value()) << pages.error().message;
+  EXPECT_EQ(pages->size(), 3U);
+  EXPECT_TRUE(has_repair(*document, repair::RepairKind::kPageTreeType));
+}
+
+TEST(RepairObjects, CatalogIsFoundWhenRootPointsElsewhere) {
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Pages/Kids[2 0 R]/Count 1>>");
+  b.add_object(2, "<</Type/Page/Parent 1 0 R>>");
+  b.add_object(3, "(not a catalog)");
+  b.add_object(7, "<</Type/Catalog/Pages 1 0 R>>");
+  b.finish_table("/Size 8/Root 3 0 R");
+  EXPECT_FALSE(open_strict(b.str())->page_refs().has_value());
+  auto document = Document::open(source_of(b.str()));
+  const auto pages = document->page_refs();
+  ASSERT_TRUE(pages.has_value()) << pages.error().message;
+  EXPECT_EQ(pages->size(), 1U);
+  EXPECT_TRUE(has_repair(*document, repair::RepairKind::kCatalogFound));
+  EXPECT_EQ(document->trailer().find("Root")->as_ref()->number, 7U);
+  EXPECT_FALSE(document->trailer_modified());
+}
+
+TEST(RepairObjects, TableThatDoesNotLeadToTheCatalogIsRebuilt) {
+  // The table reads, but marks the catalog free: the file is rescanned.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  std::string pdf = b.str();
+  const std::size_t xref = pdf.size();
+  pdf += "xref\n0 4\n0000000000 65535 f \n0000000000 00000 f \n";
+  for (const char* marker : {"2 0 obj", "3 0 obj"}) {
+    const std::string offset = std::to_string(pdf.find(marker));
+    pdf += std::string(10 - offset.size(), '0') + offset + " 00000 n \n";
+  }
+  pdf += "trailer\n<</Size 4/Root 1 0 R>>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
+  EXPECT_FALSE(open_strict(pdf)->page_refs().has_value());
+  auto document = Document::open(source_of(pdf));
+  ASSERT_TRUE(document.has_value());
+  EXPECT_TRUE(has_repair(*document, repair::RepairKind::kXrefReconstructed));
+  EXPECT_EQ(document->page_refs()->size(), 1U);
+}
+
+TEST(RepairObjects, TableShiftedByOneObjectIsRebuilt) {
+  // Every in-use entry points to the object before its own: the table reads, the objects do not.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R 4 0 R 5 0 R 6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R]/Count 10>>");
+  for (int n = 3; n <= 12; ++n) {
+    b.add_object(static_cast<std::uint32_t>(n), "<</Type/Page/Parent 2 0 R>>");
+  }
+  std::string pdf = b.str();
+  const std::size_t xref = pdf.size();
+  pdf += "xref\n0 13\n0000000000 65535 f \n";
+  const std::string first = std::to_string(pdf.find("1 0 obj"));
+  pdf += std::string(10 - first.size(), '0') + first + " 00000 n \n";  // the catalog is right
+  for (int n = 2; n <= 12; ++n) {
+    const std::string offset = std::to_string(pdf.find("\n" + std::to_string(n - 1) + " 0 obj") + 1);
+    pdf += std::string(10 - offset.size(), '0') + offset + " 00000 n \n";
+  }
+  pdf += "trailer\n<</Size 13/Root 1 0 R>>\nstartxref\n" + std::to_string(xref) + "\n%%EOF\n";
+  auto document = Document::open(source_of(pdf));
+  ASSERT_TRUE(document.has_value());
+  EXPECT_TRUE(has_repair(*document, repair::RepairKind::kXrefReconstructed));
+  EXPECT_EQ(document->page_refs()->size(), 10U);
 }
 
 TEST(RepairObjects, InflatedCountDoesNotInventPages) {

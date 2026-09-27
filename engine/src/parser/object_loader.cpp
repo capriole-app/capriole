@@ -100,6 +100,14 @@ Result<Object> ObjectLoader::load_at_offset(std::uint32_t number, const XrefEntr
   if (!object) {
     return with_context(std::move(object.error()), number);
   }
+  // Tolerant mode: a header whose number could not be read (0, see parse_indirect_object), or whose
+  // number and generation both differ from the entry ("87 80 obj" where 80 0 belongs), is garbled and
+  // taken as the object the entry names. A table shifted by a few objects leads instead to headers of
+  // other objects with the expected generation — still an error, left to the repairs that rescan.
+  const bool garbled = object->ref.number == 0 || (object->ref.number != number && object->ref.generation != entry.generation);
+  if (mode_ == ParseMode::kTolerant && garbled) {
+    object->ref = model::ObjectRef{.number = number, .generation = entry.generation};
+  }
   if (object->ref.number != number || object->ref.generation != entry.generation) {
     return make_error(ErrorCode::kSyntax,
                       "xref entry for object " + std::to_string(number) + " " + std::to_string(entry.generation) + " points to object " +

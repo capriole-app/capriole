@@ -40,6 +40,9 @@ enum class RepairKind : std::uint8_t {
   // rebuilt from /Kids plus the /Parent links of the nodes, which recovers pages whose parent lost
   // them from its /Kids.
   kPageTreeRebuilt,
+  // The trailer's /Root is not a dictionary (a missing or renumbered object): the catalog is the
+  // object with /Type /Catalog and /Pages (the highest-numbered, if several).
+  kCatalogFound,
 };
 
 std::string_view to_string(RepairKind kind) noexcept;

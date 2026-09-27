@@ -81,6 +81,9 @@ Result<std::map<std::uint32_t, Object>> flattened_page_tree(Document& document, 
   for (const model::ObjectRef ref : *pages) {
     auto loaded = document.get(ref);
     const model::Dict* original = loaded ? (*loaded)->as_dict() : nullptr;
+    if (original != nullptr && !looks_like_page(*original)) {
+      original = nullptr;  // another object in a page's place (e.g. a font): kept as it is, the page is blank
+    }
     model::Dict page;
     std::uint32_t number = ref.number;
     if (original != nullptr) {

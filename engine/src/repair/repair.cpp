@@ -22,6 +22,8 @@ std::string_view to_string(RepairKind kind) noexcept {
       return "partial_decode";
     case RepairKind::kPageTreeRebuilt:
       return "page_tree_rebuilt";
+    case RepairKind::kCatalogFound:
+      return "catalog_found";
   }
   return "unknown";
 }
