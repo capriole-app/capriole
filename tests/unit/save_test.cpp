@@ -365,14 +365,15 @@ TEST(FullSave, LinearizationDictionaryIsDropped) {
   EXPECT_EQ(out.find("/Linearized"), std::string::npos);
 }
 
-TEST(FullSave, EncryptedDocumentsAreRefusedForNow) {
+TEST(FullSave, EncryptedDocumentsStayEncrypted) {
+  // The details are in encryption_test.cpp, for every revision.
   auto source = FileByteSource::open(std::string(CAPRIOLE_TEST_DATA_DIR) + "/encrypted/r4_aes_128_empty_user.pdf");
   ASSERT_TRUE(source.has_value());
   auto document = Document::open(std::move(*source));
   ASSERT_TRUE(document.has_value());
-  MemorySink sink;
-  EXPECT_EQ(save_full(*document, sink).error().code, ErrorCode::kUnsupported);
-  EXPECT_EQ(sink.position(), 0U);
+  Document saved = open(save(*document), false);
+  ASSERT_NE(saved.security(), nullptr);
+  EXPECT_EQ(saved.page_refs()->size(), 1U);
 }
 
 // ── Incremental save ────────────────────────────────────────────────────────────────────────
@@ -531,15 +532,6 @@ TEST(IncrementalSave, PageTreeRepairsAreFoundBeforeDeciding) {
   ASSERT_TRUE(document.repairs().empty());  // not read yet
   MemorySink sink;
   EXPECT_EQ(save_incremental(document, sink).error().code, ErrorCode::kUnsupported);
-}
-
-TEST(IncrementalSave, EncryptedDocumentsAreRefusedForNow) {
-  auto source = FileByteSource::open(std::string(CAPRIOLE_TEST_DATA_DIR) + "/encrypted/r4_aes_128_empty_user.pdf");
-  ASSERT_TRUE(source.has_value());
-  auto document = Document::open(std::move(*source));
-  ASSERT_TRUE(document.has_value());
-  MemorySink sink;
-  EXPECT_EQ(save_incremental(*document, sink).error().code, ErrorCode::kUnsupported);
 }
 
 }  // namespace

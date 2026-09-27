@@ -138,7 +138,7 @@ e oggetto per oggetto nei test unitari — non con `qpdf --json` (resta da aggiu
 servirà). La ricifratura dei file cifrati resta per 3d.
 
 Passi: **3a** serializzatore ✅ · **3b** salvataggio completo ✅ · **3c** salvataggio incrementale ✅ ·
-**3d** ricifratura (salvataggio dei file cifrati; fino ad allora `kUnsupported`).
+**3d** ricifratura ✅.
 
 **3a (2026-09-26):** `writer::serialize` con contratto di round-trip (parse(serialize(x)) == x: tipi,
 byte, forma delle stringhe, ordine delle chiavi), reali senza esponente con il minimo di cifre che
@@ -199,6 +199,29 @@ cambia `/ModDate` perché ci sia qualcosa da appendere):
 Gli altri file salvati che non si rileggono in modo rigoroso non si rileggevano nemmeno prima: i loro
 difetti sono in oggetti che la modifica non tocca, e l'incrementale li lascia com'erano (come deve).
 0 crash, 0 regressioni di lettura.
+
+**3d (2026-09-27):** i documenti cifrati si salvano cifrati, in entrambi i modi, con il loro
+`/Encrypt`, la loro chiave e i loro metodi (RC4, AES-128, AES-256; R2–R6, crypt filter): il documento
+tiene tutto decifrato, e il writer cifra di nuovo stringhe e dati degli stream di ogni oggetto per il
+numero con cui lo scrive — non il dizionario `/Encrypt`, le xref stream, il `/Contents` delle firme,
+i metadata con `/EncryptMetadata false`. La regola che sceglie il metodo di uno stream
+(`method_for_stream`) è una sola, condivisa da lettura e scrittura. Il primo `/ID`, che entra nella
+chiave, resta quello del file (vuoto se mancava). **IV di AES derivato, non casuale**: SHA-256 di
+chiave, oggetto e dati — per chi non ha la chiave è imprevedibile quanto uno casuale, e l'uscita resta
+deterministica (principio 6); rivela solo che dati uguali nello stesso oggetto cifrano uguali.
+Non ancora: cambiare o togliere la protezione (opzione di salvataggio futura); i permessi `/P` li fa
+rispettare l'applicazione, non il writer.
+Verifiche: per ognuna delle 10 fixture cifrate (R2–R6, object stream, metadata in chiaro, password
+utente vuota), salvataggio completo e incrementale → riaperti in modo rigoroso con password utente e
+proprietario (contenuto, stringhe, metadata uguali), password sbagliata rifiutata, testo in chiaro
+assente dal file; **qpdf --check pulito, Poppler e MuPDF estraggono il testo con la password** su
+20/20 uscite, revisione invariata.
+
+Corpora (i file cifrati reali: 19 in SafeDocs, 6 in x002, con password utente vuota): SafeDocs ora
+salvato **996/996** in modo completo (prima 977: i 19 cifrati erano rifiutati), qpdf pulito 996/996,
+pagine conservate 100%; incrementale 977/996 (i 19 rifiutati ora sono solo i file riparati), byte
+originali intatti e qpdf non peggiore 100%. x002: completo **1.416/1.416**, pagine conservate 100%;
+incrementale 1.290 (126 rifiutati, tutti per riparazioni). 0 crash, 0 regressioni.
 
 ## Fase 4 — Harness di test sul corpus (~2 settimane, in parallelo alla 3) — 🟡 prima versione attiva
 

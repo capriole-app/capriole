@@ -22,6 +22,12 @@ constexpr std::size_t kMaxPasswordR6 = 127;
 
 std::span<const std::byte> as_bytes(std::string_view text) noexcept { return std::as_bytes(std::span(text.data(), text.size())); }
 
+// The 5 bytes of an object's number and generation, low byte first, that key derivation hashes (Algorithm 1).
+std::array<std::byte, 5> object_id(model::ObjectRef ref) noexcept {
+  return {static_cast<std::byte>(ref.number & 0xFFU), static_cast<std::byte>((ref.number >> 8U) & 0xFFU), static_cast<std::byte>((ref.number >> 16U) & 0xFFU),
+          static_cast<std::byte>(ref.generation & 0xFFU), static_cast<std::byte>((ref.generation >> 8U) & 0xFFU)};
+}
+
 Bytes concat(std::initializer_list<std::span<const std::byte>> parts) {
   Bytes out;
   for (const auto part : parts) {
@@ -386,27 +392,26 @@ Result<CryptMethod> StandardSecurityHandler::crypt_filter(std::string_view name)
   return method;
 }
 
+Bytes StandardSecurityHandler::object_key(model::ObjectRef ref, CryptMethod method) const {
+  // Algorithm 1: per-object key for RC4 and AESV2; AESV3 uses the file key as is.
+  if (method == CryptMethod::kAesV3) {
+    return file_key_;
+  }
+  Md5 md5_hash;
+  md5_hash.update(file_key_);
+  md5_hash.update(object_id(ref));
+  if (method == CryptMethod::kAesV2) {
+    md5_hash.update(as_bytes("sAlT"));
+  }
+  const auto digest = md5_hash.finish();
+  return {digest.begin(), digest.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(file_key_.size() + 5, 16))};
+}
+
 Result<std::vector<std::byte>> StandardSecurityHandler::decrypt(std::span<const std::byte> data, model::ObjectRef ref, CryptMethod method) const {
   if (method == CryptMethod::kIdentity) {
     return Bytes(data.begin(), data.end());
   }
-
-  // Algorithm 1: per-object key for RC4 and AESV2; AESV3 uses the file key as is.
-  Bytes key = file_key_;
-  if (method != CryptMethod::kAesV3) {
-    Md5 md5_hash;
-    md5_hash.update(file_key_);
-    const std::array<std::byte, 5> object_id = {static_cast<std::byte>(ref.number & 0xFFU), static_cast<std::byte>((ref.number >> 8U) & 0xFFU),
-                                                static_cast<std::byte>((ref.number >> 16U) & 0xFFU), static_cast<std::byte>(ref.generation & 0xFFU),
-                                                static_cast<std::byte>((ref.generation >> 8U) & 0xFFU)};
-    md5_hash.update(object_id);
-    if (method == CryptMethod::kAesV2) {
-      md5_hash.update(as_bytes("sAlT"));
-    }
-    const auto digest = md5_hash.finish();
-    key.assign(digest.begin(), digest.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(file_key_.size() + 5, 16)));
-  }
-
+  const Bytes key = object_key(ref, method);
   if (method == CryptMethod::kRc4) {
     Bytes out(data.begin(), data.end());
     Rc4(key).apply(out);
@@ -417,8 +422,8 @@ Result<std::vector<std::byte>> StandardSecurityHandler::decrypt(std::span<const 
   if (data.empty() || data.size() == Aes::kBlockSize) {
     return Bytes{};  // nothing, or an IV alone: an empty string
   }
-  if (data.size() < 2 * Aes::kBlockSize || data.size() % Aes::kBlockSize != 0) {
-    return make_error(ErrorCode::kCorruptData, "AES-encrypted data is not an IV plus whole blocks");
+  if (data.size() % Aes::kBlockSize != 0) {
+    return make_error(ErrorCode::kCorruptData, "AES-encrypted data is not a whole number of blocks");
   }
   auto aes = Aes::create(key);
   if (!aes) {
@@ -427,6 +432,72 @@ Result<std::vector<std::byte>> StandardSecurityHandler::decrypt(std::span<const 
   Aes::Block iv{};
   std::copy_n(data.begin(), Aes::kBlockSize, iv.begin());
   return aes_cbc_decrypt(*aes, iv, data.subspan(Aes::kBlockSize), true);
+}
+
+Result<std::vector<std::byte>> StandardSecurityHandler::encrypt(std::span<const std::byte> data, model::ObjectRef ref, CryptMethod method) const {
+  if (method == CryptMethod::kIdentity) {
+    return Bytes(data.begin(), data.end());
+  }
+  const Bytes key = object_key(ref, method);
+  if (method == CryptMethod::kRc4) {
+    Bytes out(data.begin(), data.end());
+    Rc4(key).apply(out);
+    return out;
+  }
+
+  // AES: the IV, then the data with PKCS#7 padding (always 1..16 bytes) in CBC mode (§7.6.3.1).
+  // The IV is derived — SHA-256 of the object key, the object and the data — instead of random, so
+  // that the output stays deterministic (project principle 6). Without the key it is as unpredictable
+  // as a random one; the only thing it gives away is that the same data in the same object encrypts
+  // the same way.
+  Sha256 iv_hash;
+  iv_hash.update(key);
+  iv_hash.update(object_id(ref));
+  iv_hash.update(data);
+  const auto digest = iv_hash.finish();
+  Aes::Block iv{};
+  std::copy_n(digest.begin(), Aes::kBlockSize, iv.begin());
+
+  auto aes = Aes::create(key);
+  if (!aes) {
+    return std::unexpected(std::move(aes.error()));
+  }
+  Bytes padded(data.begin(), data.end());
+  const std::size_t padding = Aes::kBlockSize - (data.size() % Aes::kBlockSize);
+  padded.insert(padded.end(), padding, static_cast<std::byte>(padding));
+  auto encrypted = aes_cbc_encrypt(*aes, iv, padded);
+  if (!encrypted) {
+    return std::unexpected(std::move(encrypted.error()));
+  }
+  Bytes out(iv.begin(), iv.end());
+  out.insert(out.end(), encrypted->begin(), encrypted->end());
+  return out;
+}
+
+Result<CryptMethod> StandardSecurityHandler::method_for_stream(const model::Dict& stream_dict) const {
+  const model::Object* type = stream_dict.find("Type");
+  if (type != nullptr && type->is_name("XRef")) {
+    return CryptMethod::kIdentity;  // cross-reference streams are never encrypted (§7.5.8.1)
+  }
+  if (type != nullptr && type->is_name("Metadata") && !encrypt_metadata_) {
+    return CryptMethod::kIdentity;
+  }
+  // A /Crypt filter first in the chain selects the crypt filter for this stream (§7.4.10).
+  // /Filter and /DecodeParms are a single value or an array of them: the first element either way.
+  const auto first_of = [&](std::string_view key) -> const model::Object* {
+    const model::Object* value = stream_dict.find(key);
+    if (value == nullptr || value->as_array() == nullptr) {
+      return value;
+    }
+    return value->as_array()->empty() ? nullptr : &value->as_array()->front();
+  };
+  const model::Object* first_filter = first_of("Filter");
+  if (first_filter != nullptr && first_filter->is_name("Crypt")) {
+    const model::Object* first_parms = first_of("DecodeParms");
+    const model::Object* name = first_parms != nullptr && first_parms->as_dict() != nullptr ? first_parms->as_dict()->find("Name") : nullptr;
+    return crypt_filter(name != nullptr && name->as_name() != nullptr ? name->as_name()->bytes : "Identity");
+  }
+  return stream_method_;
 }
 
 }  // namespace capriole::crypto

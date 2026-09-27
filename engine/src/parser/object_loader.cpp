@@ -231,38 +231,17 @@ Result<std::vector<std::byte>> ObjectLoader::read_stream_data(const model::Strea
   if (security_ == nullptr) {
     return make_error(ErrorCode::kUnsupported, "the document is encrypted and no security handler is set");
   }
-  const Object* type = stream.dict.find("Type");
-  if (type != nullptr && type->is_name("XRef")) {
-    return encoded;  // cross-reference streams are never encrypted
+  auto method = security_->method_for_stream(stream.dict);
+  if (!method) {
+    return std::unexpected(std::move(method.error()));
   }
-  if (type != nullptr && type->is_name("Metadata") && !security_->encrypt_metadata()) {
+  if (*method == crypto::CryptMethod::kIdentity) {
     return encoded;
   }
   if (!stream.origin) {
     return make_error(ErrorCode::kSyntax, "stream of an encrypted file has no object number to derive its key");
   }
-
-  // A /Crypt filter first in the chain selects the crypt filter for this stream (§7.4.10).
-  crypto::CryptMethod method = security_->stream_method();
-  // /Filter and /DecodeParms are a single value or an array of them: the first element either way.
-  const auto first_of = [&](std::string_view key) -> const Object* {
-    const Object* value = stream.dict.find(key);
-    if (value == nullptr || value->as_array() == nullptr) {
-      return value;
-    }
-    return value->as_array()->empty() ? nullptr : &value->as_array()->front();
-  };
-  const Object* first_filter = first_of("Filter");
-  if (first_filter != nullptr && first_filter->is_name("Crypt")) {
-    const Object* first_parms = first_of("DecodeParms");
-    const Object* name = first_parms != nullptr && first_parms->as_dict() != nullptr ? first_parms->as_dict()->find("Name") : nullptr;
-    auto selected = security_->crypt_filter(name != nullptr && name->as_name() != nullptr ? name->as_name()->bytes : "Identity");
-    if (!selected) {
-      return std::unexpected(std::move(selected.error()));
-    }
-    method = *selected;
-  }
-  return security_->decrypt(*encoded, *stream.origin, method);
+  return security_->decrypt(*encoded, *stream.origin, *method);
 }
 
 Result<std::vector<std::byte>> ObjectLoader::decode_stream(const model::Stream& stream) {

@@ -100,9 +100,6 @@ int bytes_for(std::uint64_t value) {
 }  // namespace
 
 Result<SaveReport> save_incremental(Document& document, ByteSink& output, const SaveOptions& options) {
-  if (document.security() != nullptr) {
-    return make_error(ErrorCode::kUnsupported, "saving encrypted documents is not supported yet (re-encryption is phase 3d)");
-  }
   // Page tree repairs are found when the pages are first read: read them now, so that the decision
   // does not depend on what the caller did before. (A tree that cannot be read at all is left as it is.)
   [[maybe_unused]] const auto pages = document.page_refs();
@@ -211,7 +208,7 @@ Result<SaveReport> save_incremental(Document& document, ByteSink& output, const 
     stream.dict.set("Index", std::move(index));
     stream.dict.set("W", model::Array{1, width, 2});
     stream.dict.set("Prev", previous);
-    stream.dict.set("ID", detail::file_identifier(trailer, sink.digest()));
+    stream.dict.set("ID", detail::file_identifier(trailer, sink.digest(), document.security() != nullptr));
     stream.memory_data = std::make_shared<const std::vector<std::byte>>(xref_stream_data(entries, width));
     if (auto ok = detail::write_indirect(document, sink, model::ObjectRef{.number = number, .generation = 0}, Object(std::move(stream))); !ok) {
       return std::unexpected(std::move(ok.error()));
@@ -230,7 +227,7 @@ Result<SaveReport> save_incremental(Document& document, ByteSink& output, const 
   if (auto ok = sink.write(text); !ok) {
     return std::unexpected(std::move(ok.error()));
   }
-  trailer.set("ID", detail::file_identifier(trailer, sink.digest()));
+  trailer.set("ID", detail::file_identifier(trailer, sink.digest(), document.security() != nullptr));
   text = "trailer\n";
   serialize(Object(std::move(trailer)), text);
   text += std::format("\nstartxref\n{}\n%%EOF\n", offset);

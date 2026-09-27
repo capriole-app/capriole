@@ -39,9 +39,11 @@ class HashingSink final : public ByteSink {
 
 // Writes "n g obj ... endobj" for an object of the document. A stream's data is written as the
 // document holds it encoded (never re-compressed), with /Length set to its real size.
-[[nodiscard]] Result<void> write_indirect(Document& document, ByteSink& sink, model::ObjectRef ref, const model::Object& object);
+// When the document is encrypted, strings and stream data are encrypted for ref (PLAN.md 3d).
+[[nodiscard]] Result<void> write_indirect(Document& document, ByteSink& sink, model::ObjectRef ref, const model::Object& original);
 
-// The /ID pair: the first string kept from the trailer when present, the second a hash of the file.
-[[nodiscard]] model::Object file_identifier(const model::Dict& trailer, const crypto::Md5::Digest& digest);
+// The /ID pair: the first string kept from the trailer when present (for an encrypted document, kept
+// even when absent: empty), the second a hash of the file.
+[[nodiscard]] model::Object file_identifier(const model::Dict& trailer, const crypto::Md5::Digest& digest, bool encrypted);
 
 }  // namespace capriole::writer::detail

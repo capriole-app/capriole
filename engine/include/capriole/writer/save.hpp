@@ -15,7 +15,10 @@
 // /ID string is a hash of the bytes written (§14.4); the first is kept from the file when present.
 // Nothing time-dependent is written unless the caller passes it (SaveOptions::modification_date).
 //
-// Encrypted documents cannot be saved yet (ErrorCode::kUnsupported): re-encryption is PLAN.md 3d.
+// Encrypted documents are saved encrypted, with their own /Encrypt dictionary, key and methods (the
+// first /ID string, which enters the key, is kept): strings and stream data of every object written
+// are encrypted again for that object (PLAN.md 3d). Changing or removing the protection is not a save
+// option yet. Permissions (/P) are the application's to enforce: the writer does not check them.
 
 #include <cstddef>
 #include <optional>
@@ -50,9 +53,9 @@ struct SaveReport {
 // signatures over the original bytes stay valid (the "preferred" save of DOCS/CAPRIOLE.md §5).
 // Without changes (and without SaveOptions::modification_date) the output is the original file.
 //
-// Refused with ErrorCode::kUnsupported: encrypted documents (phase 3d), and documents that needed
-// repairs (Document::repairs() not empty, after reading the page tree) — appending to a structure that only reads with repairs
-// would carry them over unrepaired; save_full writes the repaired document instead.
+// Encrypted documents: what is appended is encrypted like the rest of the file (see above).
+// Refused with ErrorCode::kUnsupported: documents that needed repairs (Document::repairs() not empty, after reading the page tree) — appending to a structure
+// that only reads with repairs would carry them over unrepaired; save_full writes the repaired document instead.
 [[nodiscard]] Result<SaveReport> save_incremental(Document& document, ByteSink& output, const SaveOptions& options = {});
 
 }  // namespace capriole::writer

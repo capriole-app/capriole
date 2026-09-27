@@ -1,7 +1,8 @@
 #pragma once
 
-// The standard security handler (ISO 32000-2 §7.6.4) in read mode: authenticates a password against
-// the /Encrypt dictionary, derives the file key, and decrypts strings and streams (§7.6.2, §7.6.3).
+// The standard security handler (ISO 32000-2 §7.6.4): authenticates a password against the /Encrypt
+// dictionary, derives the file key, and decrypts strings and streams (§7.6.2, §7.6.3) — and encrypts
+// them again for saving, with the same key and methods (re-encryption, not a new security setup).
 //
 // Supported: /V 1, 2, 4, 5 with /R 2, 3, 4, 5 (Adobe's deprecated AES-256 revision) and 6; crypt
 // filters /V2 (RC4), /AESV2 (AES-128), /AESV3 (AES-256) and /None or /Identity.
@@ -46,9 +47,18 @@ class StandardSecurityHandler {
   // Decrypts data belonging to indirect object ref with the given method (Algorithm 1 for RC4 and
   // AESV2 derives a per-object key; AESV3 uses the file key directly).
   [[nodiscard]] Result<std::vector<std::byte>> decrypt(std::span<const std::byte> data, model::ObjectRef ref, CryptMethod method) const;
+  // The inverse, for saving (PLAN.md 3d): decrypt(encrypt(x)) == x. AES output is deterministic (the
+  // IV is derived from the key, the object and the data; see the .cpp).
+  [[nodiscard]] Result<std::vector<std::byte>> encrypt(std::span<const std::byte> data, model::ObjectRef ref, CryptMethod method) const;
+  // How the data of a stream with this dictionary is encrypted: /Identity for cross-reference
+  // streams and, without /EncryptMetadata, metadata streams; the crypt filter a leading /Crypt
+  // filter names; the default stream method otherwise. Shared by reading and writing.
+  [[nodiscard]] Result<CryptMethod> method_for_stream(const model::Dict& stream_dict) const;
 
  private:
   StandardSecurityHandler() = default;
+  // The key for an object's data: Algorithm 1 for RC4 and AESV2, the file key for AESV3.
+  [[nodiscard]] std::vector<std::byte> object_key(model::ObjectRef ref, CryptMethod method) const;
 
   int version_ = 0;
   int revision_ = 0;

@@ -6,6 +6,8 @@
 
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/writer/byte_sink.hpp"
+#include "capriole/writer/save.hpp"
 
 namespace capriole {
 namespace {
@@ -86,6 +88,77 @@ TEST_P(EncryptedFixture, OpensWithOwnerPassword) {
 TEST_P(EncryptedFixture, WrongOrMissingPasswordIsRejected) {
   EXPECT_EQ(open(GetParam().file, "wrong").error().code, ErrorCode::kPasswordRequired);
   EXPECT_EQ(open(GetParam().file, "").error().code, ErrorCode::kPasswordRequired);
+}
+
+TEST_P(EncryptedFixture, EncryptIsTheInverseOfDecrypt) {
+  auto document = open(GetParam().file, "user");
+  ASSERT_TRUE(document.has_value()) << document.error().message;
+  const crypto::StandardSecurityHandler& handler = *document->security();
+  const model::ObjectRef ref{.number = 7, .generation = 0};
+  for (const crypto::CryptMethod method : {handler.string_method(), handler.stream_method()}) {
+    for (const std::size_t size : {0U, 1U, 15U, 16U, 17U, 100U}) {
+      std::vector<std::byte> plain(size);
+      for (std::size_t i = 0; i < size; ++i) {
+        plain[i] = static_cast<std::byte>(i * 7 + 3);
+      }
+      const auto encrypted = handler.encrypt(plain, ref, method);
+      ASSERT_TRUE(encrypted.has_value()) << encrypted.error().message;
+      EXPECT_EQ(*handler.decrypt(*encrypted, ref, method), plain) << size;
+      EXPECT_EQ(*handler.encrypt(plain, ref, method), *encrypted);  // deterministic
+      if (method == crypto::CryptMethod::kAesV2 || method == crypto::CryptMethod::kAesV3) {
+        EXPECT_EQ(encrypted->size(), 16 + (size / 16 + 1) * 16);  // IV + padded data
+      }
+      if (size > 0) {
+        EXPECT_NE(*handler.encrypt(plain, model::ObjectRef{.number = 8, .generation = 0}, method), *encrypted);  // per object
+      }
+    }
+  }
+}
+
+std::string save_bytes(Document& document, bool incremental) {
+  writer::MemorySink sink;
+  const auto report = incremental ? writer::save_incremental(document, sink) : writer::save_full(document, sink);
+  EXPECT_TRUE(report.has_value()) << (report ? "" : report.error().message);
+  return as_text(sink.data());
+}
+
+Result<Document> open_bytes(const std::string& pdf, const std::string& password) {
+  std::vector<std::byte> data;
+  for (const char c : pdf) {
+    data.push_back(static_cast<std::byte>(c));
+  }
+  return Document::open(std::make_unique<MemoryByteSource>(std::move(data)), OpenOptions{.limits = kDefaultParseLimits, .password = password, .repair = false});
+}
+
+TEST_P(EncryptedFixture, FullSaveKeepsTheEncryption) {
+  auto document = open(GetParam().file, "user");
+  ASSERT_TRUE(document.has_value()) << document.error().message;
+  const std::string out = save_bytes(*document, false);
+  EXPECT_EQ(out.find("Capriole test"), std::string::npos);  // the /Title is not written in clear
+  EXPECT_EQ(open_bytes(out, "wrong").error().code, ErrorCode::kPasswordRequired);
+  for (const char* password : {"user", "owner"}) {
+    auto saved = open_bytes(out, password);  // strict reading: the output conforms
+    ASSERT_TRUE(saved.has_value()) << saved.error().message;
+    EXPECT_EQ(saved->security()->revision(), GetParam().revision);
+    expect_decrypted_content(*saved);
+  }
+}
+
+TEST_P(EncryptedFixture, IncrementalSaveEncryptsWhatItAppends) {
+  auto document = open(GetParam().file, "user");
+  ASSERT_TRUE(document.has_value()) << document.error().message;
+  const auto info_ref = document->trailer().find("Info")->as_ref();
+  model::Dict info = *(*document->get(*info_ref))->as_dict();
+  info.set("Subject", model::String{.bytes = "Appended secret"});
+  ASSERT_TRUE(document->set(info_ref->number, info).has_value());
+  const std::string out = save_bytes(*document, true);
+  EXPECT_EQ(out.find("Appended secret"), std::string::npos);
+  auto saved = open_bytes(out, "user");
+  ASSERT_TRUE(saved.has_value()) << saved.error().message;
+  EXPECT_EQ(saved->xref().sections.size(), document->xref().sections.size() + 1);
+  const auto saved_info = saved->resolve(*saved->trailer().find("Info"));
+  EXPECT_EQ(saved_info->as_dict()->find("Subject")->as_string()->bytes, "Appended secret");
+  expect_decrypted_content(*saved);
 }
 
 INSTANTIATE_TEST_SUITE_P(AllRevisions, EncryptedFixture,

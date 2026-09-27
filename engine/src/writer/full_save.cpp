@@ -137,9 +137,6 @@ Result<std::map<std::uint32_t, Object>> flattened_page_tree(Document& document, 
 }  // namespace
 
 Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOptions& options) {
-  if (document.security() != nullptr) {
-    return make_error(ErrorCode::kUnsupported, "saving encrypted documents is not supported yet (re-encryption is phase 3d)");
-  }
   detail::HashingSink sink(output);
   SaveReport report;
 
@@ -263,8 +260,8 @@ Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOpt
 
   // Trailer: the document's entries, a fresh /Size, and /ID [original-or-new, hash of this file].
   trailer.set("Size", static_cast<std::int64_t>(size));
-  trailer.set("ID", detail::file_identifier(trailer, sink.digest()));
-  trailer.erase("Encrypt");
+  // /Encrypt stays: the document is written encrypted as it was (its dictionary is one of the objects).
+  trailer.set("ID", detail::file_identifier(trailer, sink.digest(), document.security() != nullptr));
   std::string tail = "trailer\n";
   serialize(Object(std::move(trailer)), tail);
   tail += std::format("\nstartxref\n{}\n%%EOF\n", xref_offset);

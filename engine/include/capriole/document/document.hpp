@@ -75,6 +75,8 @@ class Document {
   [[nodiscard]] const std::vector<repair::RepairNote>& repairs() const noexcept { return repairs_; }
   // The security handler of an encrypted document (permissions, revision); nullptr otherwise.
   [[nodiscard]] const crypto::StandardSecurityHandler* security() const noexcept { return security_.get(); }
+  // The number of the /Encrypt dictionary's object, when it is an indirect object (never encrypted).
+  [[nodiscard]] std::optional<std::uint32_t> encrypt_object() const noexcept { return encrypt_object_; }
 
   // ── Reading ─────────────────────────────────────────────────────────────────────────────
 
