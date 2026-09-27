@@ -223,6 +223,18 @@ pagine conservate 100%; incrementale 977/996 (i 19 rifiutati ora sono solo i fil
 originali intatti e qpdf non peggiore 100%. x002: completo **1.416/1.416**, pagine conservate 100%;
 incrementale 1.290 (126 rifiutati, tutti per riparazioni). 0 crash, 0 regressioni.
 
+## Inspector — app demo nel browser ✅ (2026-09-27, anticipo della fase 8)
+
+`apps/inspector`: il motore WebAssembly in un Web Worker, attraverso l'API C estesa (documento opaco,
+riepilogo e oggetti in JSON, dati degli stream, salvataggio; formato in `capi/README.md`), con una UI
+Svelte 5 statica: panoramica (versione, cifratura con permessi, sezioni xref, trailer, **riparazioni**),
+pagine, oggetti con riferimenti navigabili, dati degli stream decodificati o grezzi (testo/esadecimale,
+download), apertura con password, lettura rigorosa su richiesta, salvataggio completo e incrementale,
+tema chiaro/scuro/sistema. Nessun byte lascia il browser. Nel gate con `SKIP_WASM=0` (format,
+type-check, build) e `SKIP_E2E=0` (5 test Playwright in Chromium: navigazione fino al content stream,
+salvataggi con prefisso identico, password sbagliata e giusta, riparazioni elencate, tema). Diventerà il
+pannello di debug dell'app vera (stessa UI in Tauri per il desktop).
+
 ## Fase 4 — Harness di test sul corpus (~2 settimane, in parallelo alla 3) — 🟡 prima versione attiva
 
 **Fatto (2026-09-26):** `corpus-tools/fetch_corpus.sh` (SafeDocs 0000, UNSAFE x002 e x008 in

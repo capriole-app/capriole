@@ -28,3 +28,13 @@ LZW, RunLength, ASCIIHex/ASCII85, crittografia dei PDF (MD5, RC4, AES, SHA-2).
 ## Solo strumenti esterni di test (mai linkati)
 
 MuPDF/mutool (AGPL), Poppler (GPL), PDFium (BSD, ma API da viewer), pdf.js (Apache-2.0), qpdf (Apache-2.0).
+
+## Inspector app (`apps/inspector`) — npm, devDependencies only
+
+Versions pinned by `apps/inspector/package-lock.json`; nothing is linked into the engine. All
+permissive licences: `svelte`, `@sveltejs/kit`, `@sveltejs/adapter-static`, `@sveltejs/vite-plugin-svelte`,
+`vite`, `tailwindcss`, `@tailwindcss/vite`, `mode-watcher`, `clsx`, `tailwind-merge`, `svelte-check`,
+`prettier`, `prettier-plugin-svelte`, `prettier-plugin-tailwindcss` (MIT); `@lucide/svelte` (ISC);
+`typescript` 6.x (Apache-2.0; 7.x is not yet accepted by Kit and svelte-check); `@playwright/test`
+(Apache-2.0, tests only). `npm audit`: 3 *low* advisories in `cookie` via SvelteKit's server side, which
+a static site does not have.

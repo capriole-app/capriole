@@ -1,4 +1,4 @@
-add_library(capriole_capi STATIC src/capriole_c.cpp)
+add_library(capriole_capi STATIC src/capriole_c.cpp src/json.cpp)
 add_library(capriole::capi ALIAS capriole_capi)
 
 target_include_directories(capriole_capi PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

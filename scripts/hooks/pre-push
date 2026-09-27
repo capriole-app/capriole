@@ -30,6 +30,8 @@ if [[ -f "$emsdk_env" ]]; then
   # shellcheck source=/dev/null
   source "$emsdk_env" >/dev/null 2>&1
   export SKIP_WASM=0
+  # The Inspector's browser tests too, when Playwright's Chromium is installed on this machine.
+  [[ -d "$HOME/.cache/ms-playwright" ]] && export SKIP_E2E=0
 fi
 
 worktree="$(git rev-parse --path-format=absolute --git-common-dir)/capriole-gate-worktree"

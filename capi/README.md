@@ -1,0 +1,45 @@
+# Capriole C API
+
+`include/capriole/capriole.h` is the engine's only public boundary (ADR 0001): the WebAssembly module,
+the desktop shell and third parties go through it. Plain C, opaque handles, a `capriole_status` for
+every fallible call, `capriole_last_error_message()` for the details, buffers released with
+`capriole_free`. Functions are only ever added; a change or removal bumps `CAPRIOLE_ABI_VERSION`.
+
+## The JSON of the document functions
+
+UTF-8, NUL-terminated. PDF strings and names are **bytes**, not text: each byte is written as the
+character with the same code point (U+0000–U+00FF; outside printable ASCII as `\u00XX`), so the bytes
+come back exactly (in JavaScript: `charCodeAt(i) & 0xff`). Numbers are strings: int64 values do not all
+fit a JavaScript number, and a real keeps the engine's exact text.
+
+A PDF object (`capriole_document_object_json` puts it in `"object"`):
+
+| Kind | JSON |
+|---|---|
+| null | `{"t":"null"}` |
+| boolean | `{"t":"bool","v":true}` |
+| integer, real | `{"t":"int","v":"42"}`, `{"t":"real","v":"0.5"}` |
+| string | `{"t":"string","form":"literal"\|"hex","v":"<bytes>"}` |
+| name | `{"t":"name","v":"<bytes, without the />"}` |
+| array | `{"t":"array","v":[…]}` |
+| dictionary | `{"t":"dict","v":[["Key",…],…]}` — pairs, in the file's order |
+| stream | `{"t":"stream","dict":[…pairs…],"length":N,"offset":N}` (offset −1: data in memory) |
+| reference | `{"t":"ref","n":12,"g":0}` |
+
+`capriole_document_object_json`: `{"number","generation","state":"unmodified"|"modified"|"new"|"deleted","object"}`.
+
+`capriole_document_summary_json`:
+
+```json
+{
+  "version": "1.7", "size": 12345,
+  "encryption": null | {"revision":4,"strings":"AES-128","streams":"AES-128","owner":false,"permissions":-4,"encryptMetadata":true},
+  "xref": {"startxref":N, "sections":[{"offset":N,"form":"table|stream|hybrid|reconstructed","entries":N}],
+           "objects":[[number, "n"|"c"|"f", generation or object stream number], …]},
+  "trailer": {"t":"dict", …},
+  "pages": [[number, generation], …] | null, "pagesError": "…" (only when pages is null),
+  "repairs": [{"kind":"xref_reconstructed","description":"…"}, …]
+}
+```
+
+Sections are newest first; `"c"` entries are objects inside an object stream.

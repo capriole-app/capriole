@@ -22,6 +22,12 @@ sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld
   per i test differenziali**, usati come programmi esterni. Non si linkano mai (licenze, spec §7.3).
   PDFium e pdf.js arrivano alla fase 4 (binario precompilato / Node).
 
+## Node, per l'app Inspector (`apps/inspector`)
+
+Node **22** (fissato in `.nvmrc`, `engines` e `engine-strict`): per esempio con nvm, `nvm install 22`.
+Quello incluso in emsdk è il 24 e non va bene per l'app. Per i test end-to-end, una volta:
+`cd apps/inspector && npx playwright install chromium`. Istruzioni d'uso in `apps/inspector/README.md`.
+
 ## Hook git (obbligatorio, una volta per clone)
 
 ```sh

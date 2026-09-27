@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+    <title>Capriole Inspector</title>
+    <!-- The theme goes on <html> before anything paints, or a dark-theme user sees a light flash.
+         Same key and values as mode-watcher (ModeWatcher runs with disableHeadScriptInjection). -->
+    <script data-theme-init>
+      (() => {
+        let mode = 'system';
+        try {
+          mode = localStorage.getItem('mode-watcher-mode') ?? 'system';
+        } catch {}
+        const dark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

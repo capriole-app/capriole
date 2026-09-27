@@ -14,6 +14,13 @@ set(_capriole_exports
   _capriole_abi_version
   _capriole_last_error_message
   _capriole_probe_header
+  _capriole_document_open
+  _capriole_document_close
+  _capriole_free
+  _capriole_document_summary_json
+  _capriole_document_object_json
+  _capriole_document_stream_data
+  _capriole_document_save
   _malloc
   _free)
 list(JOIN _capriole_exports "," _capriole_exports)
@@ -24,8 +31,9 @@ target_link_options(capriole_wasm PRIVATE
   "-sEXPORT_NAME=createCapriole"
   "-sENVIRONMENT=web,worker,node"
   "-sALLOW_MEMORY_GROWTH=1"
+  "-sMAXIMUM_MEMORY=4GB"
   "-sEXPORTED_FUNCTIONS=${_capriole_exports}"
-  "-sEXPORTED_RUNTIME_METHODS=UTF8ToString,HEAPU8,HEAP32")
+  "-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAP32,HEAPU32")
 
 if(CAPRIOLE_BUILD_TESTS)
   add_test(NAME wasm_module_smoke

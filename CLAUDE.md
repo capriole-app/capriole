@@ -15,6 +15,7 @@ in futuro, le app che lo usano: web (WASM, tutto client-side) e desktop. È un *
 engine/      libreria C++ (capriole::engine) — include/capriole/<area>/, src/<area>/
 capi/        API C stabile: l'UNICO confine verso WASM, FFI desktop, terzi
 bindings/wasm/  modulo Emscripten (ES module) + smoke test Node
+apps/inspector/ app web (Svelte 5, statica): il motore WASM nel browser — demo e strumento di debug
 tools/cpdf/  CLI di sviluppo: ogni capacità del motore ha prima un sottocomando qui
 tests/unit/  GoogleTest     tests/regression/  un file minimizzato per bug   tests/differential/  vs motori esterni
 fuzz/        target libFuzzer + corpus seme (fuzz/corpus/<target>/)
@@ -33,7 +34,8 @@ Dati di test in `tests/data/` (fixture generate da script versionati), helper in
 ```
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
 scripts/check.sh              # il gate: format + ASan/UBSan + test + clang-tidy
-SKIP_WASM=0 scripts/check.sh  # + build/test WebAssembly (serve: source ~/emsdk/emsdk_env.sh)
+SKIP_WASM=0 scripts/check.sh  # + build/test WebAssembly e app Inspector (serve: source ~/emsdk/emsdk_env.sh)
+SKIP_WASM=0 SKIP_E2E=0 scripts/check.sh  # + test end-to-end dell'Inspector (Playwright)
 cmake --preset fuzz && cmake --build --preset fuzz   # richiede clang
 ./build/debug/tools/cpdf/cpdf header file.pdf
 ```

@@ -1,0 +1,7 @@
+node_modules
+.svelte-kit
+build
+# Copied from the engine's WebAssembly build by scripts/sync-engine.mjs.
+src/lib/engine/generated
+test-results
+playwright-report

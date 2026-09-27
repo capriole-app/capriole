@@ -52,6 +52,50 @@ const char* capriole_last_error_message(void);
  */
 capriole_status capriole_probe_header(const uint8_t* data, size_t size, int* major, int* minor);
 
+/* ── Documents ──────────────────────────────────────────────────────────────────────────────── */
+
+/* An open document. Not thread-safe: one thread at a time per handle. */
+typedef struct capriole_document capriole_document;
+
+/*
+ * Opens a PDF held in memory; the bytes are copied, so the caller may release them afterwards.
+ * password may be NULL (the empty password). repair: nonzero to let the engine repair damaged files
+ * (what a viewer wants), zero for strict reading only. On success *out receives a handle to release
+ * with capriole_document_close. CAPRIOLE_ERROR_PASSWORD_REQUIRED: encrypted, and the password does
+ * not open it.
+ */
+capriole_status capriole_document_open(const uint8_t* data, size_t size, const char* password, int repair, capriole_document** out);
+
+/* Releases a document (NULL is allowed). */
+void capriole_document_close(capriole_document* document);
+
+/* Releases a buffer returned by this API (JSON text, stream data, saved files). NULL is allowed. */
+void capriole_free(void* buffer);
+
+/*
+ * The document at a glance, as JSON (UTF-8, NUL-terminated, release with capriole_free): header
+ * version, size, encryption, cross-reference sections and entries, trailer, pages and the repairs
+ * applied. The format is described in capi/README.md.
+ */
+capriole_status capriole_document_summary_json(capriole_document* document, char** json);
+
+/* One object as JSON (see capi/README.md); a free or absent number gives null. */
+capriole_status capriole_document_object_json(capriole_document* document, uint32_t number, char** json);
+
+/*
+ * The data of stream object number: decoded (all filters undone) when decoded is nonzero, otherwise
+ * as stored (decrypted, still encoded). Release *data with capriole_free (it may be NULL when *size is
+ * 0). CAPRIOLE_ERROR_UNSUPPORTED for filters the engine does not decode yet (e.g. images).
+ */
+capriole_status capriole_document_stream_data(capriole_document* document, uint32_t number, int decoded, uint8_t** data, size_t* size);
+
+/*
+ * Saves the document: a full save (the whole file written anew, repairs fixed in it) or, with
+ * incremental nonzero, the original bytes followed by an update. modification_date (may be NULL) is a
+ * PDF date ("D:20260927120000Z") written as /Info /ModDate. Release *data with capriole_free.
+ */
+capriole_status capriole_document_save(capriole_document* document, int incremental, const char* modification_date, uint8_t** data, size_t* size);
+
 #ifdef __cplusplus
 }
 #endif

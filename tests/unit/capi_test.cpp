@@ -1,9 +1,13 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <fstream>
+#include <iterator>
+#include <string>
 #include <string_view>
 
 #include "capriole/capriole.h"
+#include "support/pdf_builder.hpp"
 
 namespace {
 
@@ -39,6 +43,141 @@ TEST(CApi, ProbeHeaderRejectsNullArguments) {
   EXPECT_EQ(capriole_probe_header(nullptr, 0, nullptr, &minor), CAPRIOLE_ERROR_INVALID_ARGUMENT);
   // An empty buffer is valid input, just not a PDF.
   EXPECT_EQ(capriole_probe_header(nullptr, 0, &major, &minor), CAPRIOLE_ERROR_SYNTAX);
+}
+
+// ── Documents ───────────────────────────────────────────────────────────────────────────────
+
+const std::uint8_t* bytes_of(const std::string& text) {
+  return reinterpret_cast<const std::uint8_t*>(text.data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+}
+
+std::string sample_pdf() {
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792.5]/Contents 4 0 R>>");
+  b.add_stream(4, capriole::test::zlib_compress("BT (Hi) Tj ET"), "/Filter/FlateDecode");
+  b.add_object(5, "<</Title(Caf\\351 \\\"q\\\")>>");
+  b.finish_table("/Size 6/Root 1 0 R/Info 5 0 R");
+  return b.str();
+}
+
+// Opens text and takes the handle; the test fails if it does not open.
+capriole_document* open_document(const std::string& pdf, const char* password = nullptr, int repair = 1) {
+  capriole_document* document = nullptr;
+  EXPECT_EQ(capriole_document_open(bytes_of(pdf), pdf.size(), password, repair, &document), CAPRIOLE_OK) << capriole_last_error_message();
+  return document;
+}
+
+std::string take_json(char* json) {
+  std::string text = json != nullptr ? json : "";
+  capriole_free(json);
+  return text;
+}
+
+TEST(CApiDocument, SummaryDescribesTheDocument) {
+  capriole_document* document = open_document(sample_pdf());
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_summary_json(document, &json), CAPRIOLE_OK);
+  const std::string summary = take_json(json);
+  EXPECT_NE(summary.find(R"("version":"1.7")"), std::string::npos) << summary;
+  EXPECT_NE(summary.find(R"("encryption":null)"), std::string::npos);
+  EXPECT_NE(summary.find(R"("form":"table")"), std::string::npos);
+  EXPECT_NE(summary.find(R"([3,"n",0])"), std::string::npos);
+  EXPECT_NE(summary.find(R"("pages":[[3,0]])"), std::string::npos);
+  EXPECT_NE(summary.find(R"("repairs":[])"), std::string::npos);
+  EXPECT_NE(summary.find(R"(["Root",{"t":"ref","n":1,"g":0}])"), std::string::npos);
+  capriole_document_close(document);
+}
+
+TEST(CApiDocument, ObjectsAsJson) {
+  capriole_document* document = open_document(sample_pdf());
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_object_json(document, 3, &json), CAPRIOLE_OK);
+  const std::string page = take_json(json);
+  EXPECT_NE(page.find(R"("number":3,"generation":0,"state":"unmodified")"), std::string::npos) << page;
+  EXPECT_NE(page.find(R"(["Type",{"t":"name","v":"Page"}])"), std::string::npos);
+  EXPECT_NE(page.find(R"({"t":"real","v":"792.5"})"), std::string::npos);
+  // Bytes outside printable ASCII as JSON escapes of the same code point; quotes escaped.
+  ASSERT_EQ(capriole_document_object_json(document, 5, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"({"t":"string","form":"literal","v":"Caf\u00e9 \"q\""})"), std::string::npos);
+  ASSERT_EQ(capriole_document_object_json(document, 4, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("t":"stream")"), std::string::npos);
+  ASSERT_EQ(capriole_document_object_json(document, 99, &json), CAPRIOLE_OK);  // absent: null
+  EXPECT_NE(take_json(json).find(R"("object":{"t":"null"})"), std::string::npos);
+  capriole_document_close(document);
+}
+
+TEST(CApiDocument, StreamData) {
+  capriole_document* document = open_document(sample_pdf());
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  ASSERT_EQ(capriole_document_stream_data(document, 4, 1, &data, &size), CAPRIOLE_OK);
+  EXPECT_EQ(std::string(reinterpret_cast<const char*>(data), size), "BT (Hi) Tj ET");  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  capriole_free(data);
+  ASSERT_EQ(capriole_document_stream_data(document, 4, 0, &data, &size), CAPRIOLE_OK);  // still Flate
+  EXPECT_NE(size, 13U);
+  capriole_free(data);
+  EXPECT_EQ(capriole_document_stream_data(document, 3, 1, &data, &size), CAPRIOLE_ERROR_INVALID_ARGUMENT);  // not a stream
+  capriole_document_close(document);
+}
+
+TEST(CApiDocument, SaveFullAndIncremental) {
+  const std::string pdf = sample_pdf();
+  capriole_document* document = open_document(pdf);
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  ASSERT_EQ(capriole_document_save(document, 1, "D:20260927Z", &data, &size), CAPRIOLE_OK) << capriole_last_error_message();
+  const std::string incremental(reinterpret_cast<const char*>(data), size);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  capriole_free(data);
+  EXPECT_EQ(incremental.substr(0, pdf.size()), pdf);
+  EXPECT_NE(incremental.find("D:20260927Z", pdf.size()), std::string::npos);
+  ASSERT_EQ(capriole_document_save(document, 0, nullptr, &data, &size), CAPRIOLE_OK);
+  const std::string full(reinterpret_cast<const char*>(data), size);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  capriole_free(data);
+  capriole_document_close(document);
+  capriole_document* reopened = open_document(full, nullptr, 0);  // the output reads strictly
+  capriole_document_close(reopened);
+}
+
+TEST(CApiDocument, EncryptedDocumentsNeedTheirPassword) {
+  std::ifstream file(std::string(CAPRIOLE_TEST_DATA_DIR) + "/encrypted/r6_aes_256.pdf", std::ios::binary);
+  const std::string pdf((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  capriole_document* document = nullptr;
+  EXPECT_EQ(capriole_document_open(bytes_of(pdf), pdf.size(), nullptr, 1, &document), CAPRIOLE_ERROR_PASSWORD_REQUIRED);
+  EXPECT_EQ(document, nullptr);
+  document = open_document(pdf, "user");
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_summary_json(document, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("encryption":{"revision":6,"strings":"AES-256")"), std::string::npos);
+  capriole_document_close(document);
+}
+
+TEST(CApiDocument, RepairsAreListedAndCanBeRefused) {
+  std::string pdf = sample_pdf();
+  pdf.resize(pdf.find("xref"));
+  capriole_document* strict = nullptr;
+  EXPECT_NE(capriole_document_open(bytes_of(pdf), pdf.size(), nullptr, 0, &strict), CAPRIOLE_OK);
+  capriole_document* document = open_document(pdf);
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_summary_json(document, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"({"kind":"xref_reconstructed")"), std::string::npos);
+  capriole_document_close(document);
+}
+
+TEST(CApiDocument, RejectsNullArguments) {
+  capriole_document* document = nullptr;
+  char* json = nullptr;
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  EXPECT_EQ(capriole_document_open(nullptr, 3, nullptr, 1, &document), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_open(nullptr, 0, nullptr, 1, nullptr), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_summary_json(nullptr, &json), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_object_json(nullptr, 1, &json), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_stream_data(nullptr, 1, 1, &data, &size), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_save(nullptr, 0, nullptr, &data, &size), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  capriole_document_close(nullptr);
+  capriole_free(nullptr);
 }
 
 }  // namespace
