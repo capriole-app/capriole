@@ -108,6 +108,19 @@ class Document {
   // One past the highest object number in use or ever assigned (the next /Size).
   [[nodiscard]] std::uint32_t next_object_number() const noexcept { return next_number_; }
 
+  // ── For the writer ──────────────────────────────────────────────────────────────────────
+
+  // Every object that exists now (in the file and not deleted, or added), ascending by number.
+  [[nodiscard]] std::vector<model::ObjectRef> live_objects() const;
+  // Generation of an object as the document knows it (0 for objects in object streams and new ones).
+  [[nodiscard]] std::uint16_t generation(std::uint32_t number) const;
+  // Whether the page tree as it is in the file, read strictly, gives exactly these pages (the result
+  // of page_refs()) and its root /Count agrees. When not, the pages were found by repairs that exist
+  // only in memory, and a full save must write the page tree anew.
+  [[nodiscard]] bool page_tree_conforms(const std::vector<model::ObjectRef>& pages);
+  // A stream's encoded data as it will be written: decrypted if the file is encrypted, not decoded.
+  [[nodiscard]] Result<std::vector<std::byte>> encoded_stream_data(const model::Stream& stream);
+
  private:
   struct Slot {
     ObjectState state = ObjectState::kUnmodified;
@@ -123,8 +136,9 @@ class Document {
   void note(repair::RepairKind kind, std::string description);
   // Repairs for an object whose strict load failed (tolerant parsing, then the scanned position).
   Result<model::Object> repair_object(std::uint32_t number, const Error& strict_error);
-  // The page tree walked as it is (with the node /Type inference when repairs are on).
-  Result<std::vector<model::ObjectRef>> walk_page_tree(model::ObjectRef root);
+  // The page tree walked as it is; with infer_types, a node without a usable /Type is taken as a
+  // /Pages node or a page (repair).
+  Result<std::vector<model::ObjectRef>> walk_page_tree(model::ObjectRef root, bool infer_types);
   // The page tree rebuilt from /Kids and /Parent links (repair); keep_unreadable counts /Kids entries
   // that cannot be read as placeholder pages.
   Result<std::vector<model::ObjectRef>> rebuild_page_tree(model::ObjectRef root, bool keep_unreadable);

@@ -129,6 +129,41 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
 
 **Uscita:** i tre test sopra verdi sul campione della fase 2.
 
+Passi: **3a** serializzatore ✅ · **3b** salvataggio completo ✅ · **3c** salvataggio incrementale 🔜 ·
+**3d** ricifratura (salvataggio dei file cifrati; fino ad allora `kUnsupported`).
+
+**3a (2026-09-26):** `writer::serialize` con contratto di round-trip (parse(serialize(x)) == x: tipi,
+byte, forma delle stringhe, ordine delle chiavi), reali senza esponente con il minimo di cifre che
+rilegge lo stesso double; `ByteSink` (`MemorySink`, `FileSink`); fuzzer `fuzz_serialize`.
+
+**3b (2026-09-27):** `writer::save_full` + `cpdf save`. Riscrive tutto con una tabella xref classica:
+numeri e generazioni conservati, oggetti degli object stream scritti come oggetti normali, object/xref
+stream e dizionario di linearizzazione non scritti, dati degli stream copiati senza ricomprimerli e
+`/Length` reale (corregge le lunghezze sbagliate lette dalla riparazione), oggetti illeggibili scritti
+come null (i riferimenti restano validi), eliminati con generazione +1. Deterministico: `/ID` = [primo
+originale, MD5 dei byte scritti]; `/ModDate` solo se il chiamante la passa. **Le riparazioni sono solo
+in memoria, quindi il writer scrive esplicitamente ciò che hanno trovato:** se l'albero delle pagine
+letto rigorosamente non dà le pagine trovate (o il `/Count` della radice non torna, o la radice ha
+`/Parent`) l'albero si riscrive piatto — radice con tutte le pagine, `/Type` e `/Parent` corretti,
+attributi ereditati (`Resources`, `MediaBox`, `CropBox`, `Rotate`) copiati dai nodi lasciati fuori,
+pagina illeggibile → pagina bianca, `/MediaBox` di default (Letter) se persa con i nodi danneggiati,
+radice che era essa stessa l'unica pagina → nuova radice. Il `Document` del chiamante non cambia.
+
+Round-trip dell'harness (`run_corpus.py --roundtrip`: salva, `qpdf --check` sull'uscita, rilettura
+**rigorosa** con Capriole, pagine uguali):
+
+| Corpus | Salvati | qpdf senza errori | Rilettura rigorosa | Pagine conservate |
+|---|---|---|---|---|
+| SafeDocs 0000 | 977/996 (19 cifrati → 3d) | **977/977** (0 avvisi) | 973/977 | **977/977** |
+| UNSAFE x002 | 1.410/1.416 | 1.408/1.410 | 1.360/1.410 | **1.410/1.410** |
+| UNSAFE x008 | 941/941 | 868/941 | 835/941 | **941/941** |
+
+Ogni rilettura rigorosa fallita e ogni errore qpdf residuo verificati per categoria: sono **dati degli
+stream già corrotti nel file d'origine**, copiati fedelmente (Flate troncato o con header sbagliato,
+LZW con codici non definiti, RunLength, righe del predittore, filtri con nome storpiato, JPEG rotti).
+Il primo giro aveva pagine conservate solo 485/941 su x008: l'albero riparato non veniva scritto.
+Possibile più avanti (non deciso): opzione per ricodificare gli stream danneggiati al salvataggio.
+
 ## Fase 4 — Harness di test sul corpus (~2 settimane, in parallelo alla 3) — 🟡 prima versione attiva
 
 **Fatto (2026-09-26):** `corpus-tools/fetch_corpus.sh` (SafeDocs 0000, UNSAFE x002 e x008 in
@@ -183,8 +218,10 @@ dall'harness (0 regressioni tra un'esecuzione e l'altra):
    sbagliata (fino a `endstream`, o a fine file se il file è troncato), `endobj` mancante o storpiato.
 4. ✅ `object_relocated` / `missing_object` — voce xref che punta nel posto sbagliato: l'oggetto si prende
    dove lo trova la scansione; se non esiste nel file (es. voce "in uso" con offset 0) vale null.
-5. ✅ `page_tree_type` — nodo dell'albero delle pagine senza `/Type` o con un `/Type` sbagliato:
-   `/Pages` se ha `/Kids`, `/Page` altrimenti.
+5. ✅ `page_tree_type` — nodo dell'albero delle pagine senza `/Type` o con un `/Type` sbagliato
+   (compreso `/Page` con `/Kids`, come fa qpdf): `/Pages` se ha `/Kids`, `/Page` altrimenti. Una radice
+   senza `/Kids` con un `/Type` estraneo (es. il catalogo punta a un font) non è un albero di pagine;
+   senza `/Type` vale come l'unica pagina, come per i riferimenti.
 6. ✅ `partial_decode` — dati Flate/LZW troncati o corrotti, predittore con l'ultima riga incompleta,
    filtri ASCII/RunLength senza marcatore di fine: si tiene la parte decodificata.
 
@@ -206,9 +243,9 @@ object stream più recente: 16 pagine invece di 21), corretto e coperto da test.
    `/Count` (più pagine del dichiarato = residui, es. pagine di revisioni vecchie); altrimenti la visita.
 
 **UNSAFE x008** (1.073 file TA3, malformazioni sintetiche): **0 crash, 0 timeout**; pagine uguali alla
-maggioranza 718 → **886/963**, file sani 164/164. I 30 conteggi diversi sono **tutti per difetto**
+maggioranza 718 → **887/963** (886 prima della regola sui nodi `/Page` con `/Kids`), file sani 164/164. I 29 conteggi diversi sono **tutti per difetto**
 (nessuna pagina inventata): 4 file con `/Count` gonfiato (278 dichiarate, 22 pagine nel file: il nostro
-conteggio è quello vero, i riferimenti riportano il `/Count`), 26 ricostruzioni parziali di alberi
+conteggio è quello vero, i riferimenti riportano il `/Count`), 25 ricostruzioni parziali di alberi
 distrutti ad arte (prima: errore). Su SafeDocs 996/996 e x002 1.410/1.414 invariati o migliorati, 0
 regressioni in ogni esecuzione.
 

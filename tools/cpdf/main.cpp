@@ -24,6 +24,8 @@
 #include "capriole/parser/lexer.hpp"
 #include "capriole/parser/object_parser.hpp"
 #include "capriole/parser/xref.hpp"
+#include "capriole/writer/byte_sink.hpp"
+#include "capriole/writer/save.hpp"
 
 namespace {
 
@@ -47,6 +49,8 @@ void print_usage() {
                "  stream <file> <number>\n"
                "                  write the decoded data of a stream object to stdout\n"
                "  pages <file>    print the page count and the page object references\n"
+               "  save <file> <output>\n"
+               "                  write the document anew (full save; repairs applied are fixed in the output)\n"
                "  check <file>    load every object, decode every stream, walk the page tree;\n"
                "                  exit 1 on any error\n"
                "\n"
@@ -317,6 +321,36 @@ int cmd_pages(std::string_view path) {
   return kExitOk;
 }
 
+int cmd_save(std::string_view path, std::string_view output) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  auto sink = capriole::writer::FileSink::create(output);
+  if (!sink) {
+    return fail(output, sink.error());
+  }
+  auto report = capriole::writer::save_full(*document, **sink);
+  if (!report) {
+    return fail(path, report.error());
+  }
+  if (auto closed = (*sink)->close(); !closed) {
+    return fail(output, closed.error());
+  }
+  std::cout << std::format("{}: {} objects written, {} bytes", output, report->objects_written, (*sink)->position());
+  if (!report->unreadable_objects.empty()) {
+    std::cout << std::format(", {} unreadable objects written as null", report->unreadable_objects.size());
+  }
+  if (report->page_tree_rewritten) {
+    std::cout << ", page tree rewritten";
+  }
+  std::cout << '\n';
+  for (const auto& note : document->repairs()) {
+    std::cout << std::format("  repaired ({}): {}\n", capriole::repair::to_string(note.kind), note.description);
+  }
+  return kExitOk;
+}
+
 int cmd_object_at(std::string_view path, std::uint64_t offset) {
   auto source = capriole::FileByteSource::open(path);
   if (!source) {
@@ -360,6 +394,9 @@ int main(int argc, char** argv) {
   }
   if (command == "xref" && args.size() == 3) {
     return cmd_xref(args[2]);
+  }
+  if (command == "save" && args.size() == 4) {
+    return cmd_save(args[2], args[3]);
   }
   if (command == "pages" && args.size() == 3) {
     return cmd_pages(args[2]);

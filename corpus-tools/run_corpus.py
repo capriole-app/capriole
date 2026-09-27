@@ -121,10 +121,43 @@ def run_references(path: str, timeout: float) -> dict:
     }
 
 
-def process(path: str, cpdf: str, timeout: float) -> dict:
+def first_problem(text: str) -> str:
+    lines = [line for line in text.splitlines() if line.strip()]
+    return next((line for line in lines if re.search(r"WARNING|ERROR|error", line)), lines[0] if lines else "")
+
+
+def run_roundtrip(cpdf: str, path: str, pages_before: int | None, timeout: float) -> dict:
+    """Full save with Capriole, then: does qpdf accept the output, does Capriole read it strictly,
+    and are the pages still all there?"""
+    env = {"PATH": "/usr/bin:/bin", "ASAN_OPTIONS": ASAN_OPTIONS, "CAPRIOLE_PASSWORD": ""}
+    with tempfile.TemporaryDirectory() as out_dir:
+        output = os.path.join(out_dir, "saved.pdf")
+        saved = run([cpdf, "save", path, output], timeout, env=env, cap_memory=False)
+        if saved["status"] != 0 or not os.path.exists(output):
+            reason = next((line for line in (saved["stderr"] + saved["stdout"]).splitlines() if line.strip()), "")
+            return {"saved": False, "error": reason[:200], "crash": bool(re.search(r"AddressSanitizer|runtime error", saved["stderr"]))}
+        check = run(["qpdf", "--check", output], timeout)
+        strict = run([cpdf, "check", output], timeout, env={**env, "CAPRIOLE_STRICT": "1"}, cap_memory=False)
+        pages_after = int_after(r": (\d+) pages,", strict["stdout"])
+        return {
+            "saved": True,
+            "qpdf_check": {0: "clean", 2: "errors", 3: "warnings"}.get(check["status"], str(check["status"])),
+            # qpdf reports problems on stderr (warnings) and stdout (the check's own findings).
+            "qpdf_error": first_problem(check["stderr"] + "\n" + check["stdout"])[:200],
+            "strict_ok": strict["status"] == 0,
+            # cpdf prints its errors on stderr, one per line ("object N: message (code)").
+            "strict_error": "" if strict["status"] == 0 else next((line for line in strict["stderr"].splitlines() if line.strip()), "")[:200],
+            "pages_kept": pages_before is not None and pages_after == pages_before,
+            "crash": bool(re.search(r"AddressSanitizer|runtime error", strict["stderr"])),
+        }
+
+
+def process(path: str, cpdf: str, timeout: float, roundtrip: bool = False) -> dict:
     capriole = run_capriole(cpdf, path, timeout)
     reference = run_references(path, timeout)
     healthy = reference["qpdf_check"] == "clean" and reference["unanimous"]
+    if roundtrip and capriole["pages"] is not None:
+        capriole["roundtrip"] = run_roundtrip(cpdf, path, capriole["pages"], timeout)
     return {
         "file": path,
         "size": os.path.getsize(path),
@@ -207,6 +240,25 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
         *[f"- {v} × {k}" for k, v in unsupported.most_common(15)],
         "",
     ]
+    trips = [r["capriole"]["roundtrip"] for r in results if "roundtrip" in r["capriole"]]
+    if trips:
+        saved = [t for t in trips if t["saved"]]
+        lines += [
+            "## Round trip (full save)",
+            "",
+            f"- saved: {pct(len(saved), len(trips))}",
+            f"- **output accepted by qpdf --check without errors: {pct(sum(1 for t in saved if t['qpdf_check'] != 'errors'), len(saved))}**"
+            f" (clean: {sum(1 for t in saved if t['qpdf_check'] == 'clean')}, warnings: {sum(1 for t in saved if t['qpdf_check'] == 'warnings')})",
+            f"- **output read strictly by Capriole: {pct(sum(1 for t in saved if t['strict_ok']), len(saved))}**",
+            f"- **pages kept: {pct(sum(1 for t in saved if t['pages_kept']), len(saved))}**",
+            f"- crashes: {sum(1 for t in trips if t.get('crash'))}",
+            "",
+        ]
+        failures = collections.Counter(re.sub(r"\d+", "N", t["error"])[:120] for t in trips if not t["saved"])
+        lines += [f"- not saved {v} × `{k}`" for k, v in failures.most_common(10)]
+        qpdf_errors = collections.Counter(re.sub(r"/\S+|\d+", "N", t["qpdf_error"])[:120] for t in saved if t["qpdf_check"] == "errors")
+        lines += [f"- qpdf error {v} × `{k}`" for k, v in qpdf_errors.most_common(10)]
+        lines += [""]
     if outcomes["crash"]:
         lines += ["## Crashes", ""] + [f"- `{r['file']}`: {r['capriole']['sanitizer'] or r['capriole']['error']}" for r in results if r["capriole"]["outcome"] == "crash"] + [""]
     if outcomes["timeout"]:
@@ -235,6 +287,7 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--timeout", type=float, default=60.0, help="seconds per tool invocation")
     parser.add_argument("--limit", type=int, help="process only the first N files (sorted by path)")
+    parser.add_argument("--roundtrip", action="store_true", help="also save every readable file and check the output")
     args = parser.parse_args()
 
     if not Path(args.cpdf).is_file():
@@ -251,7 +304,7 @@ def main() -> int:
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool, open(out_dir / "results.jsonl", "w") as jsonl:
-        futures = {pool.submit(process, f, args.cpdf, args.timeout): f for f in files}
+        futures = {pool.submit(process, f, args.cpdf, args.timeout, args.roundtrip): f for f in files}
         for done, future in enumerate(concurrent.futures.as_completed(futures), 1):
             result = future.result()
             results.append(result)

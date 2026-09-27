@@ -324,6 +324,39 @@ TEST(RepairObjects, PageTreeNodesWithoutType) {
   EXPECT_TRUE(has_repair(*document, repair::RepairKind::kPageTreeType));
 }
 
+TEST(RepairObjects, NodesTypedAsPageWithKidsAreTakenAsPagesNodes) {
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Page/Kids[3 0 R 5 0 R]/Count 2>>");  // the root, typed as a page
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  b.add_object(4, "<</Type/Page/Parent 5 0 R>>");
+  b.add_object(5, "<</Type/Page/Parent 2 0 R/Kids[4 0 R]/Count 1>>");  // an intermediate node, likewise
+  b.finish_table("/Size 6/Root 1 0 R");
+  EXPECT_EQ(open_strict(b.str())->page_refs()->size(), 1U);  // strict: the root is read as the one page
+  auto document = Document::open(source_of(b.str()));
+  const auto pages = document->page_refs();
+  ASSERT_TRUE(pages.has_value()) << pages.error().message;
+  ASSERT_EQ(pages->size(), 2U);
+  EXPECT_EQ((*pages)[0].number, 3U);
+  EXPECT_EQ((*pages)[1].number, 4U);
+  EXPECT_TRUE(has_repair(*document, repair::RepairKind::kPageTreeType));
+}
+
+TEST(RepairObjects, RootThatIsNotAPageTreeNodeGivesNoPages) {
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/FontDescriptor/FontName/Arial>>");  // not a page tree at all
+  b.finish_table("/Size 3/Root 1 0 R");
+  auto document = Document::open(source_of(b.str()));
+  EXPECT_FALSE(document->page_refs().has_value());
+
+  test::PdfBuilder untyped;  // no /Type at all: taken as the one page
+  untyped.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  untyped.add_object(2, "<</Count 1>>");
+  untyped.finish_table("/Size 3/Root 1 0 R");
+  EXPECT_EQ(Document::open(source_of(untyped.str()))->page_refs()->size(), 1U);
+}
+
 TEST(RepairObjects, PagesLostFromKidsAreRecoveredThroughParentLinks) {
   // Node 3 declares /Count 2 but its /Kids is empty; its pages still name it as /Parent.
   test::PdfBuilder b;

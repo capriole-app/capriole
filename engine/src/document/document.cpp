@@ -319,7 +319,7 @@ Result<std::vector<model::ObjectRef>> Document::page_refs() {
     return make_error(ErrorCode::kSyntax, "the catalog has no /Pages reference");
   }
 
-  auto walked = walk_page_tree(*pages_ref);
+  auto walked = walk_page_tree(*pages_ref, repair_enabled_);
   if (!repair_enabled_) {
     return walked;
   }
@@ -364,7 +364,7 @@ Result<std::vector<model::ObjectRef>> Document::page_refs() {
   return walked;
 }
 
-Result<std::vector<model::ObjectRef>> Document::walk_page_tree(model::ObjectRef root) {
+Result<std::vector<model::ObjectRef>> Document::walk_page_tree(model::ObjectRef root, bool infer_types) {
   // Depth-first, children pushed in reverse so that pages come out in document order.
   std::vector<model::ObjectRef> result;
   std::vector<std::pair<model::ObjectRef, std::size_t>> stack{{root, 0}};
@@ -386,13 +386,20 @@ Result<std::vector<model::ObjectRef>> Document::walk_page_tree(model::ObjectRef 
     const Object* type = node != nullptr ? node->find("Type") : nullptr;
     bool is_page = type != nullptr && type->is_name("Page");
     bool is_pages = type != nullptr && type->is_name("Pages");
-    if (node != nullptr && !is_page && !is_pages && repair_enabled_) {
-      // Repair: a node without a usable /Type (absent, or e.g. /pagE) is a /Pages node if it has
-      // /Kids, a page otherwise — as the reference readers do.
+    // A node typed /Page that has /Kids is an intermediate node with a wrong /Type (pages have no /Kids).
+    const bool page_with_kids = is_page && node->find("Kids") != nullptr && node->find("Kids")->as_array() != nullptr;
+    if (node != nullptr && !is_pages && (!is_page || page_with_kids) && infer_types) {
+      // Repair: a node without a usable /Type (absent, e.g. /pagE, or /Page with /Kids) is a /Pages
+      // node if it has /Kids, a page otherwise — as the reference readers do.
       is_pages = node->find("Kids") != nullptr;
       is_page = !is_pages;
       note(repair::RepairKind::kPageTreeType, "page tree node " + std::to_string(ref.number) + (type == nullptr ? " has no /Type" : " has a wrong /Type") +
                                                   "; taken as /" + (is_pages ? "Pages" : "Page"));
+    }
+    if (is_page && ref.number == root.number && infer_types && type != nullptr && !type->is_name("Page")) {
+      // A root without /Kids typed as something else (e.g. a font: the catalog points elsewhere) is
+      // not a page tree. Without any /Type it is taken as the one page, as the reference readers do.
+      return make_error(ErrorCode::kSyntax, "page tree root " + std::to_string(ref.number) + " is not a /Pages node");
     }
     if (is_page) {
       result.push_back(ref);
@@ -476,7 +483,9 @@ Result<std::vector<model::ObjectRef>> Document::rebuild_page_tree(model::ObjectR
         }
       }
     }
-    const bool is_page = (type != nullptr && type->is_name("Page")) || (ref.number != root.number && kids.empty() && !node->contains("Kids"));
+    const Object* kids_entry = node->find("Kids");
+    const bool has_kids = kids_entry != nullptr && kids_entry->as_array() != nullptr;
+    const bool is_page = ref.number != root.number && !has_kids && ((type != nullptr && type->is_name("Page")) || kids.empty());
     if (is_page) {
       result.push_back(ref);
       continue;
@@ -544,6 +553,61 @@ ObjectState Document::state(std::uint32_t number) const {
   const auto it = slots_.find(number);
   return it == slots_.end() ? ObjectState::kUnmodified : it->second.state;
 }
+
+std::vector<model::ObjectRef> Document::live_objects() const {
+  std::vector<model::ObjectRef> result;
+  const auto& entries = loader_->xref().entries;
+  auto slot_it = slots_.begin();
+  const auto add = [&](std::uint32_t number) {
+    if (state(number) != ObjectState::kDeleted) {
+      result.push_back(model::ObjectRef{.number = number, .generation = generation(number)});
+    }
+  };
+  // Merge the file's objects with the new ones, both already sorted by number.
+  for (const auto& [number, entry] : entries) {
+    for (; slot_it != slots_.end() && slot_it->first < number; ++slot_it) {
+      if (slot_it->second.state == ObjectState::kNew) {
+        add(slot_it->first);
+      }
+    }
+    if (entry.type != parser::XrefEntryType::kFree && number != 0) {
+      add(number);
+    }
+  }
+  for (; slot_it != slots_.end(); ++slot_it) {
+    if (slot_it->second.state == ObjectState::kNew && !entries.contains(slot_it->first)) {
+      add(slot_it->first);
+    }
+  }
+  return result;
+}
+
+bool Document::page_tree_conforms(const std::vector<model::ObjectRef>& pages) {
+  auto root = catalog();
+  const Object* pages_object = root ? (*root)->find("Pages") : nullptr;
+  const auto pages_ref = pages_object != nullptr ? pages_object->as_ref() : std::nullopt;
+  if (!pages_ref) {
+    return false;
+  }
+  auto root_node = get(*pages_ref);
+  const model::Dict* node = root_node ? (*root_node)->as_dict() : nullptr;
+  const Object* count = node != nullptr ? node->find("Count") : nullptr;
+  if (count == nullptr || !count->as_integer() || !std::cmp_equal(*count->as_integer(), pages.size()) || node->contains("Parent")) {
+    return false;  // the root has no /Parent (§7.7.3.2)
+  }
+  const auto walked = walk_page_tree(*pages_ref, false);
+  return walked && std::ranges::equal(*walked, pages, [](model::ObjectRef a, model::ObjectRef b) { return a.number == b.number; });
+}
+
+std::uint16_t Document::generation(std::uint32_t number) const {
+  if (const auto it = slots_.find(number); it != slots_.end()) {
+    return it->second.generation;
+  }
+  const parser::XrefEntry* entry = loader_->xref().find(number);
+  return entry != nullptr && entry->type == parser::XrefEntryType::kInUse ? entry->generation : 0;
+}
+
+Result<std::vector<std::byte>> Document::encoded_stream_data(const model::Stream& stream) { return loader_->read_stream_data(stream); }
 
 std::vector<std::uint32_t> Document::changed_objects() const {
   std::vector<std::uint32_t> changed;
