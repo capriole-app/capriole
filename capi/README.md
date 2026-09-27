@@ -55,3 +55,15 @@ Sections are newest first; `"c"` entries are objects inside an object stream.
 `o` is the operator's offset in the (joined, decoded) content; `category` is the group of Table 50
 in snake_case (`unknown` for operators the standard does not define); `total` counts every operation,
 `operations` lists at most `max_operations`; `recovered` counts the syntax errors skipped.
+
+`capriole_document_page_preview_json` (the page interpreted, as a vector preview):
+
+```json
+{"page":0, "width":595.44, "height":842.4, "rotate":0,
+ "commands":{"save":2,"restore":2,"clip":1,"fill":10,"stroke":4,"image":1,"shading":0,"text":12},
+ "warnings":["font /Helvetica has no /Widths: text advances estimated", …],
+ "svg":"<svg xmlns=… width=… height=…>…</svg>"}
+```
+
+`width` and `height` are in points, with /Rotate applied. The SVG is ASCII: text from the document is
+written as character references, so it cannot inject markup.

@@ -138,6 +138,18 @@ TEST(CApiDocument, PageContent) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, PagePreview) {
+  capriole_document* document = open_document(sample_pdf());
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_page_preview_json(document, 0, &json), CAPRIOLE_OK) << capriole_last_error_message();
+  const std::string preview = take_json(json);
+  EXPECT_NE(preview.find(R"("width":612,"height":792.5,"rotate":0)"), std::string::npos) << preview;
+  EXPECT_NE(preview.find(R"("text":1})"), std::string::npos);
+  EXPECT_NE(preview.find(R"("svg":"<svg xmlns=\"http://www.w3.org/2000/svg\")"), std::string::npos);
+  EXPECT_EQ(capriole_document_page_preview_json(document, 5, &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, SaveFullAndIncremental) {
   const std::string pdf = sample_pdf();
   capriole_document* document = open_document(pdf);

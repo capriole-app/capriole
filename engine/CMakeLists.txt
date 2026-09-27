@@ -7,6 +7,7 @@ add_library(capriole_engine STATIC
   src/crypto/hash.cpp
   src/crypto/security_handler.cpp
   src/document/document.cpp
+  src/graphics/svg.cpp
   src/filters/basic.cpp
   src/filters/decode.cpp
   src/filters/flate.cpp
@@ -20,7 +21,10 @@ add_library(capriole_engine STATIC
   src/repair/reconstruct.cpp
   src/repair/repair.cpp
   src/writer/byte_sink.cpp
+  src/content/color_space.cpp
   src/content/content_parser.cpp
+  src/content/interpreter.cpp
+  src/content/text_font.cpp
   src/content/operators.cpp
   src/content/page_content.cpp
   src/writer/full_save.cpp

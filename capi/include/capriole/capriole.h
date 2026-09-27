@@ -90,6 +90,14 @@ capriole_status capriole_document_object_json(capriole_document* document, uint3
 capriole_status capriole_document_page_content_json(capriole_document* document, uint32_t page_index, uint32_t max_operations, char** json);
 
 /*
+ * A vector preview of page page_index (0-based) as JSON: the page interpreted (content streams, forms,
+ * graphics state) and written as SVG — paths, colours and clips exact, text in a generic font, images
+ * as placeholders — with the size of the drawing, the commands by kind and the interpreter's warnings.
+ * The SVG is plain ASCII (the document's text is escaped). Format in capi/README.md.
+ */
+capriole_status capriole_document_page_preview_json(capriole_document* document, uint32_t page_index, char** json);
+
+/*
  * The data of stream object number: decoded (all filters undone) when decoded is nonzero, otherwise
  * as stored (decrypted, still encoded). Release *data with capriole_free (it may be NULL when *size is
  * 0). CAPRIOLE_ERROR_UNSUPPORTED for filters the engine does not decode yet (e.g. images).

@@ -43,6 +43,12 @@ test('opens a PDF and walks from the page to its content stream', async ({ page 
   await expect(page.getByRole('heading', { name: 'Oggetto 3 0' })).toBeVisible();
   await expect(page.getByText('/Page', { exact: true })).toBeVisible();
 
+  // The page drawn by the interpreter: an SVG image that the browser actually loads.
+  const preview = page.getByRole('img', { name: 'Anteprima della pagina 1' });
+  await expect(preview).toBeVisible();
+  await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+  await expect(page.getByText(/1 testi/)).toBeVisible();
+
   // The page's content stream, as operations.
   await expect(page.getByRole('heading', { name: 'Contenuto della pagina 1' })).toBeVisible();
   await expect(page.getByText('3 operazioni')).toBeVisible();

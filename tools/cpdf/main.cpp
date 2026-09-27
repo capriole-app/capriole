@@ -3,11 +3,13 @@
 // It grows with the engine: every capability gets a subcommand here first, so it can be exercised
 // on real files and by the corpus runner before any UI exists.
 
+#include <array>
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -18,11 +20,13 @@
 #include <vector>
 
 #include "capriole/content/content_parser.hpp"
+#include "capriole/content/interpreter.hpp"
 #include "capriole/content/page_content.hpp"
 #include "capriole/core/byte_source.hpp"
 #include "capriole/core/source_reader.hpp"
 #include "capriole/core/version.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/graphics/svg.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/parser/lexer.hpp"
 #include "capriole/parser/object_parser.hpp"
@@ -53,6 +57,9 @@ void print_usage() {
                "  stream <file> <number>\n"
                "                  write the decoded data of a stream object to stdout\n"
                "  pages <file>    print the page count and the page object references\n"
+               "  render <file> <page> <output.svg>\n"
+               "                  interpret a page and write its vector preview (text approximated,\n"
+               "                  images as placeholders); prints what was drawn and the warnings\n"
                "  content <file> <page>\n"
                "                  print the operations of a page's content stream (page from 1)\n"
                "  save [--incremental] [--moddate D:...] <file> <output>\n"
@@ -362,6 +369,45 @@ int cmd_content(std::string_view path, std::uint64_t page_number) {
   return kExitOk;
 }
 
+int cmd_render(std::string_view path, std::uint64_t page_number, std::string_view output) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  auto pages = document->page_refs();
+  if (!pages) {
+    return fail(path, pages.error());
+  }
+  if (page_number == 0 || page_number > pages->size()) {
+    std::cerr << std::format("cpdf: {}: page {} out of 1..{}\n", path, page_number, pages->size());
+    return kExitUsage;
+  }
+  auto list = capriole::content::interpret_page(*document, (*pages)[page_number - 1]);
+  if (!list) {
+    return fail(path, list.error());
+  }
+  std::map<std::string_view, std::size_t> counts;
+  for (const auto& command : list->commands) {
+    constexpr std::array<std::string_view, 8> kNames = {"save", "restore", "clip", "fill", "stroke", "image", "shading", "text"};
+    ++counts[kNames.at(command.index())];
+  }
+  std::ofstream file{std::string(output), std::ios::binary};
+  file << capriole::graphics::to_svg(*list);
+  if (!file) {
+    std::cerr << std::format("cpdf: cannot write {}\n", output);
+    return kExitFailure;
+  }
+  std::cout << std::format("{}: page {}, {} commands:", output, page_number, list->commands.size());
+  for (const auto& [name, count] : counts) {
+    std::cout << std::format(" {} {}", name, count);
+  }
+  std::cout << '\n';
+  for (const auto& warning : list->warnings) {
+    std::cout << "  warning: " << warning << '\n';
+  }
+  return kExitOk;
+}
+
 int cmd_pages(std::string_view path) {
   auto document = open_document(path);
   if (!document) {
@@ -468,6 +514,11 @@ int run(std::span<char*> args) {
   }
   if (command == "pages" && args.size() == 3) {
     return cmd_pages(args[2]);
+  }
+  if (command == "render" && args.size() == 5) {
+    if (const auto page = parse_uint(args[3])) {
+      return cmd_render(args[2], *page, args[4]);
+    }
   }
   if (command == "content" && args.size() == 4) {
     if (const auto page = parse_uint(args[3])) {

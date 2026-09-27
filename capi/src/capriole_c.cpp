@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
@@ -11,12 +12,14 @@
 
 #include "capriole/capriole.h"
 #include "capriole/content/content_parser.hpp"
+#include "capriole/content/interpreter.hpp"
 #include "capriole/content/page_content.hpp"
 #include "capriole/core/byte_source.hpp"
 #include "capriole/core/error.hpp"
 #include "capriole/core/version_config.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/graphics/svg.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/repair/repair.hpp"
 #include "capriole/writer/byte_sink.hpp"
@@ -350,6 +353,50 @@ capriole_status capriole_document_page_content_json(capriole_document* document,
     }
     const std::string out = std::format(R"({{"page":{},"ref":[{},{}],"size":{},"total":{},"recovered":{},"operations":[{}]}})", page_index, page.number,
                                         page.generation, content->size(), total, parser.recovered_errors(), operations);
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_preview_json(capriole_document* document, uint32_t page_index, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto& doc = document->document;
+    auto pages = doc.page_refs();
+    if (!pages) {
+      return fail(pages.error());
+    }
+    if (page_index >= pages->size()) {
+      return fail(CAPRIOLE_ERROR_OUT_OF_RANGE, std::format("page index {} out of 0..{}", page_index, pages->size()));
+    }
+    auto list = capriole::content::interpret_page(doc, (*pages)[page_index]);
+    if (!list) {
+      return fail(list.error());
+    }
+    constexpr std::array<std::string_view, 8> kKinds = {"save", "restore", "clip", "fill", "stroke", "image", "shading", "text"};
+    std::array<std::size_t, kKinds.size()> counts{};
+    for (const auto& command : list->commands) {
+      ++counts.at(command.index());
+    }
+    const bool quarter = list->rotate == 90 || list->rotate == 270;
+    std::string out =
+        std::format(R"({{"page":{},"width":{},"height":{},"rotate":{},"commands":{{)", page_index, quarter ? list->crop_box.height() : list->crop_box.width(),
+                    quarter ? list->crop_box.width() : list->crop_box.height(), list->rotate);
+    for (std::size_t i = 0; i < kKinds.size(); ++i) {
+      out += std::format(R"({}"{}":{})", i == 0 ? "" : ",", kKinds.at(i), counts.at(i));
+    }
+    out += R"(},"warnings":[)";
+    for (std::size_t i = 0; i < list->warnings.size(); ++i) {
+      out += i == 0 ? "" : ",";
+      capriole::capi::append_json_string(out, list->warnings[i]);
+    }
+    out += R"(],"svg":)";
+    capriole::capi::append_json_string(out, capriole::graphics::to_svg(*list));
+    out += '}';
     return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");

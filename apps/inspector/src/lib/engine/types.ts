@@ -74,6 +74,17 @@ export interface PageContent {
   operations: ContentOperation[];
 }
 
+export interface PagePreview {
+  page: number;
+  /** In points, /Rotate applied. */
+  width: number;
+  height: number;
+  rotate: number;
+  commands: Record<'save' | 'restore' | 'clip' | 'fill' | 'stroke' | 'image' | 'shading' | 'text', number>;
+  warnings: string[];
+  svg: string;
+}
+
 /** capriole_status values (capriole.h). */
 export const Status = {
   ok: 0,
@@ -94,6 +105,7 @@ export type Request =
   | { kind: 'open'; data: ArrayBuffer; password: string; repair: boolean }
   | { kind: 'object'; number: number }
   | { kind: 'pageContent'; index: number; max: number }
+  | { kind: 'pagePreview'; index: number }
   | { kind: 'stream'; number: number; decoded: boolean }
   | { kind: 'save'; incremental: boolean; modificationDate: string | null }
   | { kind: 'close' };

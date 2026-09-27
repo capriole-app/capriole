@@ -1,6 +1,7 @@
 <script lang="ts">
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import PageContent from './PageContent.svelte';
+  import PagePreview from './PagePreview.svelte';
   import StreamData from './StreamData.svelte';
   import Value from './Value.svelte';
   import { getInspector } from '$lib/inspector.svelte';
@@ -45,6 +46,7 @@
       <StreamData number={current.number} />
     {/if}
     {#if pageIndex >= 0}
+      <PagePreview index={pageIndex} />
       <PageContent index={pageIndex} />
     {/if}
   </article>

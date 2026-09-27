@@ -360,10 +360,35 @@ x002 restanti sono troncati in modo grave.
 ## Fase 6 — Interprete dei content stream e renderer (~4–6 mesi, il grosso) — 🟡 in corso
 
 Passi: **6a** parser dei content stream ✅ · **6b** interprete (stato grafico, CTM, tracciati,
-clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore) 🔜 · **6c** prototipo
-Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → decisione · **6d** rendering
+clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore) ✅ · **6c** prototipo
+Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → decisione 🔜 · **6d** rendering
 e confronto pixel con mutool/pdftoppm, anteprima nell'Inspector · poi font, immagini, trasparenza,
 shading.
+
+**6b (2026-09-27):** `content/interpret_page` → `graphics::DisplayList`: stato grafico e sua pila
+(q/Q, cm, stili di linea, ExtGState: spessori, trattini, alpha, font), tracciati, pittura e clipping
+(W applicato dopo l'operatore di pittura, §8.5.4), spazi colore (Device*, Cal*, ICCBased per numero di
+componenti, Indexed con la sua tabella, Lab; Separation/DeviceN approssimati finché non ci sono le
+funzioni PDF), testo posizionato con le larghezze del font (`/Widths`, `/W` di Type0 con CMap Identity,
+Courier esatto, gli altri standard 14 stimati), form XObject (matrice, BBox, risorse proprie, profondità
+limitata e cicli tagliati), immagini e shading collocati. Scatole di pagina e `/Rotate` ereditati.
+Tollerante come un visualizzatore: un'operazione malformata si salta con un avviso, mai un errore di
+pagina; limiti su operazioni, comandi, form annidate e q annidati. `graphics/svg`: la lista come SVG
+(ASCII, testo del file sempre escapato; testo con codifica non standard come riquadri dei glifi alle
+posizioni vere, immagini come segnaposto). `cpdf render`, fuzzer `fuzz_render` (documento → pagine →
+SVG: 10 min, ~720.000 esecuzioni; dopo l'ottimizzazione della memoria ha trovato un comportamento
+indefinito — `4000000000 j` convertiva in `int` prima di limitare a 0–2 — corretto, con test e seme di
+regressione, poi ~400.000 esecuzioni pulite), API C `capriole_document_page_preview_json`, e
+nell'Inspector l'**anteprima vettoriale** di ogni pagina con zoom e avvisi.
+**Memoria della lista (ottimizzata subito, su richiesta):** comandi grandi e rari (testo, immagini,
+shading) in un `Boxed<T>`, tracciati compatti (1 byte per verbo + solo i punti necessari), colori e stili
+in tabelle referenziate per indice: un comando da 424 a **120 byte**; la pagina più pesante di SafeDocs
+(193.000 comandi) da 160 a **88 MB**, stesso tempo (0,7 s in release).
+Sul corpus: SafeDocs 2.232 pagine e x008 2.512 pagine interpretate, **0 crash, 0 timeout**. Avvisi più
+frequenti (= il lavoro dei prossimi passi): font standard senza `/Widths` (servono le metriche AFM dei 14
+font), colori spot, trasparenze, shading, pattern. Differenze viste confrontando con pdftoppm: linee più
+sottili di un pixel (i lettori le disegnano a 1 px: regola del rasterizzatore, 6d), annotazioni non
+ancora disegnate (widget di firma), testo nel font generico.
 
 **6a (2026-09-27):** `content/operators` (tutti i 71 operatori della Tabella A.1, con categoria e
 numero di operandi) e `content/ContentParser`: operandi come oggetti, operatori come keyword; immagini

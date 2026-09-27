@@ -107,6 +107,11 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         ),
         transfer: [],
       };
+    case 'pagePreview':
+      return {
+        value: takeJson(m, (out) => m._capriole_document_page_preview_json(requireDocument(), request.index, out)),
+        transfer: [],
+      };
     case 'stream': {
       const data = takeBytes(m, (outData, outSize) =>
         m._capriole_document_stream_data(requireDocument(), request.number, request.decoded ? 1 : 0, outData, outSize),
