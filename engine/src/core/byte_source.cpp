@@ -47,6 +47,17 @@ Result<std::size_t> MemoryByteSource::read(std::uint64_t offset, std::span<std::
   return count;
 }
 
+// ── SpanByteSource ───────────────────────────────────────────────────────────────────────────
+
+Result<std::size_t> SpanByteSource::read(std::uint64_t offset, std::span<std::byte> dest) {
+  auto count = clamp_read(data_.size(), offset, dest.size());
+  if (!count) {
+    return count;
+  }
+  std::ranges::copy(data_.subspan(static_cast<std::size_t>(offset), *count), dest.begin());
+  return count;
+}
+
 // ── FileByteSource ───────────────────────────────────────────────────────────────────────────
 
 FileByteSource::FileByteSource(std::ifstream stream, std::uint64_t size) noexcept : stream_(std::move(stream)), size_(size) {}

@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "capriole/capriole.h"
+#include "capriole/content/content_parser.hpp"
+#include "capriole/content/page_content.hpp"
 #include "capriole/core/byte_source.hpp"
 #include "capriole/core/error.hpp"
 #include "capriole/core/version_config.hpp"
@@ -289,6 +291,65 @@ capriole_status capriole_document_object_json(capriole_document* document, uint3
     std::string out = std::format(R"({{"number":{},"generation":{},"state":"{}","object":)", number, doc.generation(number), state_name(doc.state(number)));
     capriole::capi::append_json_object(out, **object);
     out += '}';
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_content_json(capriole_document* document, uint32_t page_index, uint32_t max_operations, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto& doc = document->document;
+    auto pages = doc.page_refs();
+    if (!pages) {
+      return fail(pages.error());
+    }
+    if (page_index >= pages->size()) {
+      return fail(CAPRIOLE_ERROR_OUT_OF_RANGE, std::format("page index {} out of 0..{}", page_index, pages->size()));
+    }
+    const auto page = (*pages)[page_index];
+    auto content = capriole::content::page_content(doc, page);
+    if (!content) {
+      return fail(content.error());
+    }
+    capriole::content::ContentParser parser(*content, capriole::kDefaultParseLimits, capriole::parser::ParseMode::kTolerant);
+    std::string operations;
+    std::size_t total = 0;
+    for (;;) {
+      auto operation = parser.next();
+      if (!operation) {
+        return fail(operation.error());
+      }
+      if (!*operation) {
+        break;
+      }
+      if (total++ >= max_operations) {
+        continue;  // counted, not listed
+      }
+      const auto& op = **operation;
+      const auto& known = capriole::content::info(op.op);
+      operations += operations.empty() ? "{" : ",{";
+      operations += std::format(R"("o":{},"op":)", op.offset);
+      capriole::capi::append_json_string(operations, op.name);
+      operations += std::format(R"(,"category":"{}","operands":[)", capriole::content::to_string(known.category));
+      for (std::size_t i = 0; i < op.operands.size(); ++i) {
+        operations += i == 0 ? "" : ",";
+        capriole::capi::append_json_object(operations, op.operands[i]);
+      }
+      operations += ']';
+      if (op.image) {
+        operations += R"(,"image":{"dict":)";
+        capriole::capi::append_json_object(operations, capriole::model::Object(op.image->dict));
+        operations += std::format(R"(,"size":{}}})", op.image->data.size());
+      }
+      operations += '}';
+    }
+    const std::string out = std::format(R"({{"page":{},"ref":[{},{}],"size":{},"total":{},"recovered":{},"operations":[{}]}})", page_index, page.number,
+                                        page.generation, content->size(), total, parser.recovered_errors(), operations);
     return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");

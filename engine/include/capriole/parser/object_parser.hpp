@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "capriole/core/error.hpp"
@@ -40,7 +41,11 @@ struct IndirectObject {
 //   - "stream" followed by spaces before the EOL, by a lone CR, or directly by the data;
 //   - a missing, invalid or wrong /Length: the data ends at the next "endstream" (or at the end of
 //     a file cut inside the stream);
-//   - a missing or misspelt "endobj".
+//   - a missing or misspelt "endobj";
+//   - arrays that lost their '[' or ']', references without their generation ("66 R"), strings that
+//     lost their '(' and other stray tokens where a dictionary key belongs (see recover_stray_tokens);
+//   - an object header whose number cannot be read or is garbled: the cross-reference entry that led
+//     there says which object it is (checked by the loader).
 enum class ParseMode : std::uint8_t { kStrict, kTolerant };
 
 class ObjectParser {
@@ -58,6 +63,12 @@ class ObjectParser {
 
   // Repositions the parser (and its reader) at offset, discarding any lookahead.
   [[nodiscard]] Result<void> seek(std::uint64_t offset);
+
+  // For content streams (§7.8.2), where operands are objects and operators are keywords: the next
+  // item, an operand (Object) or an operator (a keyword token other than true, false and null);
+  // std::monostate at the end of the input.
+  using ContentItem = std::variant<std::monostate, model::Object, Token>;
+  [[nodiscard]] Result<ContentItem> parse_content_item();
 
  private:
   Result<Token> next_token();

@@ -1,5 +1,5 @@
 // The page's side of the engine worker: one promise per request.
-import type { ObjectInfo, Request, Response, Summary } from './types';
+import type { ObjectInfo, PageContent, Request, Response, Summary } from './types';
 
 export class EngineError extends Error {
   constructor(
@@ -51,6 +51,11 @@ export class EngineClient {
 
   object(number: number): Promise<ObjectInfo> {
     return this.#call({ kind: 'object', number });
+  }
+
+  /** The operations of page `index` (0-based), at most `max` of them. */
+  pageContent(index: number, max: number): Promise<PageContent> {
+    return this.#call({ kind: 'pageContent', index, max });
   }
 
   stream(number: number, decoded: boolean): Promise<ArrayBuffer> {

@@ -51,6 +51,19 @@ class MemoryByteSource final : public ByteSource {
   std::vector<std::byte> data_;
 };
 
+// Reads bytes owned by someone else, in place (e.g. a decoded content stream). The bytes must
+// outlive the source.
+class SpanByteSource final : public ByteSource {
+ public:
+  explicit SpanByteSource(std::span<const std::byte> data) noexcept : data_(data) {}
+
+  [[nodiscard]] std::uint64_t size() const noexcept override { return data_.size(); }
+  [[nodiscard]] Result<std::size_t> read(std::uint64_t offset, std::span<std::byte> dest) override;
+
+ private:
+  std::span<const std::byte> data_;
+};
+
 // Reads from a file on disk.
 class FileByteSource final : public ByteSource {
  public:

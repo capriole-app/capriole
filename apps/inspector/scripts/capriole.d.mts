@@ -16,6 +16,7 @@ export interface CaprioleModule {
   _capriole_document_close(document: number): void;
   _capriole_document_summary_json(document: number, out: number): number;
   _capriole_document_object_json(document: number, objectNumber: number, out: number): number;
+  _capriole_document_page_content_json(document: number, pageIndex: number, maxOperations: number, out: number): number;
   _capriole_document_stream_data(
     document: number,
     objectNumber: number,

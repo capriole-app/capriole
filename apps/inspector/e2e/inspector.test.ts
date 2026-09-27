@@ -10,7 +10,7 @@ function samplePdf(): Buffer {
     '<</Type/Catalog/Pages 2 0 R>>',
     '<</Type/Pages/Kids[3 0 R]/Count 1>>',
     '<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R>>',
-    '<</Length 21>>\nstream\nBT (Ciao capriole) ET\nendstream',
+    '<</Length 24>>\nstream\nBT (Ciao capriole) Tj ET\nendstream',
     '<</Title(Prova)>>',
   ];
   let pdf = '%PDF-1.7\n';
@@ -43,9 +43,17 @@ test('opens a PDF and walks from the page to its content stream', async ({ page 
   await expect(page.getByRole('heading', { name: 'Oggetto 3 0' })).toBeVisible();
   await expect(page.getByText('/Page', { exact: true })).toBeVisible();
 
+  // The page's content stream, as operations.
+  await expect(page.getByRole('heading', { name: 'Contenuto della pagina 1' })).toBeVisible();
+  await expect(page.getByText('3 operazioni')).toBeVisible();
+  const operations = page.locator('ol li');
+  await expect(operations).toHaveCount(3);
+  await expect(operations.nth(1)).toContainText('(Ciao capriole)');
+  await expect(operations.nth(1)).toContainText('Tj');
+
   await page.getByRole('button', { name: '4 0 R' }).click();
   await expect(page.getByRole('heading', { name: 'Oggetto 4 0' })).toBeVisible();
-  await expect(page.locator('pre')).toHaveText('BT (Ciao capriole) ET');
+  await expect(page.locator('pre')).toHaveText('BT (Ciao capriole) Tj ET');
 
   await page.getByRole('button', { name: 'Indietro' }).click();
   await expect(page.getByRole('heading', { name: 'Oggetto 3 0' })).toBeVisible();

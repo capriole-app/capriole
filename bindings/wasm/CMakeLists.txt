@@ -19,6 +19,7 @@ set(_capriole_exports
   _capriole_free
   _capriole_document_summary_json
   _capriole_document_object_json
+  _capriole_document_page_content_json
   _capriole_document_stream_data
   _capriole_document_save
   _malloc

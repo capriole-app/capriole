@@ -56,6 +56,24 @@ export interface ObjectInfo {
   object: PdfValue;
 }
 
+export interface ContentOperation {
+  /** Offset of the operator in the page's (joined, decoded) content. */
+  o: number;
+  op: string;
+  category: string;
+  operands: PdfValue[];
+  image?: { dict: Extract<PdfValue, { t: 'dict' }>; size: number };
+}
+
+export interface PageContent {
+  page: number;
+  ref: [number, number];
+  size: number;
+  total: number;
+  recovered: number;
+  operations: ContentOperation[];
+}
+
 /** capriole_status values (capriole.h). */
 export const Status = {
   ok: 0,
@@ -75,6 +93,7 @@ export type Request =
   | { kind: 'version' }
   | { kind: 'open'; data: ArrayBuffer; password: string; repair: boolean }
   | { kind: 'object'; number: number }
+  | { kind: 'pageContent'; index: number; max: number }
   | { kind: 'stream'; number: number; decoded: boolean }
   | { kind: 'save'; incremental: boolean; modificationDate: string | null }
   | { kind: 'close' };

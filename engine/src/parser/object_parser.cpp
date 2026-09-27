@@ -56,6 +56,24 @@ const Result<Token>& ObjectParser::peek_token(std::size_t index) {
   return lookahead_[index];
 }
 
+Result<ObjectParser::ContentItem> ObjectParser::parse_content_item() {
+  auto token = next_token();
+  if (!token) {
+    return std::unexpected(std::move(token.error()));
+  }
+  if (token->kind == TokenKind::kEnd) {
+    return ContentItem{};
+  }
+  if (token->kind == TokenKind::kKeyword && token->bytes != "true" && token->bytes != "false" && token->bytes != "null") {
+    return ContentItem{std::move(*token)};
+  }
+  auto value = parse_value(std::move(*token), 0);
+  if (!value) {
+    return std::unexpected(std::move(value.error()));
+  }
+  return ContentItem{std::move(*value)};
+}
+
 Result<Object> ObjectParser::parse_object() {
   recovered_pairs_.clear();  // pairs recovered inside an earlier object never reach this one
   auto token = next_token();

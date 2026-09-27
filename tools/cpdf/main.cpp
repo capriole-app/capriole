@@ -6,6 +6,7 @@
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <format>
 #include <iostream>
 #include <map>
@@ -16,6 +17,8 @@
 #include <string_view>
 #include <vector>
 
+#include "capriole/content/content_parser.hpp"
+#include "capriole/content/page_content.hpp"
 #include "capriole/core/byte_source.hpp"
 #include "capriole/core/source_reader.hpp"
 #include "capriole/core/version.hpp"
@@ -26,6 +29,7 @@
 #include "capriole/parser/xref.hpp"
 #include "capriole/writer/byte_sink.hpp"
 #include "capriole/writer/save.hpp"
+#include "capriole/writer/serializer.hpp"
 
 namespace {
 
@@ -49,6 +53,8 @@ void print_usage() {
                "  stream <file> <number>\n"
                "                  write the decoded data of a stream object to stdout\n"
                "  pages <file>    print the page count and the page object references\n"
+               "  content <file> <page>\n"
+               "                  print the operations of a page's content stream (page from 1)\n"
                "  save [--incremental] [--moddate D:...] <file> <output>\n"
                "                  write the document anew (full save; repairs applied are fixed in the output),\n"
                "                  or append an update to the original bytes (--incremental); --moddate sets\n"
@@ -307,6 +313,55 @@ int cmd_check(std::string_view path) {
   return errors == 0 ? kExitOk : kExitFailure;
 }
 
+int cmd_content(std::string_view path, std::uint64_t page_number) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  auto pages = document->page_refs();
+  if (!pages) {
+    return fail(path, pages.error());
+  }
+  if (page_number == 0 || page_number > pages->size()) {
+    std::cerr << std::format("cpdf: {}: page {} out of 1..{}\n", path, page_number, pages->size());
+    return kExitUsage;
+  }
+  auto content = capriole::content::page_content(*document, (*pages)[page_number - 1]);
+  if (!content) {
+    return fail(path, content.error());
+  }
+  // Tolerant, as a viewer reads content: the errors skipped are reported at the end.
+  capriole::content::ContentParser parser(*content, capriole::kDefaultParseLimits, capriole::parser::ParseMode::kTolerant);
+  std::size_t count = 0;
+  for (;;) {
+    auto operation = parser.next();
+    if (!operation) {
+      return fail(path, operation.error());
+    }
+    if (!*operation) {
+      break;
+    }
+    ++count;
+    std::string line = std::format("{:>8}  ", (*operation)->offset);
+    for (const auto& operand : (*operation)->operands) {
+      line += capriole::writer::serialize(operand) + " ";
+    }
+    line += (*operation)->name;
+    if (const auto& image = (*operation)->image) {
+      line += std::format(" {} ID <{} bytes> EI", capriole::writer::serialize(capriole::model::Object(image->dict)), image->data.size());
+    } else if ((*operation)->op == capriole::content::Operator::kUnknown) {
+      line += "  (unknown operator)";
+    }
+    std::cout << line << '\n';
+  }
+  std::cout << std::format("{} operations, {} bytes of content", count, content->size());
+  if (parser.recovered_errors() > 0) {
+    std::cout << std::format(", {} syntax errors skipped", parser.recovered_errors());
+  }
+  std::cout << '\n';
+  return kExitOk;
+}
+
 int cmd_pages(std::string_view path) {
   auto document = open_document(path);
   if (!document) {
@@ -377,10 +432,7 @@ int cmd_object_at(std::string_view path, std::uint64_t offset) {
   return kExitOk;
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
-  const std::span<char*> args(argv, static_cast<std::size_t>(argc));
+int run(std::span<char*> args) {
   if (args.size() < 2) {
     print_usage();
     return kExitUsage;
@@ -417,6 +469,11 @@ int main(int argc, char** argv) {
   if (command == "pages" && args.size() == 3) {
     return cmd_pages(args[2]);
   }
+  if (command == "content" && args.size() == 4) {
+    if (const auto page = parse_uint(args[3])) {
+      return cmd_content(args[2], *page);
+    }
+  }
   if (command == "check" && args.size() == 3) {
     return cmd_check(args[2]);
   }
@@ -447,4 +504,18 @@ int main(int argc, char** argv) {
 
   print_usage();
   return kExitUsage;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  // Errors of the engine are values; what can still throw is the standard library (out of memory).
+  try {
+    return run(std::span<char*>(argv, static_cast<std::size_t>(argc)));
+  } catch (const std::exception& error) {
+    std::cerr << "cpdf: internal error: " << error.what() << '\n';
+  } catch (...) {
+    std::cerr << "cpdf: internal error\n";
+  }
+  return kExitFailure;
 }

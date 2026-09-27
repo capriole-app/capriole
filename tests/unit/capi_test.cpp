@@ -122,6 +122,22 @@ TEST(CApiDocument, StreamData) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, PageContent) {
+  capriole_document* document = open_document(sample_pdf());
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_page_content_json(document, 0, 100, &json), CAPRIOLE_OK) << capriole_last_error_message();
+  const std::string content = take_json(json);
+  EXPECT_NE(content.find(R"("page":0,"ref":[3,0])"), std::string::npos) << content;
+  EXPECT_NE(content.find(R"("total":3,"recovered":0)"), std::string::npos);
+  EXPECT_NE(content.find(R"("op":"Tj","category":"text_showing","operands":[{"t":"string","form":"literal","v":"Hi"}])"), std::string::npos);
+  ASSERT_EQ(capriole_document_page_content_json(document, 0, 1, &json), CAPRIOLE_OK);  // capped: the total stays
+  const std::string capped = take_json(json);
+  EXPECT_NE(capped.find(R"("total":3)"), std::string::npos);
+  EXPECT_EQ(capped.find(R"("op":"Tj")"), std::string::npos);
+  EXPECT_EQ(capriole_document_page_content_json(document, 1, 100, &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, SaveFullAndIncremental) {
   const std::string pdf = sample_pdf();
   capriole_document* document = open_document(pdf);

@@ -100,6 +100,13 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         value: takeJson(m, (out) => m._capriole_document_object_json(requireDocument(), request.number, out)),
         transfer: [],
       };
+    case 'pageContent':
+      return {
+        value: takeJson(m, (out) =>
+          m._capriole_document_page_content_json(requireDocument(), request.index, request.max, out),
+        ),
+        transfer: [],
+      };
     case 'stream': {
       const data = takeBytes(m, (outData, outSize) =>
         m._capriole_document_stream_data(requireDocument(), request.number, request.decoded ? 1 : 0, outData, outSize),

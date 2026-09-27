@@ -12,6 +12,7 @@ add_executable(capriole_unit_tests
   unit/serializer_test.cpp
   unit/source_reader_test.cpp
   unit/capi_test.cpp
+  unit/content_parser_test.cpp
   unit/basic_filters_test.cpp
   unit/crypto_test.cpp
   unit/decode_test.cpp

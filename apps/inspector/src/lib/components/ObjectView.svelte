@@ -1,11 +1,16 @@
 <script lang="ts">
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+  import PageContent from './PageContent.svelte';
   import StreamData from './StreamData.svelte';
   import Value from './Value.svelte';
   import { getInspector } from '$lib/inspector.svelte';
 
   const inspector = getInspector();
   const current = $derived(inspector.current);
+  // When the object is a page of the document: its position, to ask for its content.
+  const pageIndex = $derived(
+    current ? (inspector.summary?.pages?.findIndex(([number]) => number === current.number) ?? -1) : -1,
+  );
 </script>
 
 {#if current}
@@ -38,6 +43,9 @@
     </div>
     {#if current.object.t === 'stream'}
       <StreamData number={current.number} />
+    {/if}
+    {#if pageIndex >= 0}
+      <PageContent index={pageIndex} />
     {/if}
   </article>
 {:else}

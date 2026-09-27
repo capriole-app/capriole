@@ -20,6 +20,9 @@ add_library(capriole_engine STATIC
   src/repair/reconstruct.cpp
   src/repair/repair.cpp
   src/writer/byte_sink.cpp
+  src/content/content_parser.cpp
+  src/content/operators.cpp
+  src/content/page_content.cpp
   src/writer/full_save.cpp
   src/writer/incremental_save.cpp
   src/writer/save_support.cpp

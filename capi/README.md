@@ -43,3 +43,15 @@ A PDF object (`capriole_document_object_json` puts it in `"object"`):
 ```
 
 Sections are newest first; `"c"` entries are objects inside an object stream.
+
+`capriole_document_page_content_json` (the page's content stream, parsed as a viewer does):
+
+```json
+{"page":0, "ref":[12,0], "size":614432, "total":44005, "recovered":0,
+ "operations":[{"o":20, "op":"cm", "category":"special_graphics_state", "operands":[…objects…]},
+               {"o":90, "op":"BI", "category":"inline_image", "operands":[], "image":{"dict":{…}, "size":64}}, …]}
+```
+
+`o` is the operator's offset in the (joined, decoded) content; `category` is the group of Table 50
+in snake_case (`unknown` for operators the standard does not define); `total` counts every operation,
+`operations` lists at most `max_operations`; `recovered` counts the syntax errors skipped.

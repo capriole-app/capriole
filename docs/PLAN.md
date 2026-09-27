@@ -357,7 +357,27 @@ riparazione 8.
 gestore di sicurezza esista); dati attaccati alla parola `stream` (`streamDATA`) non riconosciuti; i 6 file
 x002 restanti sono troncati in modo grave.
 
-## Fase 6 — Interprete dei content stream e renderer (~4–6 mesi, il grosso)
+## Fase 6 — Interprete dei content stream e renderer (~4–6 mesi, il grosso) — 🟡 in corso
+
+Passi: **6a** parser dei content stream ✅ · **6b** interprete (stato grafico, CTM, tracciati,
+clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore) 🔜 · **6c** prototipo
+Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → decisione · **6d** rendering
+e confronto pixel con mutool/pdftoppm, anteprima nell'Inspector · poi font, immagini, trasparenza,
+shading.
+
+**6a (2026-09-27):** `content/operators` (tutti i 71 operatori della Tabella A.1, con categoria e
+numero di operandi) e `content/ContentParser`: operandi come oggetti, operatori come keyword; immagini
+inline (`BI … ID dati EI`) come una sola operazione, con la fine dei dati trovata come fanno i lettori
+di riferimento (EI tra spazi, seguito da contenuto non binario) o dalla `/L` di PDF 2.0. Modo tollerante
+per i content stream rotti: salta il byte dell'errore, e si ferma — invece di ripartire — su un errore
+che arriva a fine input (niente comportamento quadratico su input ostile; test con 200.000 `(`).
+`page_content` unisce i content stream di una pagina. `cpdf content <file> <pagina>`, fuzzer
+`fuzz_content` (5 min, ~930.000 esecuzioni, 0 problemi), API C `capriole_document_page_content_json`,
+e nell'Inspector le operazioni della pagina, indentate per q/Q, BT/ET e marked content.
+Sul corpus: SafeDocs, 2.232 pagine (le prime 3 di ogni file) lette **tutte pulite** (nessun errore
+saltato, nessun operatore sconosciuto); x008, 2.552 pagine: 0 crash, 0 timeout — gli errori sono tutti a
+monte (oggetti illeggibili, filtri immagine della fase 6, nomi di filtro con maiuscole storpiate:
+`/flateDeCoDE`, candidato per una riparazione della fase 5).
 
 - ❓ **Decisione Skia vs Blend2D** all'inizio della fase: prototipo di 1–2 settimane con entrambi dietro
   un'interfaccia `render/RasterBackend`, benchmark su soft mask, gruppi di trasparenza isolati/knockout,

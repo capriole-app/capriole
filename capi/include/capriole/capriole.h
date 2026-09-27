@@ -83,6 +83,13 @@ capriole_status capriole_document_summary_json(capriole_document* document, char
 capriole_status capriole_document_object_json(capriole_document* document, uint32_t number, char** json);
 
 /*
+ * The operations of page page_index (0-based, in page order) as JSON: its content stream parsed as a
+ * viewer does (syntax errors skipped and counted). At most max_operations are listed; "total" says
+ * how many there are. The format is described in capi/README.md.
+ */
+capriole_status capriole_document_page_content_json(capriole_document* document, uint32_t page_index, uint32_t max_operations, char** json);
+
+/*
  * The data of stream object number: decoded (all filters undone) when decoded is nonzero, otherwise
  * as stored (decrypted, still encoded). Release *data with capriole_free (it may be NULL when *size is
  * 0). CAPRIOLE_ERROR_UNSUPPORTED for filters the engine does not decode yet (e.g. images).
