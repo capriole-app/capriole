@@ -113,7 +113,12 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
   diverso dai riferimenti; i 4 restanti sono violazioni della specifica verificate a mano;
 - UNSAFE-DOCS: **0 crash, 0 timeout** su 2.490 file (x002: 100% dei file sani aperti; x008: 98,17%) ✅;
 - fuzzing di 24 h: in locale, a bassa intensità, con `scripts/fuzz_local.sh start 24` (1 core, 1,5 GB,
-  nice 19, I/O idle; unità systemd utente `capriole-fuzz`). Esito da registrare qui.
+  nice 19, I/O idle; unità systemd utente `capriole-fuzz`). Prima esecuzione (dal 2026-09-26 21:10)
+  interrotta dopo ~13,8 h da un esaurimento di memoria **dell'intera macchina** (non del fuzzer, 423 MB
+  sotto il suo tetto): `filters`, `header`, `lexer` completati, 4 h ciascuno, **0 problemi**; archivio
+  in `CORPORA/reports/fuzz-campaign-20260926-partial/`. Ripresa il 2026-09-27 11:22 sui target mancanti
+  (`object`, `security`, `xref`, più il nuovo `serialize`, 4 h ciascuno) con
+  `fuzz_local.sh start 16 object security xref serialize`. Esito da registrare qui.
 
 ## Fase 3 — Writer (~2 settimane)
 
@@ -127,9 +132,12 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
   - incrementale → i primi N byte del file sono **identici al byte** all'originale;
   - file con firma: dopo un salvataggio incrementale la firma resta valida (verifica esterna: `pdfsig`).
 
-**Uscita:** i tre test sopra verdi sul campione della fase 2.
+**Uscita:** i tre test sopra verdi sul campione della fase 2. ✅ con una variante sul primo: il
+round-trip è verificato con `qpdf --check`, rilettura rigorosa di Capriole e pagine uguali sui corpora,
+e oggetto per oggetto nei test unitari — non con `qpdf --json` (resta da aggiungere all'harness se
+servirà). La ricifratura dei file cifrati resta per 3d.
 
-Passi: **3a** serializzatore ✅ · **3b** salvataggio completo ✅ · **3c** salvataggio incrementale 🔜 ·
+Passi: **3a** serializzatore ✅ · **3b** salvataggio completo ✅ · **3c** salvataggio incrementale ✅ ·
 **3d** ricifratura (salvataggio dei file cifrati; fino ad allora `kUnsupported`).
 
 **3a (2026-09-26):** `writer::serialize` con contratto di round-trip (parse(serialize(x)) == x: tipi,
@@ -163,6 +171,34 @@ stream già corrotti nel file d'origine**, copiati fedelmente (Flate troncato o 
 LZW con codici non definiti, RunLength, righe del predittore, filtri con nome storpiato, JPEG rotti).
 Il primo giro aveva pagine conservate solo 485/941 su x008: l'albero riparato non veniva scritto.
 Possibile più avanti (non deciso): opzione per ricodificare gli stream danneggiati al salvataggio.
+
+**3c (2026-09-27):** `writer::save_incremental` + `cpdf save --incremental [--moddate D:…]`. Copia il
+file originale a blocchi (mai intero in memoria), poi — solo se qualcosa è cambiato — appende gli
+oggetti `Modified`/`New`, le voci libere dei `Deleted` (generazione +1, catena da 0) e una nuova
+sezione xref **nella stessa forma dell'ultima** (tabella; xref stream senza filtri per i file a stream;
+tabella per gli ibridi), con `/Prev` alla sezione di `startxref` e `/ID` [primo originale, MD5 dei byte
+fino alla sezione]. Senza modifiche l'uscita è il file originale. Rifiutati con `kUnsupported`: i file
+cifrati (3d) e quelli che hanno richiesto riparazioni — l'albero delle pagine viene letto prima di
+decidere, così la scelta non dipende da cosa ha fatto il chiamante; per loro c'è il salvataggio
+completo. Parti comuni ai due salvataggi in `src/writer/save_support.*`.
+
+Firme: i 7 PDF firmati di SafeDocs (6 a tabella, 1 linearizzato a xref stream), salvati in modo
+incrementale con `/ModDate` cambiata → **firme ancora valide per `pdfsig`** ("not total document
+signed", come atteso: l'aggiornamento è fuori dal `/ByteRange`), `qpdf --check` pulito, prefisso
+identico al byte.
+
+Round-trip incrementale dell'harness (`--roundtrip` ora fa entrambi i salvataggi; l'incrementale
+cambia `/ModDate` perché ci sia qualcosa da appendere):
+
+| Corpus | Salvati (gli altri: riparazioni o cifrati) | Prefisso identico | qpdf non peggiore dell'originale | Rilettura rigorosa dove l'originale la regge | Pagine conservate |
+|---|---|---|---|---|---|
+| SafeDocs 0000 | 958/996 (19 riparazioni, 19 cifrati) | **958/958** | **958/958** | **927/927** | **958/958** |
+| UNSAFE x002 | 1.285/1.416 (125 riparazioni, 6 cifrati) | **1.285/1.285** | **1.285/1.285** | **1.225/1.225** | **1.285/1.285** |
+| UNSAFE x008 | 372/941 (569 riparazioni) | **372/372** | **372/372** | **227/227** | **372/372** |
+
+Gli altri file salvati che non si rileggono in modo rigoroso non si rileggevano nemmeno prima: i loro
+difetti sono in oggetti che la modifica non tocca, e l'incrementale li lascia com'erano (come deve).
+0 crash, 0 regressioni di lettura.
 
 ## Fase 4 — Harness di test sul corpus (~2 settimane, in parallelo alla 3) — 🟡 prima versione attiva
 
@@ -248,6 +284,12 @@ maggioranza 718 → **887/963** (886 prima della regola sui nodi `/Page` con `/K
 conteggio è quello vero, i riferimenti riportano il `/Count`), 25 ricostruzioni parziali di alberi
 distrutti ad arte (prima: errore). Su SafeDocs 996/996 e x002 1.410/1.414 invariati o migliorati, 0
 regressioni in ogni esecuzione.
+
+**Da migliorare (annotato 2026-09-27):** su x008 le pagine uguali alla maggioranza sono 887/963; i 29
+conteggi diversi (tutti per difetto) e i 47 file senza conteggio sono il margine residuo della
+ricostruzione dell'albero delle pagine. Idee da valutare: pagine orfane (`/Type /Page` senza genitore
+raggiungibile) come candidato in più, radici alternative quando il catalogo punta a un nodo sbagliato,
+confronto con il comportamento di MuPDF/pdf.js sui singoli casi. Da riprendere dopo la fase 3.
 
 **Limiti noti:** object stream non ricostruibili nei file cifrati (i dati non si decifrano prima che il
 gestore di sicurezza esista); dati attaccati alla parola `stream` (`streamDATA`) non riconosciuti; i 6 file

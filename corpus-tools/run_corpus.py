@@ -126,16 +126,32 @@ def first_problem(text: str) -> str:
     return next((line for line in lines if re.search(r"WARNING|ERROR|error", line)), lines[0] if lines else "")
 
 
-def run_roundtrip(cpdf: str, path: str, pages_before: int | None, timeout: float) -> dict:
-    """Full save with Capriole, then: does qpdf accept the output, does Capriole read it strictly,
-    and are the pages still all there?"""
+QPDF_SEVERITY = {"clean": 0, "warnings": 1, "errors": 2}
+
+
+def same_prefix(original: str, output: str) -> bool:
+    """Whether output starts with the bytes of original (compared in chunks)."""
+    with open(original, "rb") as a, open(output, "rb") as b:
+        while chunk := a.read(1 << 20):
+            if b.read(len(chunk)) != chunk:
+                return False
+    return True
+
+
+def run_roundtrip(cpdf: str, path: str, pages_before: int | None, timeout: float, incremental: bool = False) -> dict:
+    """Full (or incremental) save with Capriole, then: does qpdf accept the output, does Capriole read
+    it strictly, and are the pages still all there? The incremental save changes /ModDate, so that
+    something is appended; it also checks that the original bytes come first, unchanged."""
     env = {"PATH": "/usr/bin:/bin", "ASAN_OPTIONS": ASAN_OPTIONS, "CAPRIOLE_PASSWORD": ""}
     with tempfile.TemporaryDirectory() as out_dir:
         output = os.path.join(out_dir, "saved.pdf")
-        saved = run([cpdf, "save", path, output], timeout, env=env, cap_memory=False)
+        mode = ["--incremental", "--moddate", "D:20260927120000Z"] if incremental else []
+        saved = run([cpdf, "save", *mode, path, output], timeout, env=env, cap_memory=False)
         if saved["status"] != 0 or not os.path.exists(output):
             reason = next((line for line in (saved["stderr"] + saved["stdout"]).splitlines() if line.strip()), "")
+            reason = re.sub(r"^(?:\S+: )+", "", reason)  # without the "cpdf: <path>: " prefix
             return {"saved": False, "error": reason[:200], "crash": bool(re.search(r"AddressSanitizer|runtime error", saved["stderr"]))}
+        prefix = same_prefix(path, output) if incremental else None
         check = run(["qpdf", "--check", output], timeout)
         strict = run([cpdf, "check", output], timeout, env={**env, "CAPRIOLE_STRICT": "1"}, cap_memory=False)
         pages_after = int_after(r": (\d+) pages,", strict["stdout"])
@@ -149,6 +165,8 @@ def run_roundtrip(cpdf: str, path: str, pages_before: int | None, timeout: float
             "strict_error": "" if strict["status"] == 0 else next((line for line in strict["stderr"].splitlines() if line.strip()), "")[:200],
             "pages_kept": pages_before is not None and pages_after == pages_before,
             "crash": bool(re.search(r"AddressSanitizer|runtime error", strict["stderr"])),
+            **({"prefix_identical": prefix, "source_strict_ok": run([cpdf, "check", path], timeout, env={**env, "CAPRIOLE_STRICT": "1"}, cap_memory=False)["status"] == 0}
+               if incremental else {}),
         }
 
 
@@ -158,6 +176,11 @@ def process(path: str, cpdf: str, timeout: float, roundtrip: bool = False) -> di
     healthy = reference["qpdf_check"] == "clean" and reference["unanimous"]
     if roundtrip and capriole["pages"] is not None:
         capriole["roundtrip"] = run_roundtrip(cpdf, path, capriole["pages"], timeout)
+        capriole["incremental"] = run_roundtrip(cpdf, path, capriole["pages"], timeout, incremental=True)
+        if capriole["incremental"]["saved"]:
+            # An update must not make the file worse than it was.
+            source = QPDF_SEVERITY.get(reference["qpdf_check"], 2)
+            capriole["incremental"]["qpdf_no_worse"] = QPDF_SEVERITY.get(capriole["incremental"]["qpdf_check"], 2) <= source
     return {
         "file": path,
         "size": os.path.getsize(path),
@@ -258,6 +281,26 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
         lines += [f"- not saved {v} × `{k}`" for k, v in failures.most_common(10)]
         qpdf_errors = collections.Counter(re.sub(r"/\S+|\d+", "N", t["qpdf_error"])[:120] for t in saved if t["qpdf_check"] == "errors")
         lines += [f"- qpdf error {v} × `{k}`" for k, v in qpdf_errors.most_common(10)]
+        lines += [""]
+    updates = [r["capriole"]["incremental"] for r in results if "incremental" in r["capriole"]]
+    if updates:
+        appended = [t for t in updates if t["saved"]]
+        lines += [
+            "## Round trip (incremental save, /ModDate changed)",
+            "",
+            f"- saved: {pct(len(appended), len(updates))} (the others refused: repairs needed, or encrypted)",
+            f"- **original bytes unchanged at the start: {pct(sum(1 for t in appended if t['prefix_identical']), len(appended))}**",
+            f"- **qpdf --check no worse than on the original: {pct(sum(1 for t in appended if t['qpdf_no_worse']), len(appended))}**",
+            f"- **output read strictly by Capriole: {pct(sum(1 for t in appended if t['strict_ok']), len(appended))}**"
+            f" (where the original reads strictly: {pct(sum(1 for t in appended if t['strict_ok'] and t['source_strict_ok']), sum(1 for t in appended if t['source_strict_ok']))})",
+            f"- **pages kept: {pct(sum(1 for t in appended if t['pages_kept']), len(appended))}**",
+            f"- crashes: {sum(1 for t in updates if t.get('crash'))}",
+            "",
+        ]
+        refusals = collections.Counter(re.sub(r"\b\d+\b", "N", re.sub(r"^(?:\S+: )+", "", t["error"]))[:120] for t in updates if not t["saved"])
+        lines += [f"- refused {v} × `{k}`" for k, v in refusals.most_common(10)]
+        worse = collections.Counter(re.sub(r"/\S+|\d+", "N", t["qpdf_error"])[:120] for t in appended if not t["qpdf_no_worse"])
+        lines += [f"- qpdf worse {v} × `{k}`" for k, v in worse.most_common(10)]
         lines += [""]
     if outcomes["crash"]:
         lines += ["## Crashes", ""] + [f"- `{r['file']}`: {r['capriole']['sanitizer'] or r['capriole']['error']}" for r in results if r["capriole"]["outcome"] == "crash"] + [""]

@@ -49,8 +49,10 @@ void print_usage() {
                "  stream <file> <number>\n"
                "                  write the decoded data of a stream object to stdout\n"
                "  pages <file>    print the page count and the page object references\n"
-               "  save <file> <output>\n"
-               "                  write the document anew (full save; repairs applied are fixed in the output)\n"
+               "  save [--incremental] [--moddate D:...] <file> <output>\n"
+               "                  write the document anew (full save; repairs applied are fixed in the output),\n"
+               "                  or append an update to the original bytes (--incremental); --moddate sets\n"
+               "                  /Info /ModDate (with --incremental it is the change that gets appended)\n"
                "  check <file>    load every object, decode every stream, walk the page tree;\n"
                "                  exit 1 on any error\n"
                "\n"
@@ -321,7 +323,7 @@ int cmd_pages(std::string_view path) {
   return kExitOk;
 }
 
-int cmd_save(std::string_view path, std::string_view output) {
+int cmd_save(std::string_view path, std::string_view output, bool incremental, const capriole::writer::SaveOptions& options) {
   auto document = open_document(path);
   if (!document) {
     return fail(path, document.error());
@@ -330,7 +332,7 @@ int cmd_save(std::string_view path, std::string_view output) {
   if (!sink) {
     return fail(output, sink.error());
   }
-  auto report = capriole::writer::save_full(*document, **sink);
+  auto report = incremental ? capriole::writer::save_incremental(*document, **sink, options) : capriole::writer::save_full(*document, **sink, options);
   if (!report) {
     return fail(path, report.error());
   }
@@ -395,8 +397,22 @@ int main(int argc, char** argv) {
   if (command == "xref" && args.size() == 3) {
     return cmd_xref(args[2]);
   }
-  if (command == "save" && args.size() == 4) {
-    return cmd_save(args[2], args[3]);
+  if (command == "save" && args.size() >= 4) {
+    bool incremental = false;
+    capriole::writer::SaveOptions options;
+    std::size_t i = 2;
+    for (; i + 2 < args.size(); ++i) {
+      if (std::string_view(args[i]) == "--incremental") {
+        incremental = true;
+      } else if (std::string_view(args[i]) == "--moddate" && i + 3 < args.size()) {
+        options.modification_date = std::string(args[++i]);
+      } else {
+        break;
+      }
+    }
+    if (i + 2 == args.size()) {
+      return cmd_save(args[i], args[i + 1], incremental, options);
+    }
   }
   if (command == "pages" && args.size() == 3) {
     return cmd_pages(args[2]);

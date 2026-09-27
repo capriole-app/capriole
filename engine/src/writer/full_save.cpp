@@ -7,37 +7,15 @@
 #include <string_view>
 #include <utility>
 
-#include "capriole/crypto/hash.hpp"
 #include "capriole/writer/save.hpp"
 #include "capriole/writer/serializer.hpp"
+#include "save_support.hpp"
 
 namespace capriole::writer {
 
 namespace {
 
 using model::Object;
-
-// Forwards to another sink and hashes everything that passes through (for the file identifier).
-class HashingSink final : public ByteSink {
- public:
-  explicit HashingSink(ByteSink& inner) noexcept : inner_(&inner) {}
-
-  [[nodiscard]] Result<void> write(std::span<const std::byte> data) override {
-    md5_.update(data);
-    return inner_->write(data);
-  }
-  using ByteSink::write;
-  [[nodiscard]] std::uint64_t position() const noexcept override { return inner_->position(); }
-  // Hash of everything written so far (the running hash is left untouched).
-  [[nodiscard]] crypto::Md5::Digest digest() const {
-    crypto::Md5 copy = md5_;
-    return copy.finish();
-  }
-
- private:
-  ByteSink* inner_;
-  crypto::Md5 md5_;
-};
 
 // Objects not written by a full save: containers of other objects (object streams, cross-reference
 // streams) and linearization dictionaries, which would describe a layout the new file does not have.
@@ -159,7 +137,7 @@ Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOpt
   if (document.security() != nullptr) {
     return make_error(ErrorCode::kUnsupported, "saving encrypted documents is not supported yet (re-encryption is phase 3d)");
   }
-  HashingSink sink(output);
+  detail::HashingSink sink(output);
   SaveReport report;
 
   // Header, with a comment of high bytes so that transfer tools treat the file as binary (§7.5.2).
@@ -175,35 +153,9 @@ Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOpt
   }
 
   std::map<std::uint32_t, std::pair<std::uint64_t, std::uint16_t>> written;  // number -> (offset, generation)
-  const auto write_object = [&](model::ObjectRef ref, Object object) -> Result<void> {
-    std::string text = std::format("{} {} obj\n", ref.number, ref.generation);
-    std::vector<std::byte> data;
-    if (model::Stream* stream = object.as_stream()) {
-      auto encoded = document.encoded_stream_data(*stream);
-      if (!encoded) {
-        return std::unexpected(std::move(encoded.error()));
-      }
-      data = std::move(*encoded);
-      model::Dict dict = stream->dict;
-      dict.set("Length", static_cast<std::int64_t>(data.size()));
-      serialize(Object(std::move(dict)), text);
-      text += "\nstream\n";
-    } else {
-      serialize(object, text);
-    }
+  const auto write_object = [&](model::ObjectRef ref, const Object& object) -> Result<void> {
     const std::uint64_t offset = sink.position();
-    if (auto ok = write_all(sink, text); !ok) {
-      return ok;
-    }
-    if (object.as_stream() != nullptr) {
-      if (auto ok = sink.write(data); !ok) {
-        return ok;
-      }
-      if (auto ok = write_all(sink, "\nendstream"); !ok) {
-        return ok;
-      }
-    }
-    if (auto ok = write_all(sink, "\nendobj\n"); !ok) {
+    if (auto ok = detail::write_indirect(document, sink, ref, object); !ok) {
       return ok;
     }
     written[ref.number] = {offset, ref.generation};
@@ -243,7 +195,7 @@ Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOpt
         dict->set("ModDate", model::String{.bytes = *options.modification_date});
       }
     }
-    auto ok = write_object(ref, std::move(object));
+    auto ok = write_object(ref, object);
     if (!ok && ok.error().code != ErrorCode::kIo) {
       // Stream data that cannot be read: the object becomes null rather than failing the save.
       report.unreadable_objects.push_back(ref.number);
@@ -255,8 +207,8 @@ Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOpt
   }
 
   // Blank pages added in place of unreadable ones (at new numbers).
-  for (auto& [number, object] : *overrides) {
-    if (auto ok = write_object(model::ObjectRef{.number = number, .generation = 0}, std::move(object)); !ok) {
+  for (const auto& [number, object] : *overrides) {
+    if (auto ok = write_object(model::ObjectRef{.number = number, .generation = 0}, object); !ok) {
       return std::unexpected(std::move(ok.error()));
     }
   }
@@ -307,16 +259,8 @@ Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOpt
   }
 
   // Trailer: the document's entries, a fresh /Size, and /ID [original-or-new, hash of this file].
-  const auto digest = sink.digest();
-  const std::string fresh_id(reinterpret_cast<const char*>(digest.data()), digest.size());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-  std::string first_id = fresh_id;
-  if (const Object* id = trailer.find("ID");
-      id != nullptr && id->as_array() != nullptr && !id->as_array()->empty() && id->as_array()->front().as_string() != nullptr) {
-    first_id = id->as_array()->front().as_string()->bytes;
-  }
   trailer.set("Size", static_cast<std::int64_t>(size));
-  trailer.set(
-      "ID", model::Array{model::String{.bytes = first_id, .form = model::StringForm::kHex}, model::String{.bytes = fresh_id, .form = model::StringForm::kHex}});
+  trailer.set("ID", detail::file_identifier(trailer, sink.digest()));
   trailer.erase("Encrypt");
   std::string tail = "trailer\n";
   serialize(Object(std::move(trailer)), tail);

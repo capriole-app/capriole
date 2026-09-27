@@ -14,6 +14,15 @@ Poppler (`pdfinfo`) — as **external programs** (never linked: licences, §7.3)
 is the one at least two references agree on. Each run writes `results.jsonl` and `summary.md` and, from
 the second run of the same `--name` on, lists regressions against the previous run.
 
+`--roundtrip` also saves every readable file twice and checks the outputs (PLAN.md phase 3):
+- full save (`cpdf save`): `qpdf --check` on the output, strict re-read by Capriole, same page count;
+- incremental save with a new `/ModDate` (`cpdf save --incremental`): the original bytes come first,
+  unchanged; qpdf is no worse than on the original; strict re-read (compared with the original's own);
+  same page count. Refusals (repaired or encrypted files) are counted by reason.
+
+Run it at low intensity on a workstation (`nice -n 19`, `--jobs 2`), and don't rebuild `build/asan`
+while it runs.
+
 Isolation: separate process per tool, empty working directory, timeout, 4 GB memory cap (prlimit;
 ASan's own RSS limit for Capriole). No network namespace (not available unprivileged here) — the tools
 do not use the network, and corpus files must never be opened with anything else.

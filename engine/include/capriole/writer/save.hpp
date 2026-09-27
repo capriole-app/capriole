@@ -43,4 +43,16 @@ struct SaveReport {
 
 [[nodiscard]] Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOptions& options = {});
 
+// Incremental save (§7.5.6): the original file byte for byte, then — only if something changed — the
+// Modified and New objects, free entries for the Deleted ones (generation + 1), and a new
+// cross-reference section in the same form as the file's last one (table, or cross-reference stream
+// written without filters) whose /Prev points to it. Nothing that was in the file is rewritten, so
+// signatures over the original bytes stay valid (the "preferred" save of DOCS/CAPRIOLE.md §5).
+// Without changes (and without SaveOptions::modification_date) the output is the original file.
+//
+// Refused with ErrorCode::kUnsupported: encrypted documents (phase 3d), and documents that needed
+// repairs (Document::repairs() not empty, after reading the page tree) — appending to a structure that only reads with repairs
+// would carry them over unrepaired; save_full writes the repaired document instead.
+[[nodiscard]] Result<SaveReport> save_incremental(Document& document, ByteSink& output, const SaveOptions& options = {});
+
 }  // namespace capriole::writer

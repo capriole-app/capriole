@@ -33,9 +33,9 @@ Document open(const std::string& pdf, bool repair = true) {
   return std::move(*document);
 }
 
-std::string save(Document& document, const SaveOptions& options = {}) {
+std::string save(Document& document, const SaveOptions& options = {}, bool incremental = false) {
   MemorySink sink;
-  const auto report = save_full(document, sink, options);
+  const auto report = incremental ? save_incremental(document, sink, options) : save_full(document, sink, options);
   EXPECT_TRUE(report.has_value()) << (report ? "" : report.error().message);
   std::string out;
   for (const std::byte b : sink.data()) {
@@ -357,6 +357,173 @@ TEST(FullSave, EncryptedDocumentsAreRefusedForNow) {
   MemorySink sink;
   EXPECT_EQ(save_full(*document, sink).error().code, ErrorCode::kUnsupported);
   EXPECT_EQ(sink.position(), 0U);
+}
+
+// ── Incremental save ────────────────────────────────────────────────────────────────────────
+
+std::string save_incremental_text(Document& document, const SaveOptions& options = {}) { return save(document, options, true); }
+
+// The original file with a table section, a stream, and objects 1..5.
+std::string incremental_sample() { return sample_pdf(); }
+
+TEST(IncrementalSave, WithoutChangesTheOutputIsTheOriginal) {
+  const std::string pdf = incremental_sample();
+  Document document = open(pdf, false);
+  EXPECT_EQ(save_incremental_text(document), pdf);
+}
+
+TEST(IncrementalSave, AppendsOnlyTheChangesAfterTheOriginalBytes) {
+  const std::string pdf = incremental_sample();
+  Document document = open(pdf, false);
+  model::Dict page = *(*document.get(3))->as_dict();
+  page.set("Rotate", 90);
+  ASSERT_TRUE(document.set(3, page).has_value());
+  const std::string out = save_incremental_text(document);
+  ASSERT_GT(out.size(), pdf.size());
+  EXPECT_EQ(out.substr(0, pdf.size()), pdf);  // the original, byte for byte
+  const std::string update = out.substr(pdf.size());
+  EXPECT_NE(update.find("3 0 obj"), std::string::npos);
+  EXPECT_EQ(update.find("4 0 obj"), std::string::npos);  // unchanged objects are not rewritten
+  EXPECT_NE(update.find("/Prev "), std::string::npos);
+
+  Document saved = open(out, false);
+  ASSERT_EQ(saved.xref().sections.size(), 2U);
+  EXPECT_EQ(saved.xref().sections[0].form, parser::XrefForm::kTable);
+  EXPECT_EQ((*saved.get(3))->as_dict()->find("Rotate")->as_integer(), 90);
+  EXPECT_EQ(saved.page_refs()->size(), 1U);
+  EXPECT_EQ(*saved.decode_stream(*(*saved.get(4))->as_stream()), *document.decode_stream(*(*document.get(4))->as_stream()));
+}
+
+TEST(IncrementalSave, NewAndDeletedObjects) {
+  Document document = open(incremental_sample(), false);
+  const auto added = document.add(Object(model::String{.bytes = "added"}));
+  ASSERT_TRUE(added.has_value());
+  ASSERT_TRUE(document.remove(5).has_value());
+  document.set_trailer_entry("Info", model::Null{});
+  Document saved = open(save_incremental_text(document), false);
+  EXPECT_EQ(**saved.get(added->number), Object(model::String{.bytes = "added"}));
+  EXPECT_TRUE((*saved.get(5))->is_null());
+  EXPECT_EQ(saved.xref().find(5)->type, parser::XrefEntryType::kFree);
+  EXPECT_EQ(saved.xref().find(5)->generation, 1);
+  EXPECT_FALSE(saved.trailer().contains("Info"));
+  EXPECT_EQ(saved.trailer().find("Size")->as_integer(), static_cast<std::int64_t>(added->number) + 1);
+}
+
+TEST(IncrementalSave, CrossReferenceStreamFilesGetAStream) {
+  PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  const std::string header = "2 0 3 40 ";
+  const std::string objects = "<</Type/Pages/Kids[3 0 R]/Count 1>>     <</Type/Page/Parent 2 0 R>>";
+  const std::string data = test::zlib_compress(header + objects);
+  b.add_object(5, "<</Type/ObjStm/N 2/First " + std::to_string(header.size()) + "/Length " + std::to_string(data.size()) + "/Filter/FlateDecode>>\nstream\n" +
+                      data + "\nendstream");
+  b.finish_xref_stream(6, "/Size 7/Root 1 0 R", {{2, 2, 5, 0}, {3, 2, 5, 1}});
+  const std::string pdf = b.str();
+
+  Document document = open(pdf, false);
+  model::Dict page = *(*document.get(3))->as_dict();  // lives in the object stream
+  page.set("Rotate", 180);
+  ASSERT_TRUE(document.set(3, page).has_value());
+  const std::string out = save_incremental_text(document);
+  EXPECT_EQ(out.substr(0, pdf.size()), pdf);
+  Document saved = open(out, false);
+  ASSERT_EQ(saved.xref().sections.size(), 2U);
+  EXPECT_EQ(saved.xref().sections[0].form, parser::XrefForm::kStream);
+  EXPECT_EQ(saved.xref().find(3)->type, parser::XrefEntryType::kInUse);       // the new definition
+  EXPECT_EQ(saved.xref().find(2)->type, parser::XrefEntryType::kCompressed);  // still in the stream
+  EXPECT_EQ((*saved.get(3))->as_dict()->find("Rotate")->as_integer(), 180);
+  EXPECT_EQ(saved.page_refs()->size(), 1U);
+}
+
+TEST(IncrementalSave, HybridFilesGetATable) {
+  PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[]/Count 0>>");
+  const std::uint64_t stream_at = b.write_xref_stream(20, "/Size 21", {}, true, std::nullopt, false);
+  b.finish_table("/Size 21/Root 1 0 R/XRefStm " + std::to_string(stream_at));
+  Document document = open(b.str(), false);
+  ASSERT_EQ(document.xref().sections[0].form, parser::XrefForm::kHybrid);
+  ASSERT_TRUE(document.add(Object(1)).has_value());
+  const std::string out = save_incremental_text(document);
+  Document saved = open(out, false);
+  EXPECT_EQ(saved.xref().sections[0].form, parser::XrefForm::kTable);
+  EXPECT_EQ(out.rfind("/XRefStm"), out.find("/XRefStm"));  // not repeated in the new trailer
+}
+
+TEST(IncrementalSave, SuccessiveSavesChainTheSections) {
+  const std::string pdf = incremental_sample();
+  Document first = open(pdf, false);
+  ASSERT_TRUE(first.add(Object(1)).has_value());
+  const std::string once = save_incremental_text(first);
+  Document second = open(once, false);
+  ASSERT_TRUE(second.add(Object(2)).has_value());
+  const std::string twice = save_incremental_text(second);
+  EXPECT_EQ(twice.substr(0, once.size()), once);
+  Document saved = open(twice, false);
+  EXPECT_EQ(saved.xref().sections.size(), 3U);
+  EXPECT_EQ(**saved.get(6), Object(1));
+  EXPECT_EQ(**saved.get(7), Object(2));
+}
+
+TEST(IncrementalSave, ModificationDateIsTheChange) {
+  Document document = open(incremental_sample(), false);
+  Document saved = open(save_incremental_text(document, SaveOptions{.modification_date = "D:20260927Z"}), false);
+  const auto info = saved.resolve(*saved.trailer().find("Info"));
+  EXPECT_EQ(info->as_dict()->find("ModDate")->as_string()->bytes, "D:20260927Z");
+  EXPECT_EQ(info->as_dict()->find("Title")->as_string()->bytes, "Sample");
+  EXPECT_EQ(saved.xref().sections.size(), 2U);
+}
+
+TEST(IncrementalSave, FileIdentifierKeepsTheFirstStringAndChangesTheSecond) {
+  Document document = open(incremental_sample(), false);
+  ASSERT_TRUE(document.add(Object(1)).has_value());
+  Document saved = open(save_incremental_text(document), false);
+  const auto* id = saved.trailer().find("ID")->as_array();
+  ASSERT_NE(id, nullptr);
+  EXPECT_EQ((*id)[0].as_string()->bytes, std::string("\x01\x02\x03\x04\x05\x06\x07\x08", 8));
+  EXPECT_EQ((*id)[1].as_string()->bytes.size(), 16U);
+}
+
+TEST(IncrementalSave, FileWithoutFinalEndOfLine) {
+  std::string pdf = incremental_sample();
+  pdf.pop_back();  // "%%EOF" with nothing after it
+  Document document = open(pdf, false);
+  ASSERT_TRUE(document.add(Object(1)).has_value());
+  const std::string out = save_incremental_text(document);
+  EXPECT_EQ(out.substr(0, pdf.size() + 1), pdf + "\n");
+  Document saved = open(out, false);
+  EXPECT_EQ(**saved.get(6), Object(1));
+}
+
+TEST(IncrementalSave, RepairedDocumentsAreRefused) {
+  std::string pdf = sample_pdf();
+  pdf.resize(pdf.find("xref"));  // needs the reconstruction repair
+  Document document = open(pdf);
+  ASSERT_FALSE(document.repairs().empty());
+  MemorySink sink;
+  EXPECT_EQ(save_incremental(document, sink).error().code, ErrorCode::kUnsupported);
+  EXPECT_EQ(sink.position(), 0U);
+}
+
+TEST(IncrementalSave, PageTreeRepairsAreFoundBeforeDeciding) {
+  PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Kids[3 0 R]/Count 1>>");  // no /Type: read only with a repair
+  b.add_object(3, "<</Type/Page/Parent 2 0 R>>");
+  b.finish_table("/Size 4/Root 1 0 R");
+  Document document = open(b.str());
+  ASSERT_TRUE(document.repairs().empty());  // not read yet
+  MemorySink sink;
+  EXPECT_EQ(save_incremental(document, sink).error().code, ErrorCode::kUnsupported);
+}
+
+TEST(IncrementalSave, EncryptedDocumentsAreRefusedForNow) {
+  auto source = FileByteSource::open(std::string(CAPRIOLE_TEST_DATA_DIR) + "/encrypted/r4_aes_128_empty_user.pdf");
+  ASSERT_TRUE(source.has_value());
+  auto document = Document::open(std::move(*source));
+  ASSERT_TRUE(document.has_value());
+  MemorySink sink;
+  EXPECT_EQ(save_incremental(*document, sink).error().code, ErrorCode::kUnsupported);
 }
 
 }  // namespace

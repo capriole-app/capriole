@@ -21,6 +21,8 @@ add_library(capriole_engine STATIC
   src/repair/repair.cpp
   src/writer/byte_sink.cpp
   src/writer/full_save.cpp
+  src/writer/incremental_save.cpp
+  src/writer/save_support.cpp
   src/writer/serializer.cpp)
 add_library(capriole::engine ALIAS capriole_engine)
 
