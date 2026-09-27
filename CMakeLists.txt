@@ -50,3 +50,7 @@ endif()
 if(CAPRIOLE_BUILD_FUZZERS)
   add_subdirectory(fuzz)
 endif()
+
+if(CAPRIOLE_RASTER_PROTO)
+  add_subdirectory(experiments/raster)
+endif()

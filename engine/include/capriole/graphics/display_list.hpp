@@ -243,4 +243,37 @@ struct DisplayList {
   std::vector<std::string> warnings;
 };
 
+// Where a page goes on an output (an SVG, a bitmap): the crop box, y flipped (outputs grow downwards),
+// turned clockwise by /Rotate, scaled by `scale` output units per point (1 for SVG; dpi / 72 for pixels).
+struct OutputGeometry {
+  Matrix page_to_output;
+  double width = 0;
+  double height = 0;
+};
+
+[[nodiscard]] inline OutputGeometry output_geometry(const DisplayList& list, double scale) {
+  const Rect box = list.crop_box;
+  const double w = box.width();
+  const double h = box.height();
+  auto m = Matrix{1, 0, 0, -1, -box.x0, box.y1};
+  OutputGeometry out{.page_to_output = m, .width = w, .height = h};
+  switch (list.rotate) {
+    case 90:
+      out = {.page_to_output = m.then(Matrix{0, 1, -1, 0, h, 0}), .width = h, .height = w};
+      break;
+    case 180:
+      out = {.page_to_output = m.then(Matrix{-1, 0, 0, -1, w, h}), .width = w, .height = h};
+      break;
+    case 270:
+      out = {.page_to_output = m.then(Matrix{0, -1, 1, 0, 0, w}), .width = h, .height = w};
+      break;
+    default:
+      break;
+  }
+  out.page_to_output = out.page_to_output.then(Matrix::scale(scale, scale));
+  out.width *= scale;
+  out.height *= scale;
+  return out;
+}
+
 }  // namespace capriole::graphics

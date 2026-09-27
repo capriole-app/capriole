@@ -77,21 +77,11 @@ class Writer {
 
   std::string write(const DisplayList& list) {
     list_ = &list;
-    const Rect box = list.crop_box;
-    const double w = box.width();
-    const double h = box.height();
-    const bool quarter = list.rotate == 90 || list.rotate == 270;
-    const double out_w = quarter ? h : w;
-    const double out_h = quarter ? w : h;
-    // Page space (y up) → SVG (y down), then /Rotate clockwise.
-    auto page = Matrix{1, 0, 0, -1, -box.x0, box.y1};
-    if (list.rotate == 90) {
-      page = page.then(Matrix{0, 1, -1, 0, h, 0});
-    } else if (list.rotate == 180) {
-      page = page.then(Matrix{-1, 0, 0, -1, w, h});
-    } else if (list.rotate == 270) {
-      page = page.then(Matrix{0, -1, 1, 0, 0, w});
-    }
+    // Page space (y up) → SVG (y down), turned by /Rotate: see output_geometry.
+    const OutputGeometry geometry = output_geometry(list, 1);
+    const double out_w = geometry.width;
+    const double out_h = geometry.height;
+    const Matrix page = geometry.page_to_output;
     out_ =
         std::format(R"(<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">)", num(out_w), num(out_h), num(out_w), num(out_h));
     out_ += R"(<rect width="100%" height="100%" fill="#ffffff"/>)";

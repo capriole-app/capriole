@@ -2,6 +2,7 @@
 
 option(CAPRIOLE_BUILD_TESTS "Build unit and regression tests" ON)
 option(CAPRIOLE_BUILD_FUZZERS "Build libFuzzer targets (requires Clang)" OFF)
+option(CAPRIOLE_RASTER_PROTO "Build the phase 6c rasterizer prototype (experiments/raster; needs third-party sources)" OFF)
 option(CAPRIOLE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 set(CAPRIOLE_SANITIZERS "" CACHE STRING "Semicolon-separated sanitizers, e.g. address;undefined")
 

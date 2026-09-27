@@ -361,7 +361,8 @@ x002 restanti sono troncati in modo grave.
 
 Passi: **6a** parser dei content stream ✅ · **6b** interprete (stato grafico, CTM, tracciati,
 clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore) ✅ · **6c** prototipo
-Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → decisione 🔜 · **6d** rendering
+Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → decisione ❓ (prototipo fatto,
+[ADR 0002](adr/0002-rasterizzatore.md): raccomandato Blend2D, in attesa di decisione) · **6d** rendering
 e confronto pixel con mutool/pdftoppm, anteprima nell'Inspector · poi font, immagini, trasparenza,
 shading.
 
@@ -438,7 +439,7 @@ workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri)
 | Decisione | Blocca | Nota |
 |---|---|---|
 | Licenza di Capriole | pubblicazione, OSS-Fuzz, contributi | proposta da discutere: Apache-2.0 o MPL-2.0 |
-| Skia vs Blend2D | fase 6 | prototipo + benchmark |
+| Skia vs Blend2D | fase 6 | prototipo fatto: ADR 0002 raccomanda Blend2D (WASM 3–5× più veloce, metà peso, build dai sorgenti) |
 | JBIG2 / CCITT con licenza compatibile | fase 6 | implementazione propria |
 | Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |
 | Firma qualificata nel browser | fase 8 | smart card non accessibili dal web → desktop o firma remota |
