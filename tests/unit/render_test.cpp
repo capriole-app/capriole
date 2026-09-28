@@ -441,6 +441,36 @@ TEST(Raster, UndecodedImagesInASoftMaskDrawNothing) {
   EXPECT_EQ(at(render(list), 50, 50), kWhite);
 }
 
+TEST(Raster, AstronomicCoordinatesAreClippedBeforeBlend2D) {
+  // Geometry far out of range (CTMs scaled by 1e13 to 1e300) is clipped in double precision before
+  // Blend2D sees it, and still draws where it crosses the page. (The input that made Blend2D read
+  // outside the bitmap is tests/regression/render/astronomic_ctm.pdf.)
+  DisplayList list = page(20, 20);
+  list.styles = {StrokeStyle{.width = 3, .cap = LineCap::kButt, .join = LineJoin::kMiter, .miter_limit = 10, .dash = {2, 1}, .dash_phase = 0}};
+  Path zigzag;
+  zigzag.move_to({0, 0});
+  zigzag.line_to({50, 50});
+  zigzag.cubic_to({60, 10}, {70, 90}, {80, 40});
+  zigzag.close();
+  for (const double scale : {1e13, 1e16, 9.7e16, 1e300}) {
+    const Matrix huge{scale, 0, 0, scale, 0, 0};
+    list.commands.emplace_back(Save{});
+    list.commands.emplace_back(ClipPath{.path = circle(0, 0, 1), .ctm = huge, .rule = FillRule::kNonZero});
+    list.commands.emplace_back(ClipPath{.path = rect(0, 0, 10, 10), .ctm = huge, .rule = FillRule::kNonZero});
+    list.commands.emplace_back(FillPath{.path = zigzag, .ctm = huge, .rule = FillRule::kEvenOdd, .blend = BlendMode::kNormal, .color = kRed, .alpha = 1});
+    list.commands.emplace_back(StrokePath{.path = zigzag, .ctm = huge, .style = 0, .color = kBlue, .alpha = 0.5, .blend = BlendMode::kMultiply});
+    list.commands.emplace_back(Restore{});
+  }
+  // A rectangle from far outside to the middle of the page: the half that crosses the page is drawn.
+  DisplayList half = page(20, 20);
+  half.commands.emplace_back(
+      FillPath{.path = rect(-1e12, -1e12, 1e12 + 10, 2e12), .ctm = {}, .rule = FillRule::kNonZero, .blend = BlendMode::kNormal, .color = kRed, .alpha = 1});
+  const Bitmap b = render(half);
+  EXPECT_EQ(at(b, 5, 10), kRedPixel);
+  EXPECT_EQ(at(b, 15, 10), kWhite);
+  EXPECT_EQ(render(list).width, 20);  // and above all, no crash (ASan)
+}
+
 TEST(Raster, UnbalancedTransparencyCommandsDoNotBreakTheRendering) {
   // A list cut short (the command limit), or ends without beginnings.
   DisplayList list = page(50, 50);

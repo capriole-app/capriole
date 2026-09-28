@@ -3,6 +3,7 @@
 //
 //   *.pdf           opened as a Document; every object loaded, every stream decoded, page tree walked
 //   security/*.bin  an /Encrypt dictionary followed by data, fed to the standard security handler
+//   render/*        a document whose first pages are interpreted and drawn, as fuzz_render does
 //
 // A case passes when it does not crash: under ASan/UBSan any memory error aborts the test binary.
 // Errors are expected and fine — these inputs are hostile by construction.
@@ -15,10 +16,12 @@
 #include <string>
 #include <vector>
 
+#include "capriole/content/interpreter.hpp"
 #include "capriole/core/source_reader.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
 #include "capriole/parser/object_parser.hpp"
+#include "capriole/render/raster.hpp"
 
 namespace capriole {
 namespace {
@@ -49,6 +52,37 @@ void replay_document(const std::vector<std::byte>& bytes) {
   (void)document->page_refs();
 }
 
+// The path of fuzz/fuzz_render.cpp, with its limits: interpret the first pages and draw them small.
+void replay_render(const std::vector<std::byte>& bytes) {
+  OpenOptions options;
+  options.limits.max_nesting_depth = 32;
+  auto document = Document::open(std::make_unique<MemoryByteSource>(bytes), options);
+  if (!document) {
+    return;
+  }
+  auto pages = document->page_refs();
+  if (!pages) {
+    return;
+  }
+  content::InterpreterLimits limits;
+  limits.parse = options.limits;
+  limits.max_operations = 100'000;
+  limits.max_commands = 20'000;
+  limits.max_form_depth = 8;
+  limits.max_image_pixels = 1'000'000;
+  limits.max_page_image_pixels = 4'000'000;
+  render::RenderLimits render_limits;
+  render_limits.max_pixels = 250'000;
+  render_limits.max_side = 4'000;
+  render_limits.max_layers = 8;
+  render_limits.max_dash_segments = 20'000;
+  for (std::size_t i = 0; i < pages->size() && i < 3; ++i) {
+    if (auto list = content::interpret_page(*document, (*pages)[i], limits)) {
+      (void)render::rasterize(*list, 0.25, render_limits);
+    }
+  }
+}
+
 void replay_security(const std::vector<std::byte>& bytes) {
   MemoryByteSource source(bytes);
   SourceReader reader(source);
@@ -75,7 +109,10 @@ TEST(Regression, ReplayAllCases) {
     }
     SCOPED_TRACE(entry.path().string());
     const auto bytes = read_file(entry.path());
-    if (entry.path().extension() == ".pdf") {
+    if (entry.path().parent_path().filename() == "render") {
+      replay_render(bytes);
+      ++cases;
+    } else if (entry.path().extension() == ".pdf") {
       replay_document(bytes);
       ++cases;
     } else if (entry.path().parent_path().filename() == "security" && entry.path().extension() == ".bin") {
@@ -94,6 +131,11 @@ TEST(Regression, EncryptVersionAndRevisionMustMatch) {
   ASSERT_FALSE(document.has_value());
   EXPECT_EQ(document.error().code, ErrorCode::kSyntax);
 }
+
+// fuzz_render, 2026-09-28: CTMs scaled by 1e16 and more (forms drawing themselves scaled, with dashed
+// strokes) made Blend2D's stroker read outside the bitmap. Geometry out of range is now clipped in
+// double precision before Blend2D sees it (render/raster.cpp, kSafeCoordinate).
+TEST(Regression, AstronomicCoordinatesDoNotReachBlend2D) { replay_render(read_file(kRegressionDir / "render" / "astronomic_ctm.pdf")); }
 
 }  // namespace
 }  // namespace capriole

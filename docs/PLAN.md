@@ -128,6 +128,16 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
   la quarantena di ASan (254 MB) piena di stato di libFuzzer; l'input, da solo, gira in 92 MB con il
   binario di allora e con quello attuale. Correzione: le campagne usano `quarantine_size_mb=64`
   (`scripts/fuzz_campaign.sh`). Archivio in `CORPORA/reports/fuzz-campaign-20260928-content-render/`.
+  Poi 6 h su `function` e `render` (codice di 6f): `function` ~454 milioni di esecuzioni, **0 problemi**;
+  `render` **un difetto vero** dopo 6.600 esecuzioni: con CTM astronomiche (form che si ridisegnano
+  scalate fino a 10¹⁶ e oltre, tratti tratteggiati) lo stroker di Blend2D leggeva fuori dal bitmap
+  (heap-buffer-overflow in lettura). Corretto nel nostro confine: la geometria oltre ±10⁶ pixel non
+  arriva mai a Blend2D, viene portata in coordinate di dispositivo e ritagliata in doppia precisione
+  sulla pagina (Sutherland–Hodgman per i riempimenti e i clip, Liang–Barsky per i tratti; testo e
+  immagini a quelle scale non si disegnano). Caso minimizzato (596 byte) in
+  `tests/regression/render/astronomic_ctm.pdf`, che la suite di regressione ora ridisegna come
+  `fuzz_render`; verificato che senza la correzione il test fallisce. Archivio in
+  `CORPORA/reports/fuzz-campaign-20260928-render-function/`.
 
 ## Fase 3 — Writer (~2 settimane)
 

@@ -21,6 +21,8 @@ namespace capriole::render {
 
 namespace {
 
+const graphics::Matrix kIdentity{};
+
 using namespace capriole::graphics;
 
 // Blend2D initializes its runtime from a static object in the library, which a static link can leave
@@ -172,6 +174,195 @@ PixelBox bounds_of_rect(double x0, double y0, double x1, double y1, const Matrix
   box.line_to({x1, y1});
   box.line_to({x0, y1});
   return bounds_of(box, m, 1);
+}
+
+// ── Geometry out of range ─────────────────────────────────────────────────────────────────
+//
+// Blend2D computes in fixed point; with coordinates or pen widths of astronomic size (a file can scale
+// its CTM without bound) its stroker and edge builder overflow and it reads outside the image (found by
+// fuzz_render). Nothing that large is ever handed to it: geometry beyond kSafeCoordinate device pixels
+// is brought to device space here and clipped, in double precision, to the page's box widened by a
+// margin, where it looks the same.
+constexpr double kSafeCoordinate = 1e6;
+
+bool within_safe_range(const Path& path, const Matrix& m) {
+  bool safe = true;
+  path.for_each([&](SegmentKind kind, const Point* p) {
+    for (std::size_t i = 0; i < Path::points_of(kind); ++i) {
+      const Point q = m.apply(p[i]);
+      safe = safe && std::abs(q.x) <= kSafeCoordinate && std::abs(q.y) <= kSafeCoordinate;  // false for NaN too
+    }
+  });
+  return safe;
+}
+
+bool rect_within_safe_range(double x0, double y0, double x1, double y1, const Matrix& m) {
+  Path box;
+  box.move_to({x0, y0});
+  box.line_to({x1, y0});
+  box.line_to({x1, y1});
+  box.line_to({x0, y1});
+  return within_safe_range(box, m);
+}
+
+struct Rect2 {
+  double x0, y0, x1, y1;
+};
+
+// The path in device space as polylines (curves as chords: this is for geometry far out of range, where
+// only its crossing of the page matters), without non-finite points.
+std::vector<std::pair<std::vector<Point>, bool>> device_polylines(const Path& path, const Matrix& m) {
+  std::vector<std::pair<std::vector<Point>, bool>> out;
+  Point current;
+  const auto add = [&](Point q) {
+    if (std::isfinite(q.x) && std::isfinite(q.y) && !out.empty()) {
+      out.back().first.push_back(q);
+    }
+  };
+  path.for_each([&](SegmentKind kind, const Point* p) {
+    switch (kind) {
+      case SegmentKind::kMove:
+        out.emplace_back();
+        current = p[0];
+        add(m.apply(p[0]));
+        break;
+      case SegmentKind::kLine:
+        if (out.empty()) {
+          out.emplace_back();
+        }
+        add(m.apply(p[0]));
+        current = p[0];
+        break;
+      case SegmentKind::kCubic: {
+        if (out.empty()) {
+          out.emplace_back();
+        }
+        constexpr int kChords = 32;
+        for (int i = 1; i <= kChords; ++i) {
+          const double t = static_cast<double>(i) / kChords;
+          const double u = 1 - t;
+          const Point q{(u * u * u * current.x) + (3 * u * u * t * p[0].x) + (3 * u * t * t * p[1].x) + (t * t * t * p[2].x),
+                        (u * u * u * current.y) + (3 * u * u * t * p[0].y) + (3 * u * t * t * p[1].y) + (t * t * t * p[2].y)};
+          add(m.apply(q));
+        }
+        current = p[2];
+        break;
+      }
+      case SegmentKind::kClose:
+        if (!out.empty()) {
+          out.back().second = true;
+        }
+        break;
+    }
+  });
+  return out;
+}
+
+// Sutherland–Hodgman: a closed polygon clipped to a rectangle. Clipping every contour of a path to the
+// same convex box keeps the winding number of every point inside it, so fill rules still hold.
+std::vector<Point> clip_polygon(std::vector<Point> polygon, const Rect2& r) {
+  const auto clip_edge = [](const std::vector<Point>& in, auto inside, auto cross) {
+    std::vector<Point> result;
+    for (std::size_t i = 0; i < in.size(); ++i) {
+      const Point& a = in[i];
+      const Point& b = in[(i + 1) % in.size()];
+      if (inside(b)) {
+        if (!inside(a)) {
+          result.push_back(cross(a, b));
+        }
+        result.push_back(b);
+      } else if (inside(a)) {
+        result.push_back(cross(a, b));
+      }
+    }
+    return result;
+  };
+  const auto at_x = [](double x) { return [x](const Point& a, const Point& b) { return Point{x, a.y + ((b.y - a.y) * (x - a.x) / (b.x - a.x))}; }; };
+  const auto at_y = [](double y) { return [y](const Point& a, const Point& b) { return Point{a.x + ((b.x - a.x) * (y - a.y) / (b.y - a.y)), y}; }; };
+  polygon = clip_edge(polygon, [&](const Point& q) { return q.x >= r.x0; }, at_x(r.x0));
+  polygon = clip_edge(polygon, [&](const Point& q) { return q.x <= r.x1; }, at_x(r.x1));
+  polygon = clip_edge(polygon, [&](const Point& q) { return q.y >= r.y0; }, at_y(r.y0));
+  polygon = clip_edge(polygon, [&](const Point& q) { return q.y <= r.y1; }, at_y(r.y1));
+  return polygon;
+}
+
+// Liang–Barsky: the part of segment a–b inside the rectangle; false when none.
+bool clip_segment(Point& a, Point& b, const Rect2& r) {
+  double t0 = 0;
+  double t1 = 1;
+  const double dx = b.x - a.x;
+  const double dy = b.y - a.y;
+  const std::array<double, 4> p = {-dx, dx, -dy, dy};
+  const std::array<double, 4> q = {a.x - r.x0, r.x1 - a.x, a.y - r.y0, r.y1 - a.y};
+  for (std::size_t i = 0; i < 4; ++i) {
+    if (p.at(i) == 0) {
+      if (q.at(i) < 0) {
+        return false;
+      }
+      continue;
+    }
+    const double t = q.at(i) / p.at(i);
+    if (p.at(i) < 0) {
+      t0 = std::max(t0, t);
+    } else {
+      t1 = std::min(t1, t);
+    }
+  }
+  if (t0 > t1) {
+    return false;
+  }
+  const Point start{a.x + (t0 * dx), a.y + (t0 * dy)};
+  b = Point{a.x + (t1 * dx), a.y + (t1 * dy)};
+  a = start;
+  return true;
+}
+
+// A filled path out of range, in device space, clipped to r.
+BLPath clipped_fill(const Path& path, const Matrix& m, const Rect2& r) {
+  BLPath out;
+  for (auto& [points, closed] : device_polylines(path, m)) {
+    (void)closed;
+    const std::vector<Point> polygon = clip_polygon(std::move(points), r);
+    for (std::size_t i = 0; i < polygon.size(); ++i) {
+      if (i == 0) {
+        out.move_to(polygon[i].x, polygon[i].y);
+      } else {
+        out.line_to(polygon[i].x, polygon[i].y);
+      }
+    }
+    if (!polygon.empty()) {
+      out.close();
+    }
+  }
+  return out;
+}
+
+// A stroked path out of range, in device space: its segments clipped to r (widened by the pen by the
+// caller), the pieces that stay connected kept as one subpath.
+BLPath clipped_stroke(const Path& path, const Matrix& m, const Rect2& r) {
+  BLPath out;
+  for (auto& [points, closed] : device_polylines(path, m)) {
+    if (closed && points.size() > 1) {
+      points.push_back(points.front());
+    }
+    bool open = false;
+    Point last;
+    for (std::size_t i = 1; i < points.size(); ++i) {
+      Point a = points[i - 1];
+      Point b = points[i];
+      if (!clip_segment(a, b, r)) {
+        open = false;
+        continue;
+      }
+      if (!open || a.x != last.x || a.y != last.y) {
+        out.move_to(a.x, a.y);
+      }
+      out.line_to(b.x, b.y);
+      last = b;
+      open = true;
+    }
+  }
+  return out;
 }
 
 // A soft mask: coverage 0..255 over a box of the page; outside the box nothing is painted while it is
@@ -423,12 +614,23 @@ class Rasterizer {
     release(layer);
   }
 
+  // The page's box, widened by margin device pixels: where geometry out of range is clipped to.
+  [[nodiscard]] Rect2 page_box(double margin) const {
+    const PixelBox b = stack_.front().box();
+    return {.x0 = b.x0 - margin, .y0 = b.y0 - margin, .x1 = b.x1 + margin, .y1 = b.y1 + margin};
+  }
+
   void draw(const FillPath& fill) {
     const Matrix m = fill.ctm.then(page_);
-    paint(fill.blend, fill.alpha, bounds_of(fill.path, m, 1), [&](Surface& s) {
-      s.context.set_transform(to_blend2d(device(fill.ctm, s)));
+    const bool safe = within_safe_range(fill.path, m);
+    // Out of range: clipped here, drawn in device space (to_device is the identity on the page).
+    const BLPath geometry = safe ? to_blend2d(fill.path) : clipped_fill(fill.path, m, page_box(64));
+    const Matrix& to_device = safe ? fill.ctm : kIdentity;
+    const PixelBox box = safe ? bounds_of(fill.path, m, 1) : stack_.front().box();
+    paint(fill.blend, fill.alpha, box, [&](Surface& s) {
+      s.context.set_transform(to_blend2d(safe ? device(to_device, s) : Matrix::translate(-s.x, -s.y)));
       s.context.set_fill_rule(fill.rule == FillRule::kEvenOdd ? BL_FILL_RULE_EVEN_ODD : BL_FILL_RULE_NON_ZERO);
-      s.context.fill_path(to_blend2d(fill.path), color(fill.color, fill.alpha));
+      s.context.fill_path(geometry, color(fill.color, fill.alpha));
     });
   }
 
@@ -450,13 +652,23 @@ class Rasterizer {
     // A stroke reaches half its width past the path, more at miters and square caps.
     const double reach = (std::abs(width) * scale / 2 * std::max({style.miter_limit, std::numbers::sqrt2, 1.0})) + 2;
     const Matrix& ctm = stroke.ctm;
-    paint(stroke.blend, stroke.alpha, bounds_of(*path, on_page, std::min(reach, 1e7)), [&](Surface& s) {
-      s.context.set_transform(to_blend2d(device(ctm, s)));
-      s.context.set_stroke_width(width);
+    // Out of range (the path or the pen): the segments clipped here in device space, the pen in device
+    // pixels, no wider than what covers the page anyway.
+    const PixelBox page = stack_.front().box();
+    const double pen_limit = 4.0 * ((page.x1 - page.x0) + (page.y1 - page.y0));
+    const bool safe = within_safe_range(*path, on_page) && std::isfinite(reach) && reach <= kSafeCoordinate;
+    const double pen = safe ? width : std::min(std::abs(width) * scale, pen_limit);
+    const BLPath geometry = safe ? to_blend2d(*path) : clipped_stroke(*path, on_page, page_box(std::min(reach, pen_limit) + 64));
+    if (!std::isfinite(pen)) {
+      return;
+    }
+    paint(stroke.blend, stroke.alpha, safe ? bounds_of(*path, on_page, std::min(reach, 1e7)) : page, [&](Surface& s) {
+      s.context.set_transform(to_blend2d(safe ? device(ctm, s) : Matrix::translate(-s.x, -s.y)));
+      s.context.set_stroke_width(pen);
       s.context.set_stroke_caps(cap_of(style.cap));
       s.context.set_stroke_join(join_of(style.join));
       s.context.set_stroke_miter_limit(std::max(style.miter_limit, 1.0));
-      s.context.stroke_path(to_blend2d(*path), color(stroke.color, stroke.alpha));
+      s.context.stroke_path(geometry, color(stroke.color, stroke.alpha));
     });
   }
 
@@ -473,6 +685,9 @@ class Rasterizer {
       return;
     }
     const double opacity = image.mask ? image.alpha * 0.35 : 1;
+    if (!rect_within_safe_range(0, 0, 1, 1, image.ctm.then(page_))) {
+      return;  // at an astronomic scale nothing meaningful is left to draw (see kSafeCoordinate)
+    }
     paint(image.blend, opacity, bounds_of_rect(0, 0, 1, 1, image.ctm.then(page_)), [&](Surface& s) {
       s.context.set_transform(to_blend2d(device(image.ctm, s)));
       s.context.fill_rect(BLRect(0, 0, 1, 1), image.mask ? color(image.color, opacity) : BLRgba(0.875F, 0.898F, 0.953F, 1.0F));
@@ -496,6 +711,9 @@ class Rasterizer {
     const BLSizeI size = picture->size();
     const bool smooth = image.interpolate || reduce > 1;
     const Matrix to_unit{1.0 / size.w, 0, 0, -1.0 / size.h, 0, 1};
+    if (!rect_within_safe_range(0, 0, 1, 1, on_page)) {
+      return;
+    }
     paint(image.blend, image.alpha, bounds_of_rect(0, 0, 1, 1, on_page), [&](Surface& s) {
       s.context.set_transform(to_blend2d(device(image.ctm, s)));
       s.context.set_pattern_quality(smooth ? BL_PATTERN_QUALITY_BILINEAR : BL_PATTERN_QUALITY_NEAREST);
@@ -568,6 +786,9 @@ class Rasterizer {
       x1 = std::max(x1, (glyph.origin.x / unit) + std::max(glyph.advance / unit * 0.85, 0.05));
     }
     const double opacity = run.alpha * 0.35;
+    if (!rect_within_safe_range(x0, 0, x1, 0.68, element.then(page_))) {
+      return;
+    }
     paint(run.blend, opacity, bounds_of_rect(x0, 0, x1, 0.68, element.then(page_)), [&](Surface& s) {
       s.context.set_transform(to_blend2d(device(element, s)));
       const BLRgba fill = color(run.fill, opacity);
@@ -711,6 +932,13 @@ class Rasterizer {
   }
 
   void clip_box(double x0, double y0, double x1, double y1) {
+    // Out of range and not finite: the page's box is all that can matter (see kSafeCoordinate).
+    const Rect2 page = page_box(64);
+    const auto bound = [](double v, double lo, double hi) { return std::isfinite(v) ? std::clamp(v, lo, hi) : lo; };
+    x0 = bound(x0, page.x0, page.x1);
+    x1 = bound(x1, page.x0, page.x1);
+    y0 = bound(y0, page.y0, page.y1);
+    y1 = bound(y1, page.y0, page.y1);
     clip_ = clip_.intersect(pixels_of(x0, y0, x1, y1));
     Surface& s = stack_.back();
     if (s.width == 0) {
@@ -749,9 +977,14 @@ class Rasterizer {
       return;
     }
     mask.clear_all();
-    mask.set_transform(to_blend2d(m.then(Matrix::translate(-layer.x, -layer.y))));
     mask.set_fill_rule(clip.rule == FillRule::kEvenOdd ? BL_FILL_RULE_EVEN_ODD : BL_FILL_RULE_NON_ZERO);
-    mask.fill_path(to_blend2d(clip.path), BLRgba32(0xFFFFFFFFU));
+    if (within_safe_range(clip.path, m)) {
+      mask.set_transform(to_blend2d(m.then(Matrix::translate(-layer.x, -layer.y))));
+      mask.fill_path(to_blend2d(clip.path), BLRgba32(0xFFFFFFFFU));
+    } else {
+      mask.set_transform(to_blend2d(Matrix::translate(-layer.x, -layer.y)));
+      mask.fill_path(clipped_fill(clip.path, m, page_box(64)), BLRgba32(0xFFFFFFFFU));
+    }
     mask.end();
     copy_below(layer, below);
     layer.knockout = below.knockout;
