@@ -9,7 +9,7 @@
 // Lab; Separation and DeviceN approximated until PDF functions exist), text state and positioning with
 // the glyph widths of the font dictionary (simple fonts, and Type0 fonts with Identity CMaps), form
 // XObjects (matrix, bounding box clip, own resources, recursion bounded and cycle-safe), image
-// XObjects, images decoded to pixels (codecs aside: see content/image.hpp), shadings as placed
+// XObjects, images decoded to pixels (JPEG included; JPX, JBIG2, CCITT not yet), shadings as placed
 // commands; transparency (§11): blend modes, soft masks
 // (their group drawn as commands between BeginSoftMask and EndSoftMask) and transparency groups.
 // Shadings, glyph outlines and patterns belong to the renderer phases.

@@ -3,8 +3,8 @@
 // Internal to the interpreter: decoding image XObjects and inline images (ISO 32000-2 §8.9) into
 // straight RGBA — samples of 1 to 16 bits in any colour space the interpreter knows, /Decode arrays,
 // stencil masks painted with the fill colour, and transparency from /SMask (§11.6.5.3) or /Mask
-// (colour key or explicit mask, §8.9.6). The stream's filters are run by the caller; image codecs
-// (DCT, JPX, JBIG2, CCITT) are not implemented yet and give kUnsupported there.
+// (colour key or explicit mask, §8.9.6). The stream's filters are run by the caller (JPEG included,
+// filters/dct.hpp); the JPX, JBIG2 and CCITT codecs are not implemented yet and give kUnsupported there.
 
 #include <cstddef>
 #include <cstdint>

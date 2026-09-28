@@ -14,6 +14,7 @@ add_library(capriole_engine STATIC
   src/render/png.cpp
   src/render/raster.cpp
   src/filters/basic.cpp
+  src/filters/dct.cpp
   src/filters/decode.cpp
   src/filters/flate.cpp
   src/model/object.cpp
@@ -44,7 +45,15 @@ target_include_directories(capriole_engine PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
 target_compile_features(capriole_engine PUBLIC cxx_std_23)
-target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d)
+# The C bridge to libjpeg (its errors longjmp, which must stay out of C++ frames): C, with C warnings.
+add_library(capriole_jpeg_shim STATIC src/filters/jpeg_shim.c)
+set_target_properties(capriole_jpeg_shim PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(capriole_jpeg_shim PRIVATE capriole::jpeg)
+if(NOT MSVC)
+  target_compile_options(capriole_jpeg_shim PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow $<$<BOOL:${CAPRIOLE_WARNINGS_AS_ERRORS}>:-Werror>)
+endif()
+
+target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim)
 capriole_set_warnings(capriole_engine)
 
 configure_file(src/core/version_config.hpp.in include/capriole/core/version_config.hpp @ONLY)

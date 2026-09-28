@@ -63,6 +63,59 @@ else()
 endif()
 FetchContent_MakeAvailable(blend2d)
 
+# libjpeg-turbo 3.2.0 — IJG + BSD-3-Clause (ADR 0003). DCTDecode: JPEG images.
+# Its build refuses add_subdirectory() and asks for ExternalProject_Add(): it is built on its own, with
+# our compiler, toolchain (Emscripten) and sanitizer/fuzzer flags, and imported as capriole::jpeg.
+# Without SIMD everywhere (no NASM needed, and the same pixels natively and in WebAssembly); 8-bit
+# samples, arithmetic decoding on, no TurboJPEG API, tools or tests.
+include(ExternalProject)
+set(_jpeg_prefix ${CMAKE_BINARY_DIR}/_deps/libjpeg-turbo)
+set(_jpeg_c_flags "${CMAKE_C_FLAGS}")
+if(CAPRIOLE_SANITIZERS)
+  list(JOIN CAPRIOLE_SANITIZERS "," _jpeg_sanitizers)
+  string(APPEND _jpeg_c_flags " -fsanitize=${_jpeg_sanitizers} -fno-omit-frame-pointer -fno-sanitize-recover=all")
+endif()
+if(CAPRIOLE_BUILD_FUZZERS)
+  string(APPEND _jpeg_c_flags " -fsanitize=fuzzer-no-link")
+endif()
+set(_jpeg_build_type "${CMAKE_BUILD_TYPE}")
+if(NOT _jpeg_build_type)
+  set(_jpeg_build_type Release)
+endif()
+set(_jpeg_library ${_jpeg_prefix}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}jpeg${CMAKE_STATIC_LIBRARY_SUFFIX})
+ExternalProject_Add(libjpeg_turbo
+  URL https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz
+  URL_HASH SHA256=6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  PREFIX ${_jpeg_prefix}/build
+  INSTALL_DIR ${_jpeg_prefix}
+  CMAKE_ARGS
+    -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+    -DCMAKE_INSTALL_LIBDIR=lib
+    -DCMAKE_INSTALL_INCLUDEDIR=include
+    -DCMAKE_BUILD_TYPE=${_jpeg_build_type}
+    -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+    -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+    -DCMAKE_C_FLAGS=${_jpeg_c_flags}
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DENABLE_SHARED=OFF
+    -DENABLE_STATIC=ON
+    -DWITH_SIMD=OFF
+    -DWITH_ARITH_DEC=ON
+    -DWITH_ARITH_ENC=OFF
+    -DWITH_TURBOJPEG=OFF
+    -DWITH_TOOLS=OFF
+    -DWITH_TESTS=OFF
+    -DWITH_FUZZ=OFF
+  BUILD_BYPRODUCTS ${_jpeg_library})
+file(MAKE_DIRECTORY ${_jpeg_prefix}/include)
+add_library(capriole_jpeg STATIC IMPORTED GLOBAL)
+set_target_properties(capriole_jpeg PROPERTIES IMPORTED_LOCATION ${_jpeg_library})
+# SYSTEM: third-party headers must not trip our warning flags.
+target_include_directories(capriole_jpeg SYSTEM INTERFACE ${_jpeg_prefix}/include)
+add_dependencies(capriole_jpeg libjpeg_turbo)
+add_library(capriole::jpeg ALIAS capriole_jpeg)
+
 if(CAPRIOLE_BUILD_TESTS)
   # GoogleTest 1.17.0 — BSD-3-Clause. Test-only, never linked into the engine.
   FetchContent_Declare(googletest

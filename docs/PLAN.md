@@ -374,7 +374,19 @@ Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **
 ([ADR 0002](adr/0002-rasterizzatore.md)) · **6d** rendering con Blend2D nel motore, confronto
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
 di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
-immagini senza codec ✅ · poi codec immagine (JPEG per primo), font, shading, pattern, annotazioni.
+immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · poi gli altri codec (JPX, CCITT, JBIG2),
+font, shading, pattern, annotazioni.
+
+**6g (2026-09-28):** DCTDecode con **libjpeg-turbo 3.2.0** ([ADR 0003](adr/0003-jpeg.md), sostituibile
+in futuro): `ExternalProject` con hash e firma GPG verificati, senza SIMD (stessi pixel in nativo e WASM),
+ponte C (`filters/jpeg_shim.c`) perché i `longjmp` di libjpeg non attraversino il C++; limiti su pixel,
+memoria e scansioni progressive; `/ColorTransform`; CMYK come memorizzato (verificato sul corpus: uguale
+a pdftoppm). Fixture generate da `tests/data/jpeg/make_fixtures.py` (grigio, RGB, progressivo, CMYK
+Adobe, troncato), fuzzer `fuzz_dct` (3 min, ~153.000 esecuzioni, pulito). Le ombre sfumate di Kensington
+ora escono come in pdftoppm. Modulo WASM 2,21 MB, 761 KB gzip (+85 KB).
+SafeDocs (build ASan, libjpeg compresa): 2.232 pagine, 0 crash, 0 timeout, nessun errore dei sanitizer.
+Sulle prime pagine con immagini **nessun JPEG resta non decodificato** (prima: 464 pagine su 688);
+restano CCITT (46 pagine), JPX (13), JBIG2 (6) e 3 immagini oltre il limite di 16 Mpixel.
 
 **6f (2026-09-28):** quello che 6e lasciava fuori. **Funzioni PDF** (`content/function`, §7.10): tipi 0
 (campionate, 1–32 bit, interpolazione multilineare), 2, 3 (con profondità limitata: una funzione che
@@ -522,7 +534,7 @@ workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri)
 |---|---|---|
 | Licenza di Capriole | pubblicazione, OSS-Fuzz, contributi | proposta da discutere: Apache-2.0 o MPL-2.0 |
 | ~~Skia vs Blend2D~~ | fase 6 | **deciso: Blend2D** (ADR 0002) |
-| Decodificatore JPEG (DCT) | fase 6, subito | 2/3 delle pagine con immagini: libjpeg-turbo (IJG/BSD/zlib) o implementazione propria |
+| ~~Decodificatore JPEG (DCT)~~ | fase 6 | **deciso: libjpeg-turbo** (ADR 0003), sostituibile |
 | JPEG 2000 (JPX) | fase 6 | OpenJPEG (BSD-2) o proprio |
 | JBIG2 / CCITT con licenza compatibile | fase 6 | implementazione propria |
 | Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |

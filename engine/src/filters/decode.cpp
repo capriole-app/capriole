@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "capriole/filters/basic.hpp"
+#include "capriole/filters/dct.hpp"
 #include "capriole/filters/flate.hpp"
 
 namespace capriole::filters {
@@ -48,6 +49,9 @@ Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const s
   }
   if (name == "RunLengthDecode") {
     return run_length_decode(data, max, lenient);
+  }
+  if (name == "DCTDecode" || name == "DCT") {
+    return dct_decode(data, parms, max);
   }
   if (name == "Crypt") {
     // Decryption happens before the filter chain (ObjectLoader::read_stream_data), which also reads
