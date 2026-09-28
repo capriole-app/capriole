@@ -35,8 +35,13 @@ run_target() {
   local target=$1 seconds=$2 build=$3 out=$4
   local name=${target#fuzz_}
   mkdir -p "fuzz/corpus-work/$name" "$out/crashes"
-  # -rss_limit_mb and -timeout turn memory blow-ups and hangs into reported findings.
-  nice -n 19 "$build/$target" -max_total_time="$seconds" -rss_limit_mb="${RSS_LIMIT_MB:-2048}" -timeout=30 -print_final_stats=1 \
+  # -rss_limit_mb and -timeout turn memory blow-ups and hangs into reported findings. ASan's quarantine
+  # (freed memory held back to catch use-after-free, 256 MB by default) is kept smaller: over hours it
+  # filled up with libFuzzer's own state and crossed the RSS limit with a 46 MB live heap — a false
+  # finding (2026-09-28, render, after 6.9 million runs). One huge allocation still is a finding
+  # (-malloc_limit_mb follows -rss_limit_mb).
+  ASAN_OPTIONS="${ASAN_OPTIONS:-quarantine_size_mb=64}" \
+    nice -n 19 "$build/$target" -max_total_time="$seconds" -rss_limit_mb="${RSS_LIMIT_MB:-2048}" -timeout=30 -print_final_stats=1 \
     -artifact_prefix="$out/crashes/$name-" "fuzz/corpus-work/$name" "fuzz/corpus/$name" >"$out/$name.log" 2>&1
   local status=$?
   local runs

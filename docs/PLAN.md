@@ -122,8 +122,12 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
   in `CORPORA/reports/fuzz-campaign-20260926-partial/`. Ripresa il 2026-09-27 11:22 sui target mancanti
   (`object`, `security`, `xref`, più il nuovo `serialize`, 4 h ciascuno) con
   `fuzz_local.sh start 16 object security xref serialize`; archivio in
-  `CORPORA/reports/fuzz-campaign-20260927-resumed/`. A seguire, 6 h su `content` e `render` (i fuzzer
-  della fase 6).
+  `CORPORA/reports/fuzz-campaign-20260927-resumed/`. A seguire, 2026-09-28, `content` e `render` (i
+  fuzzer della fase 6, allo stato di 6c): `content` 3 h, ~35,2 milioni di esecuzioni, **0 problemi**;
+  `render` fermato dopo ~2 h e 6,9 milioni da un "out-of-memory" **falso**: heap vivo 46 MB, il resto era
+  la quarantena di ASan (254 MB) piena di stato di libFuzzer; l'input, da solo, gira in 92 MB con il
+  binario di allora e con quello attuale. Correzione: le campagne usano `quarantine_size_mb=64`
+  (`scripts/fuzz_campaign.sh`). Archivio in `CORPORA/reports/fuzz-campaign-20260928-content-render/`.
 
 ## Fase 3 — Writer (~2 settimane)
 
