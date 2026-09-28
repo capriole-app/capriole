@@ -100,12 +100,20 @@ export const Status = {
   internal: 101,
 } as const;
 
+/** A page drawn by the engine: straight RGBA, rows top to bottom. */
+export interface PageRaster {
+  width: number;
+  height: number;
+  pixels: ArrayBuffer;
+}
+
 export type Request =
   | { kind: 'version' }
   | { kind: 'open'; data: ArrayBuffer; password: string; repair: boolean }
   | { kind: 'object'; number: number }
   | { kind: 'pageContent'; index: number; max: number }
   | { kind: 'pagePreview'; index: number }
+  | { kind: 'pageRender'; index: number; dpi: number }
   | { kind: 'stream'; number: number; decoded: boolean }
   | { kind: 'save'; incremental: boolean; modificationDate: string | null }
   | { kind: 'close' };

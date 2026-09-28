@@ -98,6 +98,15 @@ capriole_status capriole_document_page_content_json(capriole_document* document,
 capriole_status capriole_document_page_preview_json(capriole_document* document, uint32_t page_index, char** json);
 
 /*
+ * Page page_index (0-based) drawn at dpi dots per inch (72 = one pixel per point): *rgba receives
+ * *width x *height pixels, rows top to bottom, 4 bytes each (R, G, B, A, not premultiplied), on a white
+ * page. Release *rgba with capriole_free. What is drawn follows the vector preview: paths, colours,
+ * clips, dashes and transparency exact; text as glyph boxes, images as placeholders.
+ * CAPRIOLE_ERROR_LIMIT_EXCEEDED when the bitmap would be larger than 50 million pixels.
+ */
+capriole_status capriole_document_page_render(capriole_document* document, uint32_t page_index, double dpi, uint8_t** rgba, uint32_t* width, uint32_t* height);
+
+/*
  * The data of stream object number: decoded (all filters undone) when decoded is nonzero, otherwise
  * as stored (decrypted, still encoded). Release *data with capriole_free (it may be NULL when *size is
  * 0). CAPRIOLE_ERROR_UNSUPPORTED for filters the engine does not decode yet (e.g. images).

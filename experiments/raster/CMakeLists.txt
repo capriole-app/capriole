@@ -4,10 +4,7 @@
 
 set(CAPRIOLE_THIRD_PARTY "${CMAKE_SOURCE_DIR}/../THIRD_PARTY" CACHE PATH "Third-party sources for the rasterizer prototype")
 
-# Blend2D (zlib licence), static, with its bundled AsmJit (JIT pipelines) found next to it.
-set(BLEND2D_STATIC ON CACHE BOOL "" FORCE)
-set(BLEND2D_NO_INSTALL ON CACHE BOOL "" FORCE)
-add_subdirectory(${CAPRIOLE_THIRD_PARTY}/blend2d ${CMAKE_BINARY_DIR}/third_party/blend2d EXCLUDE_FROM_ALL)
+# Blend2D comes from cmake/Dependencies.cmake (the engine uses it since ADR 0002).
 
 # Skia (BSD-3-Clause), prebuilt by JetBrains skia-pack m144 (Linux x64, or WebAssembly).
 if(EMSCRIPTEN)

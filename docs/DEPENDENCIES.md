@@ -9,6 +9,8 @@ con licenza verificata alla fonte, e in `cmake/Dependencies.cmake` con versione 
 |-------------|----------|--------------|----------------|------|
 | GoogleTest  | 1.17.0   | BSD-3-Clause | solo test      | FetchContent, hash fissato |
 | zlib        | 1.3.1    | Zlib         | motore + test  | FetchContent, hash fissato; compilato da `cmake/Dependencies.cmake` come target proprio (`capriole::zlib`, niente CMake di zlib), stessa versione in nativo e WASM |
+| Blend2D     | commit `58ca9460b413` (2026-09-05) | Zlib | motore (rendering) | FetchContent, hash fissato; statico; JIT solo nelle build native di rilascio (ADR 0002) |
+| AsmJit      | commit `0d7f01052f2d` (2026-09-22) | Zlib | dentro Blend2D | FetchContent, hash fissato; compilato da Blend2D (JIT delle pipeline) |
 
 ## Previste (da verificare all'aggiunta)
 
@@ -19,7 +21,6 @@ con licenza verificata alla fonte, e in `cmake/Dependencies.cmake` con versione 
 | FreeType        | FTL (BSD-like)        | 6    | font — **scegliere FTL, non GPLv2** (doppia licenza) |
 | HarfBuzz        | MIT ("Old MIT")       | 8    | shaping del testo inserito |
 | Little CMS      | MIT                   | 6    | ICC |
-| Skia / Blend2D  | BSD-3 / Zlib          | 6    | rasterizzazione — decisione aperta |
 | mbedTLS o OpenSSL 3 | Apache-2.0        | 8    | PAdES (X.509, CMS, RSA/ECDSA) — aggiunta alla spec §4.2 all'avvio |
 
 Implementazione propria (nessuna libreria compatibile): JBIG2 (jbig2dec è AGPL), CCITT Fax,

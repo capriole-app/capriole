@@ -7,7 +7,10 @@ add_library(capriole_engine STATIC
   src/crypto/hash.cpp
   src/crypto/security_handler.cpp
   src/document/document.cpp
+  src/graphics/dash.cpp
   src/graphics/svg.cpp
+  src/render/png.cpp
+  src/render/raster.cpp
   src/filters/basic.cpp
   src/filters/decode.cpp
   src/filters/flate.cpp
@@ -37,7 +40,7 @@ target_include_directories(capriole_engine PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
 target_compile_features(capriole_engine PUBLIC cxx_std_23)
-target_link_libraries(capriole_engine PRIVATE capriole::zlib)
+target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d)
 capriole_set_warnings(capriole_engine)
 
 configure_file(src/core/version_config.hpp.in include/capriole/core/version_config.hpp @ONLY)

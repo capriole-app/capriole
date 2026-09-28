@@ -1,4 +1,5 @@
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
@@ -21,6 +22,7 @@
 #include "capriole/document/document.hpp"
 #include "capriole/graphics/svg.hpp"
 #include "capriole/parser/header.hpp"
+#include "capriole/render/raster.hpp"
 #include "capriole/repair/repair.hpp"
 #include "capriole/writer/byte_sink.hpp"
 #include "capriole/writer/save.hpp"
@@ -398,6 +400,49 @@ capriole_status capriole_document_page_preview_json(capriole_document* document,
     capriole::capi::append_json_string(out, capriole::graphics::to_svg(*list));
     out += '}';
     return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_render(capriole_document* document, uint32_t page_index, double dpi, uint8_t** rgba, uint32_t* width, uint32_t* height) {
+  g_last_error.clear();
+  if (document == nullptr || rgba == nullptr || width == nullptr || height == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  *rgba = nullptr;
+  *width = 0;
+  *height = 0;
+  if (!(dpi > 0) || !std::isfinite(dpi)) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "dpi must be a positive number");
+  }
+  try {
+    auto& doc = document->document;
+    auto pages = doc.page_refs();
+    if (!pages) {
+      return fail(pages.error());
+    }
+    if (page_index >= pages->size()) {
+      return fail(CAPRIOLE_ERROR_OUT_OF_RANGE, std::format("page index {} out of 0..{}", page_index, pages->size()));
+    }
+    auto list = capriole::content::interpret_page(doc, (*pages)[page_index]);
+    if (!list) {
+      return fail(list.error());
+    }
+    // Tighter than the engine's default: in a browser the bitmap and Blend2D's own copy share one heap.
+    capriole::render::RenderLimits limits;
+    limits.max_pixels = 50'000'000;
+    auto bitmap = capriole::render::rasterize(*list, dpi / 72, limits);
+    if (!bitmap) {
+      return fail(bitmap.error());
+    }
+    std::size_t size = 0;
+    const capriole_status status = hand_over(std::as_bytes(std::span(bitmap->rgba)), rgba, &size);
+    if (status == CAPRIOLE_OK) {
+      *width = static_cast<uint32_t>(bitmap->width);
+      *height = static_cast<uint32_t>(bitmap->height);
+    }
+    return status;
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

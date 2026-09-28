@@ -112,6 +112,21 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         value: takeJson(m, (out) => m._capriole_document_page_preview_json(requireDocument(), request.index, out)),
         transfer: [],
       };
+    case 'pageRender': {
+      const document = requireDocument();
+      const raster = withScratch(m, 12, (out) => {
+        check(m, m._capriole_document_page_render(document, request.index, request.dpi, out, out + 4, out + 8));
+        const pointer = m.HEAPU32[out >> 2]!;
+        const width = m.HEAPU32[(out >> 2) + 1]!;
+        const height = m.HEAPU32[(out >> 2) + 2]!;
+        try {
+          return { width, height, pixels: m.HEAPU8.slice(pointer, pointer + width * height * 4).buffer };
+        } finally {
+          m._capriole_free(pointer);
+        }
+      });
+      return { value: raster, transfer: [raster.pixels] };
+    }
     case 'stream': {
       const data = takeBytes(m, (outData, outSize) =>
         m._capriole_document_stream_data(requireDocument(), request.number, request.decoded ? 1 : 0, outData, outSize),

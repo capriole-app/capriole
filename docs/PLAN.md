@@ -113,12 +113,17 @@ Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/ob
   diverso dai riferimenti; i 4 restanti sono violazioni della specifica verificate a mano;
 - UNSAFE-DOCS: **0 crash, 0 timeout** su 2.490 file (x002: 100% dei file sani aperti; x008: 98,17%) ✅;
 - fuzzing di 24 h: in locale, a bassa intensità, con `scripts/fuzz_local.sh start 24` (1 core, 1,5 GB,
-  nice 19, I/O idle; unità systemd utente `capriole-fuzz`). Prima esecuzione (dal 2026-09-26 21:10)
+  nice 19, I/O idle; unità systemd utente `capriole-fuzz`). **Conclusa il 2026-09-28: 7 target,
+  ~28 h, 0 problemi** (filters 378 M esecuzioni, header 6,1 G, lexer 286 M, object 380 M, security
+  4 M — lento per costruzione, derivazione delle chiavi —, serialize 63 M, xref 14 M). Dettaglio:
+  prima esecuzione (dal 2026-09-26 21:10)
   interrotta dopo ~13,8 h da un esaurimento di memoria **dell'intera macchina** (non del fuzzer, 423 MB
   sotto il suo tetto): `filters`, `header`, `lexer` completati, 4 h ciascuno, **0 problemi**; archivio
   in `CORPORA/reports/fuzz-campaign-20260926-partial/`. Ripresa il 2026-09-27 11:22 sui target mancanti
   (`object`, `security`, `xref`, più il nuovo `serialize`, 4 h ciascuno) con
-  `fuzz_local.sh start 16 object security xref serialize`. Esito da registrare qui.
+  `fuzz_local.sh start 16 object security xref serialize`; archivio in
+  `CORPORA/reports/fuzz-campaign-20260927-resumed/`. A seguire, 6 h su `content` e `render` (i fuzzer
+  della fase 6).
 
 ## Fase 3 — Writer (~2 settimane)
 
@@ -361,10 +366,32 @@ x002 restanti sono troncati in modo grave.
 
 Passi: **6a** parser dei content stream ✅ · **6b** interprete (stato grafico, CTM, tracciati,
 clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore) ✅ · **6c** prototipo
-Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → decisione ❓ (prototipo fatto,
-[ADR 0002](adr/0002-rasterizzatore.md): raccomandato Blend2D, in attesa di decisione) · **6d** rendering
-e confronto pixel con mutool/pdftoppm, anteprima nell'Inspector · poi font, immagini, trasparenza,
-shading.
+Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **Blend2D** ✅
+([ADR 0002](adr/0002-rasterizzatore.md)) · **6d** rendering con Blend2D nel motore, confronto
+pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** 🔜 i 4 modi di fusione non separabili,
+gruppi di trasparenza e soft mask · poi font, immagini, shading, annotazioni.
+
+**6d (2026-09-28):** Blend2D e AsmJit come dipendenze fissate (FetchContent, SHA-256, `SYSTEM`: i loro
+header non passano per i nostri `-Werror`); JIT solo nelle build native di rilascio, senza JIT in WASM,
+sanitizer e fuzzing. `render/rasterize`: la lista di comandi → bitmap RGBA su pagina bianca, con quello
+che a Blend2D manca fatto da noi: clip su tracciati (livello + maschera A8 composta al `Q`; rettangoli
+allineati con il clip nativo; oltre `max_layers` si ripiega sul riquadro), trattini (`graphics/dash`:
+curve appiattite, schema che riparte a ogni sottotracciato, tetto ai segmenti), linee mai più sottili di
+un pixel (come i lettori di riferimento). Limiti su pixel, lato, livelli e trattini; il runtime di
+Blend2D inizializzato esplicitamente (in WASM il linker lo toglieva: crash alla prima allocazione).
+`render/encode_png` (zlib, filtro Up). `cpdf render [--dpi N] file pagina out.png`, API C
+`capriole_document_page_render` (RGBA, tetto 50 Mpixel), e nell'Inspector il selettore
+**vettoriale / raster** (canvas, dpi secondo zoom e densità dello schermo). `fuzz_render` ora disegna
+anche ogni pagina a 18 dpi, con l'invariante "bitmap opaca delle dimensioni giuste" (2 min, ~156.000
+esecuzioni, pulito). Modulo WASM: 1,80 MB, **625 KB gzip** (motore con interprete e rasterizzatore).
+Sul corpus SafeDocs (prime 3 pagine di ogni file, build ASan, 72 dpi): **2.232 pagine disegnate, 0
+crash, 0 timeout** (le 12 non disegnate sono i 4 file già noti che non si aprono: un file con password,
+due non-PDF, un albero delle pagine illeggibile). In release le pagine più pesanti (100.000–193.000
+comandi, 2.600 clip) si disegnano in 0,2–0,7 s. Confronto pixel con pdftoppm sulle pagine solo
+vettoriali (dove il confronto ha senso finché testo e immagini non ci sono): mediana 0,8% di pixel
+diversi (> 32), 6 su 10 sotto l'1%; il massimo (5%) sono tratteggi di linee sottilissime che noi portiamo
+a un pixel pieno e Poppler disegna più chiare — da tarare (alpha proporzionale allo spessore) insieme alla
+regola delle linee sottili.
 
 **6b (2026-09-27):** `content/interpret_page` → `graphics::DisplayList`: stato grafico e sua pila
 (q/Q, cm, stili di linea, ExtGState: spessori, trattini, alpha, font), tracciati, pittura e clipping
@@ -439,7 +466,7 @@ workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri)
 | Decisione | Blocca | Nota |
 |---|---|---|
 | Licenza di Capriole | pubblicazione, OSS-Fuzz, contributi | proposta da discutere: Apache-2.0 o MPL-2.0 |
-| Skia vs Blend2D | fase 6 | prototipo fatto: ADR 0002 raccomanda Blend2D (WASM 3–5× più veloce, metà peso, build dai sorgenti) |
+| ~~Skia vs Blend2D~~ | fase 6 | **deciso: Blend2D** (ADR 0002) |
 | JBIG2 / CCITT con licenza compatibile | fase 6 | implementazione propria |
 | Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |
 | Firma qualificata nel browser | fase 8 | smart card non accessibili dal web → desktop o firma remota |

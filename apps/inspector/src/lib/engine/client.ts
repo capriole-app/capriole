@@ -1,5 +1,5 @@
 // The page's side of the engine worker: one promise per request.
-import type { ObjectInfo, PageContent, PagePreview, Request, Response, Summary } from './types';
+import type { ObjectInfo, PageContent, PagePreview, PageRaster, Request, Response, Summary } from './types';
 
 export class EngineError extends Error {
   constructor(
@@ -61,6 +61,11 @@ export class EngineClient {
   /** Page `index` (0-based) interpreted and drawn as SVG. */
   pagePreview(index: number): Promise<PagePreview> {
     return this.#call({ kind: 'pagePreview', index });
+  }
+
+  /** Page `index` (0-based) drawn by the engine's rasterizer at `dpi` dots per inch. */
+  pageRender(index: number, dpi: number): Promise<PageRaster> {
+    return this.#call({ kind: 'pageRender', index, dpi });
   }
 
   stream(number: number, decoded: boolean): Promise<ArrayBuffer> {

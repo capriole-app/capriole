@@ -31,6 +31,8 @@
 #include "capriole/parser/lexer.hpp"
 #include "capriole/parser/object_parser.hpp"
 #include "capriole/parser/xref.hpp"
+#include "capriole/render/png.hpp"
+#include "capriole/render/raster.hpp"
 #include "capriole/writer/byte_sink.hpp"
 #include "capriole/writer/save.hpp"
 #include "capriole/writer/serializer.hpp"
@@ -57,9 +59,10 @@ void print_usage() {
                "  stream <file> <number>\n"
                "                  write the decoded data of a stream object to stdout\n"
                "  pages <file>    print the page count and the page object references\n"
-               "  render <file> <page> <output.svg>\n"
-               "                  interpret a page and write its vector preview (text approximated,\n"
-               "                  images as placeholders); prints what was drawn and the warnings\n"
+               "  render [--dpi N] <file> <page> <output.svg|output.png>\n"
+               "                  interpret a page and write its vector preview (.svg) or draw it (.png,\n"
+               "                  at N dpi, default 150); text approximated, images as placeholders;\n"
+               "                  prints what was drawn and the warnings\n"
                "  content <file> <page>\n"
                "                  print the operations of a page's content stream (page from 1)\n"
                "  save [--incremental] [--moddate D:...] <file> <output>\n"
@@ -369,7 +372,7 @@ int cmd_content(std::string_view path, std::uint64_t page_number) {
   return kExitOk;
 }
 
-int cmd_render(std::string_view path, std::uint64_t page_number, std::string_view output) {
+int cmd_render(std::string_view path, std::uint64_t page_number, std::string_view output, double dpi) {
   auto document = open_document(path);
   if (!document) {
     return fail(path, document.error());
@@ -392,7 +395,20 @@ int cmd_render(std::string_view path, std::uint64_t page_number, std::string_vie
     ++counts[kNames.at(command.index())];
   }
   std::ofstream file{std::string(output), std::ios::binary};
-  file << capriole::graphics::to_svg(*list);
+  if (output.ends_with(".png")) {
+    auto bitmap = capriole::render::rasterize(*list, dpi / 72);
+    if (!bitmap) {
+      return fail(path, bitmap.error());
+    }
+    auto png = capriole::render::encode_png(*bitmap);
+    if (!png) {
+      return fail(path, png.error());
+    }
+    file.write(reinterpret_cast<const char*>(png->data()), static_cast<std::streamsize>(png->size()));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    std::cout << std::format("{} x {} pixels at {} dpi\n", bitmap->width, bitmap->height, dpi);
+  } else {
+    file << capriole::graphics::to_svg(*list);
+  }
   if (!file) {
     std::cerr << std::format("cpdf: cannot write {}\n", output);
     return kExitFailure;
@@ -515,9 +531,11 @@ int run(std::span<char*> args) {
   if (command == "pages" && args.size() == 3) {
     return cmd_pages(args[2]);
   }
-  if (command == "render" && args.size() == 5) {
-    if (const auto page = parse_uint(args[3])) {
-      return cmd_render(args[2], *page, args[4]);
+  if (command == "render" && (args.size() == 5 || (args.size() == 7 && std::string_view(args[2]) == "--dpi"))) {
+    const std::size_t i = args.size() == 7 ? 4 : 2;
+    const auto dpi = args.size() == 7 ? parse_uint(args[3]) : std::optional<std::uint64_t>(150);
+    if (const auto page = parse_uint(args[i + 1]); page && dpi && *dpi > 0 && *dpi <= 4800) {
+      return cmd_render(args[i], *page, args[i + 2], static_cast<double>(*dpi));
     }
   }
   if (command == "content" && args.size() == 4) {

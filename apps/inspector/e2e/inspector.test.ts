@@ -49,6 +49,22 @@ test('opens a PDF and walks from the page to its content stream', async ({ page 
   await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
   await expect(page.getByText(/1 testi/)).toBeVisible();
 
+  // The same page through the engine's rasterizer: its pixels on a canvas, an opaque white page with
+  // the page's proportions (612 x 792 pt).
+  await page.getByRole('button', { name: 'raster' }).click();
+  const raster = page.getByRole('img', { name: 'Anteprima raster della pagina 1' });
+  await expect(raster).toBeVisible();
+  const painted = () =>
+    raster.locator('canvas').evaluate((canvas: HTMLCanvasElement) => {
+      const context = canvas.getContext('2d');
+      if (!context || canvas.width === 0) return null;
+      const [r, g, b, a] = context.getImageData(1, 1, 1, 1).data;
+      return { ratio: Math.round((canvas.height / canvas.width) * 100), pixel: [r, g, b, a] };
+    });
+  await expect.poll(painted).toEqual({ ratio: 129, pixel: [255, 255, 255, 255] });
+  await page.getByRole('button', { name: 'vettoriale' }).click();
+  await expect(preview).toBeVisible();
+
   // The page's content stream, as operations.
   await expect(page.getByRole('heading', { name: 'Contenuto della pagina 1' })).toBeVisible();
   await expect(page.getByText('3 operazioni')).toBeVisible();

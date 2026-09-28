@@ -1,6 +1,6 @@
 # ADR 0002 — Rasterizzatore: Skia o Blend2D
 
-Data: 2026-09-27 · Stato: **proposta, in attesa di decisione**
+Data: 2026-09-27 · Stato: **accettata** (2026-09-28)
 
 ## Contesto
 
@@ -80,4 +80,9 @@ passaggio a Skia non tocca l'interprete.
 
 ## Decisione
 
-*(da prendere)*
+**Blend2D** (2026-09-28), dai sorgenti con FetchContent e SHA fissato, con le integrazioni elencate
+sopra a nostro carico: clip su tracciati con maschere (e scorciatoia per i rettangoli), trattini, i 4
+modi di fusione non separabili, gruppi e soft mask sul nostro sistema di livelli. JIT (AsmJit) nelle
+build native di rilascio; senza JIT in WASM e nelle build con sanitizer e fuzzing, dove le pipeline di
+riferimento in C++ sono controllabili. L'interfaccia verso il rasterizzatore resta separata
+dall'interprete.

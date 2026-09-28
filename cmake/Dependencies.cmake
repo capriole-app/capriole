@@ -35,6 +35,34 @@ add_library(capriole::zlib ALIAS capriole_zlib)
 target_include_directories(capriole_zlib SYSTEM PUBLIC ${zlib_SOURCE_DIR})
 set_target_properties(capriole_zlib PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON)
 
+# Blend2D (2D rasterizer, ADR 0002) + AsmJit (its JIT) — both Zlib license, pinned commits.
+# AsmJit is only fetched: Blend2D compiles it into itself from ASMJIT_DIR. The JIT runs in native release
+# builds; WebAssembly cannot generate code, and in sanitizer and fuzz builds the reference pipelines
+# (plain C++) are what the tools can check, so there Blend2D is built without it.
+FetchContent_Declare(asmjit
+  URL https://github.com/asmjit/asmjit/archive/0d7f01052f2d3f6d6b9bb6714ef32bd7b80177eb.tar.gz
+  URL_HASH SHA256=955a378fac217f0e9a57e61d55d869fffa21f3217e361d9402c5251bf91e1faa
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_SUBDIR do-not-add-asmjit-cmake)
+FetchContent_MakeAvailable(asmjit)
+FetchContent_Declare(blend2d
+  URL https://github.com/blend2d/blend2d/archive/58ca9460b4138af6e793184682e9324e0a8053b2.tar.gz
+  URL_HASH SHA256=b7887f581dc1340ce4c7198a4ccc96c79fd832fe099367db065c3b9ff5dfffd8
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  EXCLUDE_FROM_ALL
+  SYSTEM)  # its headers must not trip our warning flags
+set(ASMJIT_DIR "${asmjit_SOURCE_DIR}" CACHE PATH "" FORCE)
+set(BLEND2D_STATIC ON CACHE BOOL "" FORCE)
+set(BLEND2D_NO_INSTALL ON CACHE BOOL "" FORCE)
+set(BLEND2D_TEST OFF CACHE BOOL "" FORCE)
+set(BLEND2D_DEMOS OFF CACHE BOOL "" FORCE)
+if(EMSCRIPTEN OR CAPRIOLE_SANITIZERS OR CAPRIOLE_BUILD_FUZZERS)
+  set(BLEND2D_NO_JIT ON CACHE BOOL "" FORCE)
+else()
+  set(BLEND2D_NO_JIT OFF CACHE BOOL "" FORCE)
+endif()
+FetchContent_MakeAvailable(blend2d)
+
 if(CAPRIOLE_BUILD_TESTS)
   # GoogleTest 1.17.0 — BSD-3-Clause. Test-only, never linked into the engine.
   FetchContent_Declare(googletest

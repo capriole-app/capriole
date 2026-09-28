@@ -1,0 +1,210 @@
+#include <gtest/gtest.h>
+
+#include <array>
+#include <cstdint>
+#include <vector>
+
+#include "capriole/graphics/dash.hpp"
+#include "capriole/render/raster.hpp"
+
+namespace capriole::render {
+namespace {
+
+using namespace capriole::graphics;
+
+Path rect(double x, double y, double w, double h) {
+  Path p;
+  p.move_to({x, y});
+  p.line_to({x + w, y});
+  p.line_to({x + w, y + h});
+  p.line_to({x, y + h});
+  p.close();
+  return p;
+}
+
+// A circle of four cubics (the usual 0.5523 control distance).
+Path circle(double cx, double cy, double r) {
+  const double k = 0.5523 * r;
+  Path p;
+  p.move_to({cx + r, cy});
+  p.cubic_to({cx + r, cy + k}, {cx + k, cy + r}, {cx, cy + r});
+  p.cubic_to({cx - k, cy + r}, {cx - r, cy + k}, {cx - r, cy});
+  p.cubic_to({cx - r, cy - k}, {cx - k, cy - r}, {cx, cy - r});
+  p.cubic_to({cx + k, cy - r}, {cx + r, cy - k}, {cx + r, cy});
+  p.close();
+  return p;
+}
+
+DisplayList page(double w, double h) {
+  DisplayList list;
+  list.media_box = list.crop_box = Rect{0, 0, w, h};
+  list.colors = {Color{.family = ColorSpaceFamily::kRGB, .components = {1, 0, 0}, .pattern = {}, .rgb = {1, 0, 0}},
+                 Color{.family = ColorSpaceFamily::kRGB, .components = {0, 0, 1}, .pattern = {}, .rgb = {0, 0, 1}},
+                 Color{.family = ColorSpaceFamily::kGray, .components = {0}, .pattern = {}, .rgb = {0, 0, 0}}};
+  list.styles = {StrokeStyle{}};
+  return list;
+}
+
+constexpr ColorIndex kRed = 0;
+constexpr ColorIndex kBlue = 1;
+constexpr ColorIndex kBlack = 2;
+
+// The pixel at page coordinates (x, y) — the bitmap grows downwards, the page upwards.
+std::array<std::uint8_t, 4> at(const Bitmap& b, double x, double y) {
+  const int col = static_cast<int>(x);
+  const int row = b.height - 1 - static_cast<int>(y);
+  const std::size_t i = (static_cast<std::size_t>(row) * static_cast<std::size_t>(b.width) + static_cast<std::size_t>(col)) * 4;
+  return {b.rgba[i], b.rgba[i + 1], b.rgba[i + 2], b.rgba[i + 3]};
+}
+
+constexpr std::array<std::uint8_t, 4> kWhite{255, 255, 255, 255};
+constexpr std::array<std::uint8_t, 4> kRedPixel{255, 0, 0, 255};
+constexpr std::array<std::uint8_t, 4> kBluePixel{0, 0, 255, 255};
+
+Bitmap render(const DisplayList& list, double scale = 1) {
+  auto bitmap = rasterize(list, scale);
+  EXPECT_TRUE(bitmap.has_value()) << (bitmap ? "" : bitmap.error().message);
+  return bitmap ? std::move(*bitmap) : Bitmap{};
+}
+
+TEST(Raster, FillsWithThePageUpsideUp) {
+  DisplayList list = page(100, 50);
+  list.commands.emplace_back(FillPath{.path = rect(10, 10, 20, 20), .ctm = {}, .rule = FillRule::kNonZero, .color = kRed, .alpha = 1});
+  const Bitmap b = render(list);
+  EXPECT_EQ(b.width, 100);
+  EXPECT_EQ(b.height, 50);
+  EXPECT_EQ(at(b, 20, 20), kRedPixel);
+  EXPECT_EQ(at(b, 20, 40), kWhite);  // above the square on the page
+  EXPECT_EQ(at(b, 5, 5), kWhite);
+}
+
+TEST(Raster, EvenOddLeavesTheHole) {
+  DisplayList list = page(100, 100);
+  Path ring = rect(0, 0, 100, 100);
+  ring.move_to({25, 25});
+  ring.line_to({75, 25});
+  ring.line_to({75, 75});
+  ring.line_to({25, 75});
+  ring.close();
+  list.commands.emplace_back(FillPath{.path = ring, .ctm = {}, .rule = FillRule::kEvenOdd, .color = kBlue, .alpha = 1});
+  const Bitmap b = render(list);
+  EXPECT_EQ(at(b, 50, 50), kWhite);
+  EXPECT_EQ(at(b, 10, 10), kBluePixel);
+}
+
+TEST(Raster, ClipToACurveAndToARectangle) {
+  DisplayList list = page(100, 100);
+  list.commands.emplace_back(Save{});
+  list.commands.emplace_back(ClipPath{.path = circle(50, 50, 30), .ctm = {}, .rule = FillRule::kNonZero});  // a mask layer
+  list.commands.emplace_back(FillPath{.path = rect(0, 0, 100, 100), .ctm = {}, .rule = FillRule::kNonZero, .color = kBlue, .alpha = 1});
+  list.commands.emplace_back(Restore{});
+  list.commands.emplace_back(Save{});
+  list.commands.emplace_back(ClipPath{.path = rect(0, 0, 10, 10), .ctm = {}, .rule = FillRule::kNonZero});  // a native rectangle clip
+  list.commands.emplace_back(FillPath{.path = rect(0, 0, 100, 100), .ctm = {}, .rule = FillRule::kNonZero, .color = kRed, .alpha = 1});
+  list.commands.emplace_back(Restore{});
+  const Bitmap b = render(list);
+  EXPECT_EQ(at(b, 50, 50), kBluePixel);  // inside the circle
+  EXPECT_EQ(at(b, 90, 90), kWhite);      // outside it: the corner
+  EXPECT_EQ(at(b, 5, 5), kRedPixel);     // inside the rectangle clip
+  EXPECT_EQ(at(b, 15, 50), kWhite);      // outside both
+}
+
+TEST(Raster, ClipEndsWithItsState) {
+  DisplayList list = page(100, 100);
+  list.commands.emplace_back(Save{});
+  list.commands.emplace_back(ClipPath{.path = circle(20, 20, 10), .ctm = {}, .rule = FillRule::kNonZero});
+  list.commands.emplace_back(Restore{});
+  list.commands.emplace_back(FillPath{.path = rect(60, 60, 20, 20), .ctm = {}, .rule = FillRule::kNonZero, .color = kRed, .alpha = 1});
+  EXPECT_EQ(at(render(list), 70, 70), kRedPixel);
+}
+
+TEST(Raster, AlphaBlendsOverTheWhitePage) {
+  DisplayList list = page(20, 20);
+  list.commands.emplace_back(FillPath{.path = rect(0, 0, 20, 20), .ctm = {}, .rule = FillRule::kNonZero, .color = kBlack, .alpha = 0.5});
+  const auto pixel = at(render(list), 10, 10);
+  EXPECT_NEAR(pixel[0], 128, 2);
+  EXPECT_EQ(pixel[3], 255);
+}
+
+TEST(Raster, ThinLinesStayVisibleAndDashesLeaveGaps) {
+  DisplayList list = page(100, 40);
+  Path line;
+  line.move_to({0, 10.5});
+  line.line_to({100, 10.5});
+  list.commands.emplace_back(StrokePath{.path = line, .ctm = {}, .style = 0, .color = kBlack, .alpha = 1});
+  StrokeStyle dashed;
+  dashed.width = 4;
+  dashed.dash = {10, 10};
+  list.styles.push_back(dashed);
+  Path top;
+  top.move_to({0, 30});
+  top.line_to({100, 30});
+  list.commands.emplace_back(StrokePath{.path = top, .ctm = Matrix::scale(1, 1), .style = 1, .color = kBlack, .alpha = 1});
+  // The thin line: width 1 at scale 0.1 would be a tenth of a pixel — drawn at one pixel instead.
+  const Bitmap b = render(list);
+  EXPECT_LT(at(b, 50, 10.5)[0], 128);
+  EXPECT_LT(at(b, 5, 30)[0], 64);    // a dash
+  EXPECT_EQ(at(b, 15, 30), kWhite);  // a gap
+  EXPECT_LT(at(b, 25, 30)[0], 64);   // the next dash
+  DisplayList thin = page(100, 40);
+  thin.styles[0].width = 0.1;
+  thin.commands.emplace_back(StrokePath{.path = line, .ctm = {}, .style = 0, .color = kBlack, .alpha = 1});
+  EXPECT_LT(at(render(thin), 50, 10.5)[0], 200);
+}
+
+TEST(Raster, RotatedPagesSwapTheirSides) {
+  DisplayList list = page(200, 100);
+  list.rotate = 90;
+  const Bitmap b = render(list, 0.5);
+  EXPECT_EQ(b.width, 50);
+  EXPECT_EQ(b.height, 100);
+}
+
+TEST(Raster, LimitsRefuseHugeBitmaps) {
+  DisplayList list = page(100000, 100000);
+  EXPECT_EQ(rasterize(list, 1).error().code, ErrorCode::kLimitExceeded);
+  EXPECT_EQ(rasterize(page(10, 10), 0).error().code, ErrorCode::kOutOfRange);
+  EXPECT_EQ(rasterize(page(10, 10), std::numeric_limits<double>::infinity()).error().code, ErrorCode::kOutOfRange);
+}
+
+// ── Dashes ──────────────────────────────────────────────────────────────────────────────────
+
+std::size_t subpaths(const Path& p) {
+  std::size_t n = 0;
+  for (const SegmentKind k : p.verbs()) {
+    n += k == SegmentKind::kMove ? 1 : 0;
+  }
+  return n;
+}
+
+TEST(Dash, SplitsALineByThePattern) {
+  Path line;
+  line.move_to({0, 0});
+  line.line_to({100, 0});
+  const std::vector<double> pattern{10, 5};
+  EXPECT_EQ(subpaths(dash_path(line, pattern, 0, 0.1).path), 7U);   // 0-10, 15-25, ..., 90-100
+  EXPECT_EQ(subpaths(dash_path(line, pattern, 12, 0.1).path), 7U);  // starts in a gap
+  const std::vector<double> odd{10};                                // odd: [10 10]
+  EXPECT_EQ(subpaths(dash_path(line, odd, 0, 0.1).path), 5U);
+  const std::vector<double> zeros{0, 0};
+  EXPECT_EQ(dash_path(line, zeros, 0, 0.1).path.size(), line.size());  // solid
+  const std::vector<double> negative{5, -1};
+  EXPECT_EQ(dash_path(line, negative, 0, 0.1).path.size(), line.size());
+}
+
+TEST(Dash, CurvesAndTooManyDashes) {
+  Path curve;
+  curve.move_to({0, 0});
+  curve.cubic_to({0, 50}, {100, 50}, {100, 0});
+  const std::vector<double> pattern{5, 5};
+  const DashedPath dashed = dash_path(curve, pattern, 0, 0.05);
+  EXPECT_GT(subpaths(dashed.path), 10U);
+  EXPECT_FALSE(dashed.too_many);
+  const std::vector<double> tiny{1e-6, 1e-6};
+  const DashedPath exploding = dash_path(curve, tiny, 0, 0.05, 1000);
+  EXPECT_TRUE(exploding.too_many);
+  EXPECT_EQ(exploding.path.size(), curve.size());  // solid rather than half-dashed
+}
+
+}  // namespace
+}  // namespace capriole::render

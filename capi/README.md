@@ -67,3 +67,8 @@ in snake_case (`unknown` for operators the standard does not define); `total` co
 
 `width` and `height` are in points, with /Rotate applied. The SVG is ASCII: text from the document is
 written as character references, so it cannot inject markup.
+
+`capriole_document_page_render` draws the same interpreted page with the engine's rasterizer (Blend2D,
+ADR 0002) at the requested dpi: `width` × `height` pixels of straight RGBA, rows top to bottom, on an
+opaque white page, released with `capriole_free`. Bitmaps above 50 million pixels are refused with
+`CAPRIOLE_ERROR_LIMIT_EXCEEDED` (A4 at 600 dpi is 35 million).

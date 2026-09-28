@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -147,6 +148,36 @@ TEST(CApiDocument, PagePreview) {
   EXPECT_NE(preview.find(R"("text":1})"), std::string::npos);
   EXPECT_NE(preview.find(R"("svg":"<svg xmlns=\"http://www.w3.org/2000/svg\")"), std::string::npos);
   EXPECT_EQ(capriole_document_page_preview_json(document, 5, &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  capriole_document_close(document);
+}
+
+TEST(CApiDocument, PageRender) {
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 50]/Contents 4 0 R>>");
+  b.add_stream(4, "1 0 0 rg 0 0 50 50 re f");
+  b.finish_table("/Size 5/Root 1 0 R");
+  capriole_document* document = open_document(b.str());
+  std::uint8_t* rgba = nullptr;
+  std::uint32_t width = 0;
+  std::uint32_t height = 0;
+  ASSERT_EQ(capriole_document_page_render(document, 0, 144, &rgba, &width, &height), CAPRIOLE_OK) << capriole_last_error_message();
+  ASSERT_NE(rgba, nullptr);
+  EXPECT_EQ(width, 200U);
+  EXPECT_EQ(height, 100U);
+  const std::span<const std::uint8_t> pixels(rgba, std::size_t{width} * height * 4);
+  const auto pixel = [&](std::uint32_t x, std::uint32_t y) { return pixels.subspan((std::size_t{y} * width + x) * 4, 4); };
+  EXPECT_EQ(pixel(20, 20)[0], 255);  // the red square, left half
+  EXPECT_EQ(pixel(20, 20)[1], 0);
+  EXPECT_EQ(pixel(150, 50)[1], 255);  // white page, right half
+  EXPECT_EQ(pixel(150, 50)[3], 255);
+  capriole_free(rgba);
+  EXPECT_EQ(capriole_document_page_render(document, 1, 72, &rgba, &width, &height), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(rgba, nullptr);
+  EXPECT_EQ(capriole_document_page_render(document, 0, 0, &rgba, &width, &height), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_page_render(document, 0, 1e6, &rgba, &width, &height), CAPRIOLE_ERROR_LIMIT_EXCEEDED);
+  EXPECT_EQ(capriole_document_page_render(document, 0, 72, nullptr, &width, &height), CAPRIOLE_ERROR_INVALID_ARGUMENT);
   capriole_document_close(document);
 }
 
