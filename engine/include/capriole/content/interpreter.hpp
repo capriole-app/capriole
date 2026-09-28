@@ -9,8 +9,9 @@
 // Lab; Separation and DeviceN approximated until PDF functions exist), text state and positioning with
 // the glyph widths of the font dictionary (simple fonts, and Type0 fonts with Identity CMaps), form
 // XObjects (matrix, bounding box clip, own resources, recursion bounded and cycle-safe), image
-// XObjects, inline images and shadings as placed commands. Decoding images, shadings, glyph outlines,
-// patterns and transparency groups belongs to the renderer phases.
+// XObjects, inline images and shadings as placed commands; transparency (§11): blend modes, soft masks
+// (their group drawn as commands between BeginSoftMask and EndSoftMask) and transparency groups.
+// Decoding images, shadings, glyph outlines and patterns belongs to the renderer phases.
 //
 // Content is read tolerantly, as viewers do: a malformed operation is skipped with a warning, never a
 // failure of the page. Only a page that cannot be reached at all is an error.

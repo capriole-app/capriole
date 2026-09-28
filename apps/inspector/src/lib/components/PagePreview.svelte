@@ -52,6 +52,8 @@
     text: 'testi',
     image: 'immagini',
     shading: 'sfumature',
+    group: 'gruppi di trasparenza',
+    soft_mask: 'soft mask',
   };
 </script>
 

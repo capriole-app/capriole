@@ -54,7 +54,10 @@ Entrambe al livello delle differenze di antialiasing fra motori. WASM dà pixel 
 - **Trattini**: le opzioni esistono ma lo stroker **non le applica** (verificato nel sorgente): un
   "dasher" nostro, ~200 righe (lunghezza d'arco, curve appiattite).
 - **4 modi di fusione non separabili** (Hue, Saturation, Color, Luminosity): per pixel sui livelli.
-  I 12 separabili ci sono.
+  I 12 separabili ci sono — **ma solo nelle pipeline JIT**: senza JIT (WASM, sanitizer, fuzzing)
+  dipingere con quegli operatori fallisce con "not implemented" e non disegna nulla (trovato in 6e da
+  un test che confronta con la formula). Il motore lo verifica una volta a runtime e, dove mancano,
+  compone con le formule proprie (`render/blend`), come per i non separabili.
 - **Gruppi di trasparenza e soft mask**: sul nostro sistema di livelli (con Skia sarebbe `saveLayer`).
 - Rischio: **un solo manutentore principale**, API pre-1.0 che cambia (rinominata in snake_case da
   poco). Mitigazione: commit fissato con SHA, aggiornamenti voluti, e l'interfaccia `RasterBackend`

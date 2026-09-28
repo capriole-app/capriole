@@ -60,7 +60,7 @@ in snake_case (`unknown` for operators the standard does not define); `total` co
 
 ```json
 {"page":0, "width":595.44, "height":842.4, "rotate":0,
- "commands":{"save":2,"restore":2,"clip":1,"fill":10,"stroke":4,"image":1,"shading":0,"text":12},
+ "commands":{"save":2,"restore":2,"clip":1,"fill":10,"stroke":4,"image":1,"shading":0,"text":12,"group":0,"soft_mask":0},
  "warnings":["font /Helvetica has no /Widths: text advances estimated", …],
  "svg":"<svg xmlns=… width=… height=…>…</svg>"}
 ```

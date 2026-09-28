@@ -8,7 +8,9 @@ add_library(capriole_engine STATIC
   src/crypto/security_handler.cpp
   src/document/document.cpp
   src/graphics/dash.cpp
+  src/graphics/display_list.cpp
   src/graphics/svg.cpp
+  src/render/blend.cpp
   src/render/png.cpp
   src/render/raster.cpp
   src/filters/basic.cpp

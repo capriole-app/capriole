@@ -379,10 +379,13 @@ capriole_status capriole_document_page_preview_json(capriole_document* document,
     if (!list) {
       return fail(list.error());
     }
-    constexpr std::array<std::string_view, 8> kKinds = {"save", "restore", "clip", "fill", "stroke", "image", "shading", "text"};
+    constexpr std::array<std::string_view, 10> kKinds = {"save", "restore", "clip", "fill", "stroke", "image", "shading", "text", "group", "soft_mask"};
     std::array<std::size_t, kKinds.size()> counts{};
     for (const auto& command : list->commands) {
-      ++counts.at(command.index());
+      const std::string_view kind = capriole::graphics::command_kind(command);
+      for (std::size_t i = 0; i < kKinds.size(); ++i) {
+        counts.at(i) += kKinds.at(i) == kind ? 1U : 0U;
+      }
     }
     const bool quarter = list->rotate == 90 || list->rotate == 270;
     std::string out =

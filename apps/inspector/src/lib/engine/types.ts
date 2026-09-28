@@ -80,7 +80,10 @@ export interface PagePreview {
   width: number;
   height: number;
   rotate: number;
-  commands: Record<'save' | 'restore' | 'clip' | 'fill' | 'stroke' | 'image' | 'shading' | 'text', number>;
+  commands: Record<
+    'save' | 'restore' | 'clip' | 'fill' | 'stroke' | 'image' | 'shading' | 'text' | 'group' | 'soft_mask',
+    number
+  >;
   warnings: string[];
   svg: string;
 }

@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -109,6 +110,38 @@ struct StrokeStyle {
   double dash_phase = 0;
 };
 
+// ── Transparency (§11) ──────────────────────────────────────────────────────────────────────
+
+// The standard blend modes (§11.3.5): the first twelve separable (per colour component), the last four
+// non-separable (on the colour as a whole). Compatible is Normal.
+enum class BlendMode : std::uint8_t {
+  kNormal,
+  kMultiply,
+  kScreen,
+  kOverlay,
+  kDarken,
+  kLighten,
+  kColorDodge,
+  kColorBurn,
+  kHardLight,
+  kSoftLight,
+  kDifference,
+  kExclusion,
+  kHue,
+  kSaturation,
+  kColor,
+  kLuminosity,
+};
+
+[[nodiscard]] constexpr bool is_separable(BlendMode mode) noexcept { return mode < BlendMode::kHue; }
+
+// The mode a /BM name gives; nullopt for a name that is not a blend mode (§11.6.3: a reader uses the
+// first mode it recognises in an array, Normal when none).
+[[nodiscard]] std::optional<BlendMode> blend_mode_named(std::string_view name) noexcept;
+
+// The PDF name of the mode (Multiply, ColorDodge, ...).
+[[nodiscard]] std::string_view blend_mode_name(BlendMode mode) noexcept;
+
 // ── Commands ────────────────────────────────────────────────────────────────────────────────
 
 struct Save {};
@@ -129,6 +162,7 @@ struct FillPath {
   Path path;
   Matrix ctm;
   FillRule rule = FillRule::kNonZero;
+  BlendMode blend = BlendMode::kNormal;
   ColorIndex color = 0;
   double alpha = 1;
 };
@@ -139,6 +173,7 @@ struct StrokePath {
   StyleIndex style = 0;
   ColorIndex color = 0;
   double alpha = 1;
+  BlendMode blend = BlendMode::kNormal;
 };
 
 // An image in the unit square of its CTM (§8.9.4). Decoding the samples is a later phase: the command
@@ -153,6 +188,7 @@ struct DrawImage {
   bool mask = false;     // an image mask (/ImageMask true): painted with the fill colour
   ColorIndex color = 0;  // the fill colour, for image masks
   double alpha = 1;
+  BlendMode blend = BlendMode::kNormal;
 };
 
 // A shading (sh, §8.7.4.2), painted over the current clip.
@@ -184,9 +220,34 @@ struct ShowText {
   ColorIndex fill = 0;
   ColorIndex stroke = 0;
   double alpha = 1;
+  BlendMode blend = BlendMode::kNormal;
   bool widths_known = false;  // false: the font gives no widths (e.g. a standard 14 font), advances are estimated
   bool latin_codes = false;   // the codes read as Latin text (a standard encoding); otherwise unknown until ToUnicode
 };
+
+// A transparency group (§11.4.7, a form XObject with /Group /S /Transparency): what is drawn up to the
+// matching EndGroup is composed on its own, then composited as one object with `alpha`, `blend` and the
+// soft mask in force at BeginGroup. Inside the group the alpha, blend mode and soft mask start again
+// from their initial values (§11.6.6).
+struct BeginGroup {
+  double alpha = 1;
+  BlendMode blend = BlendMode::kNormal;
+  bool isolated = false;
+  bool knockout = false;
+};
+struct EndGroup {};
+
+// A soft mask (§11.6.5, the /SMask of a graphics state): the commands up to the matching EndSoftMask
+// draw the mask's group — on transparent black for kAlpha, on the opaque `backdrop` colour for
+// kLuminosity — and then its alpha or luminosity becomes the mask. The mask applies to what is painted
+// after it until the saved state it was set in is restored, another mask is set, or ClearSoftMask.
+enum class SoftMaskKind : std::uint8_t { kAlpha, kLuminosity };
+struct BeginSoftMask {
+  SoftMaskKind kind = SoftMaskKind::kAlpha;
+  Rgb backdrop;
+};
+struct EndSoftMask {};
+struct ClearSoftMask {};
 
 // A value on the heap that copies like a value: the large, rarer commands are boxed so that they do not
 // set the size of every command (a variant is as large as its largest alternative, and most commands
@@ -213,7 +274,11 @@ class Boxed {
   std::unique_ptr<T> value_;
 };
 
-using Command = std::variant<Save, Restore, ClipPath, FillPath, StrokePath, Boxed<DrawImage>, Boxed<PaintShading>, Boxed<ShowText>>;
+using Command = std::variant<Save, Restore, ClipPath, FillPath, StrokePath, Boxed<DrawImage>, Boxed<PaintShading>, Boxed<ShowText>, BeginGroup, EndGroup,
+                             BeginSoftMask, EndSoftMask, ClearSoftMask>;
+
+// A short name for the kind of a command ("fill", "group", "soft_mask", "group_end", ...), for summaries.
+[[nodiscard]] std::string_view command_kind(const Command& command);
 
 template <typename T, typename Variant>
 struct IsAlternative;

@@ -2,11 +2,14 @@
 
 // Rendering a display list to pixels with Blend2D (ADR 0002). What Blend2D lacks is added here:
 // clipping to paths (a layer and an A8 mask, composited when the state is restored; axis-aligned
-// rectangles are clipped natively), dashes (graphics/dash), and the thin-line rule of the reference
-// readers (nothing thinner than one device pixel).
+// rectangles are clipped natively), dashes (graphics/dash), the thin-line rule of the reference
+// readers (nothing thinner than one device pixel), and transparency (§11): the separable blend modes
+// are Blend2D's; the non-separable ones, soft masks and transparency groups are layers composited here
+// with the formulas of render/blend. Groups are composed isolated (the same result as non-isolated
+// unless blend modes inside them act on the backdrop), knockout is not applied.
 //
 // Until the fonts and images steps: text runs are drawn as the boxes of their glyphs and images as
-// placeholders, as in the SVG preview. Shadings, patterns, blend modes and soft masks: not yet.
+// placeholders, as in the SVG preview. Shadings and patterns: not yet.
 
 #include <cstddef>
 #include <cstdint>
@@ -28,8 +31,11 @@ struct RenderLimits {
   // The bitmap: pages can declare any size, and a caller any resolution.
   std::int64_t max_pixels = 100'000'000;
   int max_side = 32'768;
-  // Clip layers alive at once; deeper clips fall back to their bounding box.
+  // Layers alive at once (clips, transparency groups, soft masks, paints composited by hand); past it
+  // clips fall back to their bounding box and groups are drawn straight onto what is below.
   std::size_t max_layers = 64;
+  // All layers alive together, in pages: their pixels are the memory rendering takes beyond the page.
+  double max_layer_area = 4;
   // Dashes per stroke (graphics/dash).
   std::size_t max_dash_segments = 1'000'000;
 };

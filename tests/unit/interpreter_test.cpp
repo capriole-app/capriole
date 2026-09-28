@@ -231,6 +231,61 @@ TEST(Interpreter, ImagesAndShadings) {
   EXPECT_EQ(all<graphics::PaintShading>(list).size(), 1U);
 }
 
+TEST(Interpreter, BlendModesSoftMasksAndGroups) {
+  const auto list =
+      interpret({.content = "/G1 gs 0 0 10 10 re f /G2 gs 0 0 10 10 re S q /M gs 0 0 5 5 re f Q /Fg Do /N gs",
+                 .resources = "/ExtGState<</G1<</BM/Multiply/ca 0.5>>/G2<</BM[/Foo/Screen]>>"
+                              "/M<</SMask<</S/Luminosity/G 12 0 R/BC[1]>>>>/N<</SMask/None>>>>/XObject<</Fg 13 0 R>>",
+                 .objects = {{12, "<</Subtype/Form/BBox[0 0 10 10]/Group<</S/Transparency/CS/DeviceGray>>/Length 18>>\nstream\n0.5 g 0 0 5 5 re f\nendstream"},
+                             {13, "<</Subtype/Form/BBox[0 0 10 10]/Group<</S/Transparency/I true/K true>>/Length 12>>\nstream\n0 0 3 3 re f\nendstream"}}});
+  const auto fills = all<graphics::FillPath>(list);
+  ASSERT_EQ(fills.size(), 4U);
+  EXPECT_EQ(fills[0].blend, graphics::BlendMode::kMultiply);
+  EXPECT_EQ(fills[0].alpha, 0.5);
+  // The mask's group is drawn in the initial state (only the CTM carries over).
+  EXPECT_EQ(fills[1].blend, graphics::BlendMode::kNormal);
+  EXPECT_EQ(fills[1].alpha, 1);
+  EXPECT_EQ(list.colors[fills[1].color].rgb, (graphics::Rgb{0.5, 0.5, 0.5}));
+  // Under the mask: the state of the page (the first known name of the /BM array).
+  EXPECT_EQ(fills[2].blend, graphics::BlendMode::kScreen);
+  EXPECT_EQ(all<graphics::StrokePath>(list)[0].blend, graphics::BlendMode::kScreen);
+  const auto masks = all<graphics::BeginSoftMask>(list);
+  ASSERT_EQ(masks.size(), 1U);
+  EXPECT_EQ(masks[0].kind, graphics::SoftMaskKind::kLuminosity);
+  EXPECT_EQ(masks[0].backdrop, (graphics::Rgb{1, 1, 1}));  // /BC in the group's DeviceGray
+  EXPECT_EQ(all<graphics::EndSoftMask>(list).size(), 1U);
+  // The transparency group: composited with the page's alpha and blend mode, which restart inside.
+  const auto groups = all<graphics::BeginGroup>(list);
+  ASSERT_EQ(groups.size(), 1U);  // the mask's own /Group is the mask, not a group on the page
+  EXPECT_EQ(groups[0].alpha, 0.5);
+  EXPECT_EQ(groups[0].blend, graphics::BlendMode::kScreen);
+  EXPECT_TRUE(groups[0].isolated);
+  EXPECT_TRUE(groups[0].knockout);
+  EXPECT_EQ(fills[3].alpha, 1);
+  EXPECT_EQ(fills[3].blend, graphics::BlendMode::kNormal);
+  EXPECT_EQ(all<graphics::EndGroup>(list).size(), 1U);
+  EXPECT_EQ(all<graphics::ClearSoftMask>(list).size(), 1U);
+  EXPECT_TRUE(has_warning(list, "knockout"));
+  EXPECT_TRUE(has_warning(list, "unknown blend mode") == false);
+
+  // The SVG: blend modes as mix-blend-mode, the mask as an SVG mask, the group with its opacity.
+  const std::string svg = graphics::to_svg(list);
+  EXPECT_NE(svg.find("mix-blend-mode:multiply"), std::string::npos);
+  EXPECT_NE(svg.find("mix-blend-mode:screen;isolation:isolate"), std::string::npos);
+  EXPECT_NE(svg.find(R"(style="mask-type:luminance")"), std::string::npos);
+  EXPECT_NE(svg.find(R"(mask="url(#m)"), std::string::npos);
+  EXPECT_NE(svg.find(R"(<g opacity="0.5")"), std::string::npos);
+  EXPECT_EQ(svg.find("<mask"), svg.rfind("<mask"));
+  EXPECT_NE(svg.find("</mask>"), std::string::npos);
+}
+
+TEST(Interpreter, SoftMaskWithoutAGroupIsIgnored) {
+  const auto list = interpret({.content = "/M gs 0 0 5 5 re f", .resources = "/ExtGState<</M<</SMask<</S/Alpha>>/BM/Nonsense>>>>"});
+  EXPECT_TRUE(all<graphics::BeginSoftMask>(list).empty());
+  EXPECT_TRUE(has_warning(list, "soft mask without"));
+  EXPECT_TRUE(has_warning(list, "unknown blend mode"));
+}
+
 TEST(Interpreter, MalformedOperationsAreSkippedWithAWarning) {
   const auto list = interpret({.content = "(x) w /A 1 2 3 cm 0 0 1 1 re foo f BX bar EX"});
   EXPECT_EQ(all<graphics::FillPath>(list).size(), 1U);

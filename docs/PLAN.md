@@ -368,8 +368,33 @@ Passi: **6a** parser dei content stream ✅ · **6b** interprete (stato grafico,
 clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore) ✅ · **6c** prototipo
 Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **Blend2D** ✅
 ([ADR 0002](adr/0002-rasterizzatore.md)) · **6d** rendering con Blend2D nel motore, confronto
-pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** 🔜 i 4 modi di fusione non separabili,
-gruppi di trasparenza e soft mask · poi font, immagini, shading, annotazioni.
+pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
+di trasparenza, soft mask ✅ · poi font, immagini, shading, annotazioni.
+
+**6e (2026-09-28):** nella lista dei comandi il modo di fusione di ogni pittura e i comandi
+`BeginGroup`/`EndGroup` (alpha, modo, isolato, knockout) e `BeginSoftMask`/`EndSoftMask`/`ClearSoftMask`
+(il gruppo della maschera come comandi, disegnato con la CTM del `gs` e per il resto lo stato iniziale;
+`/BC` nello spazio colore del gruppo). L'interprete legge `/BM` (nome o array: il primo noto) e `/SMask`
+dagli ExtGState, e le form con `/Group /S /Transparency` (dentro, alpha, modo e maschera ripartono dai
+valori iniziali, §11.6.6). `render/blend`: le 16 funzioni di fusione e la formula di composizione di
+§11.3, testate sui valori. Il rasterizzatore compone gruppi (livello proprio; un gruppo "semplice" —
+alpha 1, Normal, senza maschera, non isolato — si disegna direttamente, come vuole la specifica), soft
+mask (alpha o luminosità su un livello, poi A8 limitata al clip) e le pitture sotto maschera o con modo
+non separabile (livello del riquadro della pittura, composto pixel per pixel e rimesso attraverso il
+clip rettangolare). Limiti: livelli vivi e area totale dei livelli (4 pagine), oltre i quali si
+ripiega (clip al riquadro, gruppo disegnato direttamente). SVG: `mix-blend-mode`, gruppi con opacità e
+isolamento, `<mask>` di luminanza o alfa.
+**Trovati per strada:** (1) **senza JIT Blend2D non implementa i modi separabili** (WASM, sanitizer,
+fuzzing: la pittura fallisce e non disegna nulla) — un test che confronta con la formula l'ha scoperto;
+ora si verifica una volta a runtime e dove mancano compone il motore (nativo con JIT: entro 3/255 dalla
+formula, provato in release). (2) La pagina si compone su **fondo trasparente**, poi sulla carta bianca:
+un modo di fusione non agisce sul bianco della carta (Hue su "bianco" darebbe bianco) — lo mostrava il
+confronto con MuPDF e Poppler; ora sul seme di prova coincidiamo con Poppler entro 1/255 in ogni punto
+campionato. Il seme `fuzz/corpus/render/transparency.pdf` copre modi, maschere e gruppi; `fuzz_render`
+2 min, ~114.000 esecuzioni, pulito. SafeDocs: 141 pagine (87 file) con gruppi o soft mask, 2.232 pagine
+disegnate, 0 crash, 0 timeout. Non ancora: knockout (avviso), gruppi non isolati composti come isolati
+(uguali salvo modi di fusione all'interno), funzioni di trasferimento `/TR` delle maschere (avviso), e
+le maschere fatte di immagini aspettano il passo delle immagini. Modulo WASM 1,84 MB, 638 KB gzip.
 
 **6d (2026-09-28):** Blend2D e AsmJit come dipendenze fissate (FetchContent, SHA-256, `SYSTEM`: i loro
 header non passano per i nostri `-Werror`); JIT solo nelle build native di rilascio, senza JIT in WASM,

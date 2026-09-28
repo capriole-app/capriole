@@ -391,8 +391,7 @@ int cmd_render(std::string_view path, std::uint64_t page_number, std::string_vie
   }
   std::map<std::string_view, std::size_t> counts;
   for (const auto& command : list->commands) {
-    constexpr std::array<std::string_view, 8> kNames = {"save", "restore", "clip", "fill", "stroke", "image", "shading", "text"};
-    ++counts[kNames.at(command.index())];
+    ++counts[capriole::graphics::command_kind(command)];
   }
   std::ofstream file{std::string(output), std::ios::binary};
   if (output.ends_with(".png")) {

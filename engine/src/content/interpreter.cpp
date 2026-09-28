@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,8 +45,9 @@ struct GraphicsState {
   ColorSpace stroke_space;
   Color fill = detail::initial_color(ColorSpace{});
   Color stroke = detail::initial_color(ColorSpace{});
-  double fill_alpha = 1;    // ca
-  double stroke_alpha = 1;  // CA
+  double fill_alpha = 1;                                     // ca
+  double stroke_alpha = 1;                                   // CA
+  graphics::BlendMode blend = graphics::BlendMode::kNormal;  // BM
   // Text state (§9.3), part of the graphics state.
   double char_spacing = 0;  // Tc
   double word_spacing = 0;  // Tw
@@ -217,14 +219,19 @@ class Interpreter {
 
   void fill(graphics::FillRule rule) {
     if (!path_.empty()) {
-      emit(graphics::FillPath{.path = path_, .ctm = state_.ctm, .rule = rule, .color = intern(state_.fill, last_fill_), .alpha = state_.fill_alpha});
+      emit(graphics::FillPath{
+          .path = path_, .ctm = state_.ctm, .rule = rule, .blend = state_.blend, .color = intern(state_.fill, last_fill_), .alpha = state_.fill_alpha});
     }
   }
 
   void stroke() {
     if (!path_.empty()) {
-      emit(graphics::StrokePath{
-          .path = path_, .ctm = state_.ctm, .style = intern(state_.stroke_style), .color = intern(state_.stroke, last_stroke_), .alpha = state_.stroke_alpha});
+      emit(graphics::StrokePath{.path = path_,
+                                .ctm = state_.ctm,
+                                .style = intern(state_.stroke_style),
+                                .color = intern(state_.stroke, last_stroke_),
+                                .alpha = state_.stroke_alpha,
+                                .blend = state_.blend});
     }
   }
 
@@ -271,7 +278,7 @@ class Interpreter {
     (for_fill ? state_.fill_space : state_.stroke_space) = std::move(space);
   }
 
-  void set_ext_gstate(const Operation& op) {
+  void set_ext_gstate(const Operation& op, std::size_t form_depth) {
     const model::Name* name = last_name(op);
     if (name == nullptr) {
       return;
@@ -306,10 +313,78 @@ class Interpreter {
         state_.font_ref = font.as_ref();
         state_.font = std::make_shared<const TextFont>(detail::load_text_font(*document_, font, warnings_));
         state_.font_size = number((*value->as_array())[1]).value_or(0);
-      } else if ((key == "BM" && !value->is_name("Normal") && !value->is_name("Compatible")) || (key == "SMask" && !value->is_name("None"))) {
-        warnings_.add("blend modes and soft masks are not applied yet");
+      } else if (key == "BM") {
+        set_blend_mode(*value);
+      } else if (key == "SMask") {
+        set_soft_mask(*value, form_depth);
       }
     }
+  }
+
+  // /BM: a name, or an array of names of which the first known one counts (§11.6.3).
+  void set_blend_mode(const Object& value) {
+    const model::Array* names = value.as_array();
+    const std::span<const Object> candidates = names != nullptr ? std::span<const Object>(*names) : std::span<const Object>(&value, 1);
+    for (const Object& candidate : candidates) {
+      const model::Name* name = candidate.as_name();
+      if (const auto mode = name != nullptr ? graphics::blend_mode_named(name->bytes) : std::nullopt) {
+        state_.blend = *mode;
+        return;
+      }
+    }
+    warnings_.add("unknown blend mode: Normal used");
+    state_.blend = graphics::BlendMode::kNormal;
+  }
+
+  // /SMask (§11.6.5.2): /None, or a mask dictionary whose group /G is drawn, with the CTM in force now
+  // and otherwise the initial graphics state, into the mask the renderer applies from here on.
+  void set_soft_mask(const Object& value, std::size_t form_depth) {
+    if (value.is_name("None")) {
+      emit(graphics::ClearSoftMask{});
+      return;
+    }
+    const model::Dict* mask = value.as_dict();
+    const Object* subtype = mask != nullptr ? mask->find("S") : nullptr;
+    const Object* group = mask != nullptr ? mask->find("G") : nullptr;
+    if (subtype == nullptr || group == nullptr || (!subtype->is_name("Alpha") && !subtype->is_name("Luminosity"))) {
+      warnings_.add("soft mask without a valid /S and /G: ignored");
+      return;
+    }
+    auto form = document_->resolve(*group);
+    const model::Stream* stream = form ? form->as_stream() : nullptr;
+    if (stream == nullptr) {
+      warnings_.add("soft mask group /G is not a stream: ignored");
+      return;
+    }
+    graphics::BeginSoftMask begin{.kind = subtype->is_name("Luminosity") ? graphics::SoftMaskKind::kLuminosity : graphics::SoftMaskKind::kAlpha,
+                                  .backdrop = graphics::Rgb{}};
+    if (const Object* bc = mask->find("BC"); bc != nullptr && begin.kind == graphics::SoftMaskKind::kLuminosity) {
+      // The backdrop is in the group's colour space (/Group /CS); DeviceGray when it has none.
+      auto components = document_->resolve(*bc);
+      ColorSpace space;
+      if (auto attributes = stream->dict.find("Group") != nullptr ? document_->resolve(*stream->dict.find("Group")) : Result<Object>(Object());
+          attributes && attributes->as_dict() != nullptr && attributes->as_dict()->find("CS") != nullptr) {
+        space = detail::resolve_color_space(*document_, *attributes->as_dict()->find("CS"), resources_, warnings_);
+      }
+      std::vector<double> values;
+      if (components && components->as_array() != nullptr) {
+        for (const Object& component : *components->as_array()) {
+          values.push_back(number(component).value_or(0));
+        }
+      }
+      begin.backdrop = detail::make_color(space, values, {}, warnings_).rgb;
+    }
+    if (const Object* transfer = mask->find("TR"); transfer != nullptr && !transfer->is_name("Identity")) {
+      warnings_.add("soft mask transfer functions are not applied yet");
+    }
+    emit(begin);
+    save();
+    const Matrix ctm = state_.ctm;
+    state_ = GraphicsState{};
+    state_.ctm = ctm;
+    draw_form(group->as_ref(), *stream, form_depth, FormRole::kSoftMask);
+    restore();
+    emit(graphics::EndSoftMask{});
   }
 
   void set_dash(const Object& array, const Object& phase) {
@@ -372,6 +447,7 @@ class Interpreter {
     run.fill = intern(state_.fill, last_fill_);
     run.stroke = intern(state_.stroke, last_stroke_);
     run.alpha = state_.fill_alpha;
+    run.blend = state_.blend;
     run.widths_known = font.widths_known;
     run.latin_codes = font.latin_codes;
 
@@ -438,6 +514,7 @@ class Interpreter {
       image.mask = mask != nullptr && std::holds_alternative<bool>(mask->value()) && std::get<bool>(mask->value());
       image.color = intern(state_.fill, last_fill_);
       image.alpha = state_.fill_alpha;
+      image.blend = state_.blend;
       emit(graphics::Boxed<graphics::DrawImage>(std::move(image)));
       return;
     }
@@ -448,7 +525,11 @@ class Interpreter {
     warnings_.add("XObject /" + name->bytes + " of an unsupported kind: skipped");
   }
 
-  void draw_form(std::optional<model::ObjectRef> ref, const model::Stream& form, std::size_t form_depth) {
+  // A form drawn by Do, or as the group of a soft mask (whose group is the mask itself, not a group
+  // composited onto the page).
+  enum class FormRole : std::uint8_t { kDo, kSoftMask };
+
+  void draw_form(std::optional<model::ObjectRef> ref, const model::Stream& form, std::size_t form_depth, FormRole role = FormRole::kDo) {
     if (form_depth >= limits_->max_form_depth) {
       warnings_.add("form XObjects nested too deeply: skipped");
       return;
@@ -492,6 +573,28 @@ class Interpreter {
         emit(graphics::ClipPath{.path = std::move(box), .ctm = state_.ctm, .rule = graphics::FillRule::kNonZero});
       }
     }
+    // A transparency group (§11.6.6): composited as a whole with the alpha, blend mode and soft mask in
+    // force now; inside, those start again from their initial values.
+    bool group = false;
+    if (const Object* entry = form.dict.find("Group"); entry != nullptr && role == FormRole::kDo) {
+      auto attributes = document_->resolve(*entry);
+      const model::Dict* dict = attributes ? attributes->as_dict() : nullptr;
+      if (dict != nullptr && dict->find("S") != nullptr && dict->find("S")->is_name("Transparency")) {
+        const auto flag = [&](std::string_view key) {
+          const Object* value = dict->find(key);
+          return value != nullptr && std::holds_alternative<bool>(value->value()) && std::get<bool>(value->value());
+        };
+        const graphics::BeginGroup begin{.alpha = state_.fill_alpha, .blend = state_.blend, .isolated = flag("I"), .knockout = flag("K")};
+        if (begin.knockout) {
+          warnings_.add("knockout groups are drawn as ordinary groups");
+        }
+        emit(begin);
+        state_.fill_alpha = 1;
+        state_.stroke_alpha = 1;
+        state_.blend = graphics::BlendMode::kNormal;
+        group = true;
+      }
+    }
     const model::Dict* resources = resources_;
     std::optional<Object> own;
     if (const Object* entry = form.dict.find("Resources")) {
@@ -506,6 +609,9 @@ class Interpreter {
     run(*content, resources, form_depth + 1);
     path_ = saved_path;
     in_text_ = saved_in_text;
+    if (group) {
+      emit(graphics::EndGroup{});
+    }
     restore();
     if (ref) {
       active_forms_.erase(ref->number);
@@ -530,6 +636,7 @@ class Interpreter {
     image.mask = mask != nullptr && std::holds_alternative<bool>(mask->value()) && std::get<bool>(mask->value());
     image.color = intern(state_.fill, last_fill_);
     image.alpha = state_.fill_alpha;
+    image.blend = state_.blend;
     emit(graphics::Boxed<graphics::DrawImage>(std::move(image)));
   }
 
@@ -583,7 +690,7 @@ class Interpreter {
       case kSetFlatness:
         break;  // device details: no effect on the display list
       case kSetExtGState:
-        set_ext_gstate(op);
+        set_ext_gstate(op, form_depth);
         break;
       // Special graphics state
       case kSave:

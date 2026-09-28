@@ -54,6 +54,23 @@ std::string path_data(const Path& path) {
   return d;
 }
 
+// The CSS mix-blend-mode of a mode (CSS Compositing uses the formulas of §11.3.5): ColorDodge →
+// color-dodge.
+std::string blend_css(BlendMode mode) {
+  std::string css;
+  for (const char c : blend_mode_name(mode)) {
+    if (c >= 'A' && c <= 'Z') {
+      css += css.empty() ? "" : "-";
+      css += static_cast<char>(c - 'A' + 'a');
+    } else {
+      css += c;
+    }
+  }
+  return "mix-blend-mode:" + css;
+}
+
+std::string blend_style(BlendMode mode) { return mode == BlendMode::kNormal ? std::string() : " style=\"" + blend_css(mode) + "\""; }
+
 std::string opacity(std::string_view attribute, double alpha) {
   return alpha < 1 ? std::format(" {}=\"{}\"", attribute, num(std::max(alpha, 0.0))) : std::string();
 }
@@ -85,8 +102,10 @@ class Writer {
     out_ =
         std::format(R"(<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">)", num(out_w), num(out_h), num(out_w), num(out_h));
     out_ += R"(<rect width="100%" height="100%" fill="#ffffff"/>)";
-    out_ += "<g transform=\"" + matrix(page) + "\">";
-    open_.assign(1, 0);
+    // Isolated from the white page: blend modes act on the content, not on the paper.
+    out_ += "<g transform=\"" + matrix(page) + R"(" style="isolation:isolate">)";
+    open_.assign(1, {});
+    page_box_ = list.crop_box;
     std::size_t written = 0;
     for (const Command& command : list.commands) {
       if (written++ >= options_.max_commands) {
@@ -94,6 +113,9 @@ class Writer {
         break;
       }
       std::visit([this](const auto& c) { this->command(c); }, command);
+    }
+    while (!masks_.empty()) {
+      end_mask();
     }
     while (!open_.empty()) {
       close_groups();
@@ -114,16 +136,31 @@ class Writer {
   }
 
   void close_groups() {
-    for (int i = 0; i < open_.back(); ++i) {
+    for (std::size_t i = 0; i < open_.back().size(); ++i) {
       out_ += "</g>";
     }
-    open_.back() = 0;
+    open_.back().clear();
   }
 
-  void command(const Save& /*unused*/) { open_.push_back(0); }
+  void open_group(const std::string& attributes, bool mask = false) {
+    out_ += "<g" + attributes + ">";
+    open_.back().push_back(mask);
+  }
+
+  // A soft mask in force at this level ends where the next one starts or ClearSoftMask: its group can be
+  // closed when nothing was opened inside it since.
+  void close_mask_group() {
+    if (!open_.back().empty() && open_.back().back()) {
+      out_ += "</g>";
+      open_.back().pop_back();
+    }
+  }
+
+  void command(const Save& /*unused*/) { open_.emplace_back(); }
 
   void command(const Restore& /*unused*/) {
-    if (open_.size() > 1) {
+    // Never past the level a <mask> started at: its content is balanced.
+    if (open_.size() > 1 && (masks_.empty() || open_.size() > masks_.back().level + 1)) {
       close_groups();
       open_.pop_back();
     }
@@ -133,13 +170,61 @@ class Writer {
     const std::string id = std::format("c{}", next_id_++);
     out_ += "<clipPath id=\"" + id + "\"><path d=\"" + path_data(c.path) + "\" transform=\"" + matrix(c.ctm) + "\"" +
             (c.rule == FillRule::kEvenOdd ? " clip-rule=\"evenodd\"" : "") + "/></clipPath>";
-    out_ += "<g clip-path=\"url(#" + id + ")\">";
-    ++open_.back();
+    open_group(" clip-path=\"url(#" + id + ")\"");
   }
+
+  // A group: its opacity and blend mode apply to it as a whole, as in §11.4.7.
+  void command(const BeginGroup& c) {
+    std::string style = c.blend != BlendMode::kNormal ? blend_css(c.blend) : "";
+    if (c.isolated) {
+      style += (style.empty() ? "" : ";") + std::string("isolation:isolate");
+    }
+    open_group(opacity("opacity", c.alpha) + (style.empty() ? "" : " style=\"" + style + "\""));
+  }
+
+  void command(const EndGroup& /*unused*/) {}  // closed with the state that holds it
+
+  // The mask's group becomes an SVG <mask> (luminance over the backdrop colour, or alpha); what follows
+  // at this level is drawn through it.
+  void command(const BeginSoftMask& c) {
+    const std::string id = std::format("m{}", next_id_++);
+    const Rect r = page_box_;
+    out_ += std::format(R"(<mask id="{}" maskUnits="userSpaceOnUse" x="{}" y="{}" width="{}" height="{}" style="mask-type:{}">)", id, num(r.x0), num(r.y0),
+                        num(r.width()), num(r.height()), c.kind == SoftMaskKind::kLuminosity ? "luminance" : "alpha");
+    if (c.kind == SoftMaskKind::kLuminosity) {
+      out_ +=
+          std::format(R"(<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>)", num(r.x0), num(r.y0), num(r.width()), num(r.height()), color(c.backdrop));
+    }
+    masks_.push_back({.id = id, .level = open_.size()});
+    open_.emplace_back();
+  }
+
+  void command(const EndSoftMask& /*unused*/) {
+    if (masks_.empty()) {
+      return;
+    }
+    const std::string id = end_mask();
+    close_mask_group();
+    open_group(" mask=\"url(#" + id + ")\"", true);
+  }
+
+  // Closes the innermost <mask> (and anything its content left open); its id.
+  std::string end_mask() {
+    while (open_.size() > masks_.back().level) {
+      close_groups();
+      open_.pop_back();
+    }
+    out_ += "</mask>";
+    std::string id = masks_.back().id;
+    masks_.pop_back();
+    return id;
+  }
+
+  void command(const ClearSoftMask& /*unused*/) { close_mask_group(); }
 
   void command(const FillPath& c) {
     out_ += "<path d=\"" + path_data(c.path) + "\" transform=\"" + matrix(c.ctm) + "\" fill=\"" + color(rgb(c.color)) + "\"" +
-            (c.rule == FillRule::kEvenOdd ? " fill-rule=\"evenodd\"" : "") + opacity("fill-opacity", c.alpha) + "/>";
+            (c.rule == FillRule::kEvenOdd ? " fill-rule=\"evenodd\"" : "") + opacity("fill-opacity", c.alpha) + blend_style(c.blend) + "/>";
   }
 
   void command(const StrokePath& c) {
@@ -166,7 +251,8 @@ class Writer {
         attributes += " stroke-dasharray=\"" + dash + "\" stroke-dashoffset=\"" + num(stroke_style.dash_phase) + "\"";
       }
     }
-    out_ += "<path d=\"" + path_data(c.path) + "\" transform=\"" + matrix(c.ctm) + "\"" + attributes + opacity("stroke-opacity", c.alpha) + "/>";
+    out_ += "<path d=\"" + path_data(c.path) + "\" transform=\"" + matrix(c.ctm) + "\"" + attributes + opacity("stroke-opacity", c.alpha) +
+            blend_style(c.blend) + "/>";
   }
 
   void command(const DrawImage& c) {
@@ -210,7 +296,7 @@ class Writer {
     }
     const bool stroke = c.render_mode == 1 || c.render_mode == 2 || c.render_mode == 5 || c.render_mode == 6;
     const bool fill = c.render_mode != 1 && c.render_mode != 5;
-    std::string paint = " fill=\"" + (fill ? color(rgb(c.fill)) : std::string("none")) + "\"" + opacity("fill-opacity", c.alpha);
+    std::string paint = " fill=\"" + (fill ? color(rgb(c.fill)) : std::string("none")) + "\"" + opacity("fill-opacity", c.alpha) + blend_style(c.blend);
     if (stroke) {
       paint += " stroke=\"" + color(rgb(c.stroke)) + R"(" stroke-width="0.75" vector-effect="non-scaling-stroke")";
     }
@@ -221,7 +307,14 @@ class Writer {
   SvgOptions options_;
   const DisplayList* list_ = nullptr;
   std::string out_;
-  std::vector<int> open_;  // per saved state: the clip groups opened in it
+  struct OpenMask {
+    std::string id;
+    std::size_t level = 0;  // open_.size() when it started
+  };
+
+  std::vector<std::vector<bool>> open_;  // per saved state: the groups opened in it (true: a soft mask's)
+  std::vector<OpenMask> masks_;
+  Rect page_box_;
   std::size_t next_id_ = 0;
 };
 
