@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -12,8 +13,11 @@
 #include <vector>
 
 #include "capriole/content/content_parser.hpp"
+#include "capriole/content/function.hpp"
 #include "capriole/content/page_content.hpp"
+#include "capriole/filters/decode.hpp"
 #include "color_space.hpp"
+#include "image.hpp"
 #include "text_font.hpp"
 
 namespace capriole::content {
@@ -357,7 +361,8 @@ class Interpreter {
       return;
     }
     graphics::BeginSoftMask begin{.kind = subtype->is_name("Luminosity") ? graphics::SoftMaskKind::kLuminosity : graphics::SoftMaskKind::kAlpha,
-                                  .backdrop = graphics::Rgb{}};
+                                  .backdrop = graphics::Rgb{},
+                                  .transfer = nullptr};
     if (const Object* bc = mask->find("BC"); bc != nullptr && begin.kind == graphics::SoftMaskKind::kLuminosity) {
       // The backdrop is in the group's colour space (/Group /CS); DeviceGray when it has none.
       auto components = document_->resolve(*bc);
@@ -375,7 +380,18 @@ class Interpreter {
       begin.backdrop = detail::make_color(space, values, {}, warnings_).rgb;
     }
     if (const Object* transfer = mask->find("TR"); transfer != nullptr && !transfer->is_name("Identity")) {
-      warnings_.add("soft mask transfer functions are not applied yet");
+      // A function of one input and one output (§11.6.5.2), sampled once for every 8-bit mask value.
+      if (auto function = load_function(*document_, *transfer); function && function->inputs() == 1 && function->outputs() >= 1) {
+        auto table = std::make_shared<std::vector<std::uint8_t>>(256);
+        for (std::size_t v = 0; v < table->size(); ++v) {
+          const double in = static_cast<double>(v) / 255;
+          const double out = function->evaluate(std::span<const double>(&in, 1))[0];
+          (*table)[v] = static_cast<std::uint8_t>(std::lround(std::clamp(out, 0.0, 1.0) * 255));
+        }
+        begin.transfer = std::move(table);
+      } else {
+        warnings_.add("soft mask transfer function unusable: identity used");
+      }
     }
     emit(begin);
     save();
@@ -515,6 +531,8 @@ class Interpreter {
       image.color = intern(state_.fill, last_fill_);
       image.alpha = state_.fill_alpha;
       image.blend = state_.blend;
+      image.interpolate = interpolates(stream->dict);
+      image.pixels = xobject_pixels(image.xobject, *stream, image.mask);
       emit(graphics::Boxed<graphics::DrawImage>(std::move(image)));
       return;
     }
@@ -637,7 +655,55 @@ class Interpreter {
     image.color = intern(state_.fill, last_fill_);
     image.alpha = state_.fill_alpha;
     image.blend = state_.blend;
+    const model::Dict dict = detail::expand_inline_dict(op.image->dict);
+    image.interpolate = interpolates(dict);
+    if (auto data = filters::decode(op.image->data, dict, limits_->parse); data) {
+      image.pixels = pixels_of(dict, *data);
+    } else {
+      warnings_.add("inline image not decoded: " + data.error().message);
+    }
     emit(graphics::Boxed<graphics::DrawImage>(std::move(image)));
+  }
+
+  // /Interpolate is a hint; left out, an image is smoothed when drawn smaller only.
+  static bool interpolates(const model::Dict& dict) {
+    const Object* value = dict.find("Interpolate");
+    return value != nullptr && value->as_bool().value_or(false);
+  }
+
+  // The pixels of an image XObject, decoded once per page (stencil masks carry the fill colour, so
+  // they are decoded each time).
+  std::shared_ptr<const graphics::ImagePixels> xobject_pixels(std::optional<model::ObjectRef> ref, const model::Stream& stream, bool stencil) {
+    const bool cached = ref.has_value() && !stencil;
+    if (cached) {
+      if (const auto found = images_.find(ref->number); found != images_.end()) {
+        return found->second;
+      }
+    }
+    auto data = document_->decode_stream(stream);
+    if (!data) {
+      warnings_.add("image not decoded: " + data.error().message);
+      return nullptr;
+    }
+    auto pixels = pixels_of(stream.dict, *data);
+    if (cached) {
+      images_.emplace(ref->number, pixels);
+    }
+    return pixels;
+  }
+
+  std::shared_ptr<const graphics::ImagePixels> pixels_of(const model::Dict& dict, const std::vector<std::byte>& data) {
+    detail::ImageLimits limits;
+    limits.max_pixels = std::min(limits_->max_image_pixels, limits_->max_page_image_pixels - image_pixels_);
+    auto pixels = detail::decode_image(*document_, dict, data, resources_, state_.fill.rgb, warnings_, limits);
+    if (!pixels) {
+      warnings_.add(pixels.error().code == ErrorCode::kLimitExceeded && limits.max_pixels < limits_->max_image_pixels
+                        ? "too many image pixels on the page: the rest are placeholders"
+                        : "image not decoded: " + pixels.error().message);
+      return nullptr;
+    }
+    image_pixels_ += static_cast<std::int64_t>((*pixels)->width) * (*pixels)->height;
+    return *pixels;
   }
 
   void paint_shading(const Operation& op) {
@@ -975,6 +1041,8 @@ class Interpreter {
   Matrix line_matrix_;
   std::size_t compatibility_ = 0;
   std::set<std::uint32_t> active_forms_;
+  std::map<std::uint32_t, std::shared_ptr<const graphics::ImagePixels>> images_;
+  std::int64_t image_pixels_ = 0;
   std::optional<graphics::ColorIndex> last_fill_;
   std::optional<graphics::ColorIndex> last_stroke_;
   std::optional<graphics::StyleIndex> last_style_;

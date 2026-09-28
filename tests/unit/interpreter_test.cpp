@@ -144,7 +144,16 @@ TEST(Interpreter, ColourSpaces) {
   EXPECT_EQ(list.colors[fills[0].color].rgb, (graphics::Rgb{1, 128 / 255.0, 0}));  // entry 1 of the table
   EXPECT_EQ(list.colors[fills[1].color].rgb, (graphics::Rgb{0, 0, 0}));            // CMYK 0 0 0 1
   EXPECT_EQ(list.colors[fills[2].color].family, graphics::ColorSpaceFamily::kSeparation);
-  EXPECT_TRUE(has_warning(list, "spot colours"));
+  // The tint transform into the alternate space: full Gold is CMYK 0 0.2 1 0.
+  const graphics::Rgb gold = list.colors[fills[2].color].rgb;
+  EXPECT_NEAR(gold.r, 1, 1e-9);
+  EXPECT_NEAR(gold.g, 0.8, 1e-9);
+  EXPECT_NEAR(gold.b, 0, 1e-9);
+  EXPECT_FALSE(has_warning(list, "tint"));
+  // An unusable tint transform falls back to the ink coverage, with a warning.
+  const auto broken = interpret({.content = "/Spot cs 1 sc 0 0 1 1 re f", .resources = "/ColorSpace<</Spot[/Separation/Gold/DeviceCMYK 7]>>"});
+  EXPECT_EQ(broken.colors[all<graphics::FillPath>(broken)[0].color].rgb, (graphics::Rgb{0, 0, 0}));
+  EXPECT_TRUE(has_warning(broken, "tint transform unusable"));
 }
 
 TEST(Interpreter, TextPositionsFromTheFontWidths) {
@@ -279,11 +288,93 @@ TEST(Interpreter, BlendModesSoftMasksAndGroups) {
   EXPECT_NE(svg.find("</mask>"), std::string::npos);
 }
 
+TEST(Interpreter, SoftMaskTransferFunction) {
+  const auto list = interpret(
+      {.content = "/M gs 0 0 5 5 re f",
+       .resources = "/ExtGState<</M<</SMask<</S/Alpha/G 12 0 R/TR 13 0 R>>>>>>",
+       .objects = {{12, "<</Subtype/Form/BBox[0 0 10 10]/Length 0>>\nstream\n\nendstream"}, {13, "<</FunctionType 2/Domain[0 1]/C0[1]/C1[0]/N 1>>"}}});
+  const auto masks = all<graphics::BeginSoftMask>(list);
+  ASSERT_EQ(masks.size(), 1U);
+  ASSERT_NE(masks[0].transfer, nullptr);
+  EXPECT_EQ((*masks[0].transfer)[0], 255);
+  EXPECT_EQ((*masks[0].transfer)[255], 0);
+  EXPECT_EQ((*masks[0].transfer)[51], 204);
+}
+
 TEST(Interpreter, SoftMaskWithoutAGroupIsIgnored) {
   const auto list = interpret({.content = "/M gs 0 0 5 5 re f", .resources = "/ExtGState<</M<</SMask<</S/Alpha>>/BM/Nonsense>>>>"});
   EXPECT_TRUE(all<graphics::BeginSoftMask>(list).empty());
   EXPECT_TRUE(has_warning(list, "soft mask without"));
   EXPECT_TRUE(has_warning(list, "unknown blend mode"));
+}
+
+// An image XObject whose samples are written in hex (ASCIIHexDecode), to keep the fixtures readable.
+std::string hex_image(const std::string& dict, const std::string& hex) {
+  return "<<" + dict + "/Filter/ASCIIHexDecode/Length " + std::to_string(hex.size()) + ">>\nstream\n" + hex + "\nendstream";
+}
+
+std::vector<std::uint8_t> rgba_of(const graphics::DrawImage& image) { return image.pixels ? image.pixels->rgba : std::vector<std::uint8_t>{}; }
+
+TEST(Interpreter, ImagesAreDecoded) {
+  const auto list =
+      interpret({.content = "/Rgb Do /Rgb Do /Idx Do /Key Do /Soft Do 1 0 0 rg /Stencil Do BI /W 2 /H 1 /CS /G /BPC 8 /F /AHx ID 00FF> EI",
+                 .resources = "/XObject<</Rgb 12 0 R/Idx 13 0 R/Key 14 0 R/Soft 15 0 R/Stencil 17 0 R>>",
+                 .objects = {{12, hex_image("/Subtype/Image/Width 2/Height 1/ColorSpace/DeviceRGB/BitsPerComponent 8", "FF0000 0000FF>")},
+                             // Indexed, 1 bit per sample: 0 → black, 1 → white; /Decode [1 0] swaps them.
+                             {13, hex_image("/Subtype/Image/Width 2/Height 1/ColorSpace[/Indexed/DeviceGray 1<00FF>]/BitsPerComponent 1/Decode[1 0]", "40>")},
+                             // Colour key: the samples equal to 255 0 0 are left out.
+                             {14, hex_image("/Subtype/Image/Width 2/Height 1/ColorSpace/DeviceRGB/BitsPerComponent 8/Mask[255 255 0 0 0 0]", "FF0000 00FF00>")},
+                             // A soft mask of another size (1 x 1): resampled to the image.
+                             {15, hex_image("/Subtype/Image/Width 2/Height 1/ColorSpace/DeviceGray/BitsPerComponent 8/SMask 16 0 R", "0000>")},
+                             {16, hex_image("/Subtype/Image/Width 1/Height 1/ColorSpace/DeviceGray/BitsPerComponent 8", "80>")},
+                             // A stencil mask: 0 paints the fill colour.
+                             {17, hex_image("/Subtype/Image/Width 2/Height 1/ImageMask true", "40>")}}});
+  const auto images = all<graphics::DrawImage>(list);
+  ASSERT_EQ(images.size(), 7U);
+  EXPECT_EQ(rgba_of(images[0]), (std::vector<std::uint8_t>{255, 0, 0, 255, 0, 0, 255, 255}));
+  EXPECT_EQ(images[0].pixels, images[1].pixels);                                                 // decoded once
+  EXPECT_EQ(rgba_of(images[2]), (std::vector<std::uint8_t>{255, 255, 255, 255, 0, 0, 0, 255}));  // bits 0 1, decoded 1 0
+  EXPECT_EQ(rgba_of(images[3]), (std::vector<std::uint8_t>{255, 0, 0, 0, 0, 255, 0, 255}));
+  EXPECT_EQ(rgba_of(images[4]), (std::vector<std::uint8_t>{0, 0, 0, 128, 0, 0, 0, 128}));
+  EXPECT_EQ(rgba_of(images[5]), (std::vector<std::uint8_t>{255, 0, 0, 255, 255, 0, 0, 0}));      // bits 0 1: painted, not
+  EXPECT_EQ(rgba_of(images[6]), (std::vector<std::uint8_t>{0, 0, 0, 255, 255, 255, 255, 255}));  // the inline one
+}
+
+TEST(Interpreter, SoftMaskMatteIsUndone) {
+  // Red at alpha 0.5 pre-blended with white (/Matte [1 1 1]) is stored as 255 128 128.
+  const auto list = interpret({.content = "/Im Do",
+                               .resources = "/XObject<</Im 12 0 R>>",
+                               .objects = {{12, hex_image("/Subtype/Image/Width 1/Height 1/ColorSpace/DeviceRGB/BitsPerComponent 8/SMask 13 0 R", "FF8080>")},
+                                           {13, hex_image("/Subtype/Image/Width 1/Height 1/ColorSpace/DeviceGray/BitsPerComponent 8/Matte[1 1 1]", "80>")}}});
+  const auto rgba = rgba_of(all<graphics::DrawImage>(list).at(0));
+  ASSERT_EQ(rgba.size(), 4U);
+  EXPECT_EQ(rgba[0], 255);
+  EXPECT_LE(rgba[1], 2);
+  EXPECT_LE(rgba[2], 2);
+  EXPECT_EQ(rgba[3], 128);
+}
+
+TEST(Interpreter, ImagesThatCannotBeDecodedArePlaceholders) {
+  const auto list = interpret(
+      {.content = "/Jpeg Do /Huge Do /Short Do",
+       .resources = "/XObject<</Jpeg 12 0 R/Huge 13 0 R/Short 14 0 R>>",
+       .objects = {{12, "<</Subtype/Image/Width 1/Height 1/ColorSpace/DeviceGray/BitsPerComponent 8/Filter/DCTDecode/Length 1>>\nstream\nx\nendstream"},
+                   {13, hex_image("/Subtype/Image/Width 100000/Height 100000/ColorSpace/DeviceGray/BitsPerComponent 8", "00>")},
+                   {14, hex_image("/Subtype/Image/Width 2/Height 2/ColorSpace/DeviceGray/BitsPerComponent 8", "FF>")}}});
+  const auto images = all<graphics::DrawImage>(list);
+  ASSERT_EQ(images.size(), 3U);
+  EXPECT_EQ(images[0].pixels, nullptr);
+  EXPECT_EQ(images[1].pixels, nullptr);
+  EXPECT_TRUE(has_warning(list, "DCTDecode"));
+  EXPECT_TRUE(has_warning(list, "too large"));
+  // Short data: what is missing reads as 0, with a warning.
+  EXPECT_EQ(rgba_of(images[2]), (std::vector<std::uint8_t>{255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255}));
+  EXPECT_TRUE(has_warning(list, "shorter"));
+  // The SVG embeds the decoded image as PNG data.
+  const auto decoded = interpret({.content = "/Rgb Do",
+                                  .resources = "/XObject<</Rgb 12 0 R>>",
+                                  .objects = {{12, hex_image("/Subtype/Image/Width 2/Height 1/ColorSpace/DeviceRGB/BitsPerComponent 8", "FF0000 0000FF>")}}});
+  EXPECT_NE(graphics::to_svg(decoded).find(R"(href="data:image/png;base64,iVBORw0KGgo)"), std::string::npos);
 }
 
 TEST(Interpreter, MalformedOperationsAreSkippedWithAWarning) {

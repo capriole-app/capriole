@@ -1,5 +1,5 @@
 // Fuzz target for the whole drawing path: open the input as a document (repairs on), interpret its
-// first pages, write their SVG preview and draw them at a low resolution. The seed corpus is
+// first pages (images decoded), write their SVG preview and draw them at a low resolution. The seed corpus is
 // fuzz/corpus/render/.
 //
 // Invariants beyond "no crash, no UB, no hang": the display list respects the interpreter's limits,
@@ -46,6 +46,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
   limits.max_operations = 100'000;
   limits.max_commands = 20'000;
   limits.max_form_depth = 8;
+  limits.max_image_pixels = 1'000'000;
+  limits.max_page_image_pixels = 4'000'000;
   // Small bitmaps: the drawing code is what is under test, not the fill rate.
   capriole::render::RenderLimits render_limits;
   render_limits.max_pixels = 250'000;

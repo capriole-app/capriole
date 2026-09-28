@@ -1,7 +1,7 @@
 <script lang="ts">
   // The page as the engine draws it, two ways from the same interpreted page: vector (SVG, text in a
-  // generic font) or raster (the engine's Blend2D renderer, text as glyph boxes). Images are
-  // placeholders in both until the renderer decodes them.
+  // generic font) or raster (the engine's Blend2D renderer, text as glyph boxes). Images the engine
+  // cannot decode yet (JPEG and the other codecs) are placeholders in both.
   // The SVG is shown as an image: a browser runs no script and loads nothing from an <img>.
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import type { PagePreview, PageRaster } from '$lib/engine/types';
@@ -122,7 +122,7 @@
       {mode === 'raster'
         ? `Raster, dal renderer del motore (Blend2D) a ${Math.round(dpi)} dpi: il testo è disegnato come riquadri dei glifi.`
         : "Vettoriale, dall'interprete del motore: il testo è in un carattere generico."}
-      Le immagini sono segnaposto finché il renderer non le decodifica.
+      Le immagini JPEG, JPEG 2000, JBIG2 e CCITT sono ancora segnaposto.
       {#each Object.entries(kindLabel) as [kind, label] (kind)}
         {#if preview.commands[kind as keyof PagePreview['commands']]}
           · {preview.commands[kind as keyof PagePreview['commands']]} {label}

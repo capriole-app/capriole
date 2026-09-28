@@ -176,8 +176,16 @@ struct StrokePath {
   BlendMode blend = BlendMode::kNormal;
 };
 
-// An image in the unit square of its CTM (§8.9.4). Decoding the samples is a later phase: the command
-// says where the image goes and where its data is.
+// Decoded image samples: straight RGBA, 8 bits per channel, the first row of the image at the top of
+// its unit square. Shared: an image drawn many times is decoded once per page.
+struct ImagePixels {
+  std::int32_t width = 0;
+  std::int32_t height = 0;
+  std::vector<std::uint8_t> rgba;
+};
+
+// An image in the unit square of its CTM (§8.9.4): where it goes, where its data is, and its pixels
+// when the interpreter could decode them (null: a placeholder is drawn).
 struct DrawImage {
   Matrix ctm;
   std::optional<model::ObjectRef> xobject;  // an image XObject, or
@@ -189,6 +197,8 @@ struct DrawImage {
   ColorIndex color = 0;  // the fill colour, for image masks
   double alpha = 1;
   BlendMode blend = BlendMode::kNormal;
+  std::shared_ptr<const ImagePixels> pixels;
+  bool interpolate = false;  // /Interpolate: smooth when drawn larger (drawn smaller, images are always smoothed)
 };
 
 // A shading (sh, §8.7.4.2), painted over the current clip.
@@ -245,6 +255,8 @@ enum class SoftMaskKind : std::uint8_t { kAlpha, kLuminosity };
 struct BeginSoftMask {
   SoftMaskKind kind = SoftMaskKind::kAlpha;
   Rgb backdrop;
+  // The transfer function /TR sampled at the 256 mask values (value → table[value]); null: identity.
+  std::shared_ptr<const std::vector<std::uint8_t>> transfer;
 };
 struct EndSoftMask {};
 struct ClearSoftMask {};

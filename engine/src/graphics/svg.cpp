@@ -2,10 +2,14 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <format>
+#include <span>
 #include <string_view>
 #include <variant>
 #include <vector>
+
+#include "capriole/render/png.hpp"
 
 namespace capriole::graphics {
 
@@ -70,6 +74,22 @@ std::string blend_css(BlendMode mode) {
 }
 
 std::string blend_style(BlendMode mode) { return mode == BlendMode::kNormal ? std::string() : " style=\"" + blend_css(mode) + "\""; }
+
+std::string base64(std::span<const std::byte> bytes) {
+  constexpr std::string_view kDigits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  out.reserve(((bytes.size() + 2) / 3) * 4);
+  for (std::size_t i = 0; i < bytes.size(); i += 3) {
+    const std::size_t left = bytes.size() - i;
+    const std::uint32_t v = (std::to_integer<std::uint32_t>(bytes[i]) << 16U) | (left > 1 ? std::to_integer<std::uint32_t>(bytes[i + 1]) << 8U : 0U) |
+                            (left > 2 ? std::to_integer<std::uint32_t>(bytes[i + 2]) : 0U);
+    out += kDigits[(v >> 18U) & 63U];
+    out += kDigits[(v >> 12U) & 63U];
+    out += left > 1 ? kDigits[(v >> 6U) & 63U] : '=';
+    out += left > 2 ? kDigits[v & 63U] : '=';
+  }
+  return out;
+}
 
 std::string opacity(std::string_view attribute, double alpha) {
   return alpha < 1 ? std::format(" {}=\"{}\"", attribute, num(std::max(alpha, 0.0))) : std::string();
@@ -256,6 +276,23 @@ class Writer {
   }
 
   void command(const DrawImage& c) {
+    if (c.pixels && c.pixels->width > 0 && c.pixels->height > 0) {
+      const std::int64_t count = static_cast<std::int64_t>(c.pixels->width) * c.pixels->height;
+      if (embedded_ + count <= options_.max_embedded_pixels) {
+        auto png = render::encode_png(render::Bitmap{.width = c.pixels->width, .height = c.pixels->height, .rgba = c.pixels->rgba});
+        if (png) {
+          embedded_ += count;
+          // The image's first row at the top of the unit square (§8.9.4): y flipped into it.
+          std::string style = c.blend != BlendMode::kNormal ? blend_css(c.blend) : "";
+          if (!c.interpolate) {
+            style += (style.empty() ? "" : ";") + std::string("image-rendering:pixelated");
+          }
+          out_ += R"(<image width="1" height="1" preserveAspectRatio="none" transform=")" + matrix(Matrix{1, 0, 0, -1, 0, 1}.then(c.ctm)) + "\"" +
+                  opacity("opacity", c.alpha) + (style.empty() ? "" : " style=\"" + style + "\"") + R"( href="data:image/png;base64,)" + base64(*png) + "\"/>";
+          return;
+        }
+      }
+    }
     // The unit square of the image's CTM, framed: the samples are decoded in a later phase.
     const std::string fill = c.mask ? color(rgb(c.color)) : "#dfe5f3";
     out_ += R"(<rect width="1" height="1" transform=")" + matrix(c.ctm) + R"(" fill=")" + fill + "\"" + (c.mask ? R"( fill-opacity="0.35")" : "") +
@@ -305,6 +342,7 @@ class Writer {
   }
 
   SvgOptions options_;
+  std::int64_t embedded_ = 0;
   const DisplayList* list_ = nullptr;
   std::string out_;
   struct OpenMask {

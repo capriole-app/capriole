@@ -369,7 +369,34 @@ clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore
 Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **Blend2D** ✅
 ([ADR 0002](adr/0002-rasterizzatore.md)) · **6d** rendering con Blend2D nel motore, confronto
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
-di trasparenza, soft mask ✅ · poi font, immagini, shading, annotazioni.
+di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
+immagini senza codec ✅ · poi codec immagine (JPEG per primo), font, shading, pattern, annotazioni.
+
+**6f (2026-09-28):** quello che 6e lasciava fuori. **Funzioni PDF** (`content/function`, §7.10): tipi 0
+(campionate, 1–32 bit, interpolazione multilineare), 2, 3 (con profondità limitata: una funzione che
+contiene sé stessa si ferma) e 4 (calcolatore PostScript: compilato in un programma senza cicli, pila di
+100, errori a run-time → zeri nel range, come i lettori); fuzzer `fuzz_function` (2 min, ~6,2 milioni di
+esecuzioni, pulito). Usate per le **tinte Separation/DeviceN** (spazio alternativo + trasformazione: il
+colore vero invece dell'approssimazione "più inchiostro, più scuro") e per **`/TR` delle soft mask**
+(tabella di 256 valori). **Rasterizzatore:** i livelli di clip partono da una copia di ciò che sta sotto e
+finiscono interpolando attraverso la maschera — così i modi di fusione dentro un clip su tracciato vedono
+la pagina (prima si fondevano col trasparente: difetto di 6e trovato rileggendo il codice, ora con test);
+**gruppi non isolati** composti sulla copia del backdrop con un gemello A8 dell'alfa del gruppo, e la
+rimozione del backdrop di §11.4.8 alla fine (una pre-scansione della lista li tratta da isolati quando
+dentro non ci sono modi di fusione: stesso risultato, niente copie); **knockout** (§11.4.9): ogni oggetto
+si compone col backdrop iniziale del gruppo e sostituisce il contenuto in proporzione alla sua forma
+(alfa dell'oggetto sull'alfa costante; dentro un clip su tracciato gli oggetti contano come uno).
+**Immagini** (`content/image`): campioni da 1 a 16 bit in ogni spazio colore noto, `/Decode`, Indexed,
+maschere stencil col colore di riempimento, `/SMask` (anche di altra misura, e `/Matte`), `/Mask` a chiave
+di colore o esplicita, immagini inline con le abbreviazioni; decodificate una volta per pagina, limiti per
+immagine (16 Mpixel) e per pagina (64 Mpixel). Il rasterizzatore le disegna come pattern sul quadrato
+unitario (nearest se ingrandite senza `/Interpolate`, bilineare altrimenti; molto rimpicciolite, prima
+mediate a blocchi, senza moiré); l'SVG le incorpora come PNG. Un'immagine non decodificata dentro il
+gruppo di una soft mask non disegna il segnaposto (diventerebbe una maschera piena: un'ombra come
+rettangolo nero). SafeDocs: 2.232 pagine, 0 crash, 0 timeout, 1.268 con immagini. **Il limite ora sono i
+codec:** sulle prime pagine con immagini, 464 su 688 contengono JPEG non ancora decodificabili (CCITT 46,
+JPX 13, JBIG2 6) — anche le ombre sfumate di file come Kensington sono soft mask fatte di JPEG. Modulo
+WASM 1,94 MB, 676 KB gzip.
 
 **6e (2026-09-28):** nella lista dei comandi il modo di fusione di ogni pittura e i comandi
 `BeginGroup`/`EndGroup` (alpha, modo, isolato, knockout) e `BeginSoftMask`/`EndSoftMask`/`ClearSoftMask`
@@ -392,9 +419,8 @@ un modo di fusione non agisce sul bianco della carta (Hue su "bianco" darebbe bi
 confronto con MuPDF e Poppler; ora sul seme di prova coincidiamo con Poppler entro 1/255 in ogni punto
 campionato. Il seme `fuzz/corpus/render/transparency.pdf` copre modi, maschere e gruppi; `fuzz_render`
 2 min, ~114.000 esecuzioni, pulito. SafeDocs: 141 pagine (87 file) con gruppi o soft mask, 2.232 pagine
-disegnate, 0 crash, 0 timeout. Non ancora: knockout (avviso), gruppi non isolati composti come isolati
-(uguali salvo modi di fusione all'interno), funzioni di trasferimento `/TR` delle maschere (avviso), e
-le maschere fatte di immagini aspettano il passo delle immagini. Modulo WASM 1,84 MB, 638 KB gzip.
+disegnate, 0 crash, 0 timeout. Knockout, gruppi non isolati, `/TR` e maschere fatte di immagini: in 6f.
+Modulo WASM 1,84 MB, 638 KB gzip.
 
 **6d (2026-09-28):** Blend2D e AsmJit come dipendenze fissate (FetchContent, SHA-256, `SYSTEM`: i loro
 header non passano per i nostri `-Werror`); JIT solo nelle build native di rilascio, senza JIT in WASM,
@@ -492,6 +518,8 @@ workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri)
 |---|---|---|
 | Licenza di Capriole | pubblicazione, OSS-Fuzz, contributi | proposta da discutere: Apache-2.0 o MPL-2.0 |
 | ~~Skia vs Blend2D~~ | fase 6 | **deciso: Blend2D** (ADR 0002) |
+| Decodificatore JPEG (DCT) | fase 6, subito | 2/3 delle pagine con immagini: libjpeg-turbo (IJG/BSD/zlib) o implementazione propria |
+| JPEG 2000 (JPX) | fase 6 | OpenJPEG (BSD-2) o proprio |
 | JBIG2 / CCITT con licenza compatibile | fase 6 | implementazione propria |
 | Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |
 | Firma qualificata nel browser | fase 8 | smart card non accessibili dal web → desktop o firma remota |

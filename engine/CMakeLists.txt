@@ -28,6 +28,8 @@ add_library(capriole_engine STATIC
   src/writer/byte_sink.cpp
   src/content/color_space.cpp
   src/content/content_parser.cpp
+  src/content/function.cpp
+  src/content/image.cpp
   src/content/interpreter.cpp
   src/content/text_font.cpp
   src/content/operators.cpp

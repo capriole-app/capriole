@@ -58,6 +58,8 @@ Rgb lab_to_rgb(double l, double a, double b) {
           gamma((0.0719453 * x) - (0.2289914 * y) + (1.4052427 * z))};
 }
 
+}  // namespace
+
 Rgb to_rgb(const ColorSpace& space, std::span<const double> c) {
   const auto at = [&](std::size_t i) { return i < c.size() ? c[i] : 0.0; };
   switch (space.family) {
@@ -92,10 +94,14 @@ Rgb to_rgb(const ColorSpace& space, std::span<const double> c) {
     }
     case ColorSpaceFamily::kSeparation:
     case ColorSpaceFamily::kDeviceN: {
-      // Without the tint transform (a PDF function): the more ink, the darker.
       if (space.colorant == "None") {
         return {1, 1, 1};
       }
+      if (space.tint && space.base) {
+        const std::vector<double> alternate = space.tint->evaluate(c.subspan(0, std::min(c.size(), space.components)));
+        return to_rgb(*space.base, alternate);
+      }
+      // Without a tint transform: the more ink, the darker.
       double ink = 0;
       for (std::size_t i = 0; i < space.components; ++i) {
         ink = std::max(ink, clamp01(at(i)));
@@ -109,6 +115,8 @@ Rgb to_rgb(const ColorSpace& space, std::span<const double> c) {
   }
   return {};
 }
+
+namespace {
 
 std::vector<std::byte> bytes_of(Document& document, const Object& object) {
   auto resolved = document.resolve(object);
@@ -228,7 +236,17 @@ ColorSpace resolve_color_space(Document& document, const Object& spec, const mod
         spot.components = std::max<std::size_t>(1, list->as_array()->size());
       }
     }
-    warnings.add("spot colours (Separation/DeviceN) approximated: tint transforms are not evaluated yet");
+    // The alternate space and the tint transform (§8.6.6.4): the colour as a device shows it.
+    if (const Object* alternate = operand(2)) {
+      spot.base = std::make_shared<ColorSpace>(resolve_color_space(document, *alternate, resources, warnings, depth + 1));
+    }
+    if (const Object* transform = operand(3); transform != nullptr && spot.base) {
+      if (auto tint = load_function(document, *transform); tint && tint->inputs() == spot.components && tint->outputs() >= spot.base->components) {
+        spot.tint = std::make_shared<const Function>(std::move(*tint));
+      } else {
+        warnings.add("spot colour tint transform unusable: tints approximated as ink coverage");
+      }
+    }
     return spot;
   }
   if (f == "Pattern") {

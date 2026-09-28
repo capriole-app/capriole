@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <format>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -234,7 +235,7 @@ TEST(Raster, GroupAlphaAppliesToTheGroupAsAWhole) {
 // A soft mask that lets everything through: painting under it goes through the compositor of
 // render/blend instead of Blend2D's operators.
 void full_mask(DisplayList& list) {
-  list.commands.emplace_back(BeginSoftMask{.kind = SoftMaskKind::kLuminosity, .backdrop = Rgb{1, 1, 1}});
+  list.commands.emplace_back(BeginSoftMask{.kind = SoftMaskKind::kLuminosity, .backdrop = Rgb{1, 1, 1}, .transfer = nullptr});
   list.commands.emplace_back(EndSoftMask{});
 }
 
@@ -292,7 +293,7 @@ TEST(Raster, SoftMasksAlphaAndLuminosity) {
     list.colors.push_back(Color{.family = ColorSpaceFamily::kGray, .components = {}, .pattern = {}, .rgb = {1, 1, 1}});
     list.commands.emplace_back(Save{});
     // The mask's group: the left half, opaque white (alpha 1, luminosity 1) on a black backdrop.
-    list.commands.emplace_back(BeginSoftMask{.kind = kind, .backdrop = Rgb{}});
+    list.commands.emplace_back(BeginSoftMask{.kind = kind, .backdrop = Rgb{}, .transfer = nullptr});
     list.commands.emplace_back(Save{});
     list.commands.emplace_back(fill_of(rect(0, 0, 50, 100), 3));
     list.commands.emplace_back(Restore{});
@@ -312,7 +313,7 @@ TEST(Raster, SoftMaskClearedAndGroupsMaskedAsAWhole) {
   DisplayList list = page(100, 100);
   list.colors.push_back(Color{.family = ColorSpaceFamily::kGray, .components = {}, .pattern = {}, .rgb = {0.5, 0.5, 0.5}});
   // A uniform 50% luminosity mask over a group of two overlapping opaque squares: masked as one.
-  list.commands.emplace_back(BeginSoftMask{.kind = SoftMaskKind::kLuminosity, .backdrop = Rgb{0.5, 0.5, 0.5}});
+  list.commands.emplace_back(BeginSoftMask{.kind = SoftMaskKind::kLuminosity, .backdrop = Rgb{0.5, 0.5, 0.5}, .transfer = nullptr});
   list.commands.emplace_back(EndSoftMask{});
   list.commands.emplace_back(BeginGroup{.alpha = 1, .blend = BlendMode::kNormal, .isolated = false, .knockout = false});
   list.commands.emplace_back(fill_of(rect(0, 0, 60, 50), kRed));
@@ -325,13 +326,128 @@ TEST(Raster, SoftMaskClearedAndGroupsMaskedAsAWhole) {
   EXPECT_EQ(at(b, 50, 80), kBluePixel);                                           // after ClearSoftMask
 }
 
+TEST(Raster, KnockoutGroupObjectsReplaceEachOther) {
+  const auto draw = [](bool knockout) {
+    DisplayList list = page(100, 100);
+    list.commands.emplace_back(BeginGroup{.alpha = 1, .blend = BlendMode::kNormal, .isolated = true, .knockout = knockout});
+    list.commands.emplace_back(fill_of(rect(0, 0, 60, 100), kRed, 0.5));
+    list.commands.emplace_back(fill_of(rect(40, 0, 60, 100), kBlue, 0.5));
+    list.commands.emplace_back(EndGroup{});
+    return at(render(list), 50, 50);
+  };
+  // Knockout: where the blue overlaps it, the red is gone — blue at half over the paper.
+  EXPECT_TRUE(near(draw(true), {128, 128, 255, 255})) << show(draw(true));
+  // Without: the blue over the red.
+  EXPECT_TRUE(near(draw(false), {128, 64, 191, 255}, 3)) << show(draw(false));
+}
+
+TEST(Raster, NonIsolatedGroupsBlendWithTheBackdropAndRemoveIt) {
+  const auto draw = [](bool isolated) {
+    DisplayList list = page(20, 20);
+    list.colors.push_back(Color{.family = ColorSpaceFamily::kGray, .components = {}, .pattern = {}, .rgb = {0.5, 0.5, 0.5}});
+    list.commands.emplace_back(fill_of(rect(0, 0, 20, 20), 3));
+    list.commands.emplace_back(BeginGroup{.alpha = 0.5, .blend = BlendMode::kNormal, .isolated = isolated, .knockout = false});
+    list.commands.emplace_back(fill_of(rect(0, 0, 20, 20), kRed, 1, BlendMode::kMultiply));
+    list.commands.emplace_back(EndGroup{});
+    return at(render(list), 10, 10);
+  };
+  // Non-isolated: red multiplies the gray inside the group (0.5 0 0), then half of it over the gray.
+  EXPECT_TRUE(near(draw(false), {128, 64, 64, 255})) << show(draw(false));
+  // Isolated: nothing to multiply inside the group — plain red, then half of it over the gray.
+  EXPECT_TRUE(near(draw(true), {191, 64, 64, 255})) << show(draw(true));
+}
+
+TEST(Raster, BlendModesInsideAPathClipSeeTheBackdrop) {
+  DisplayList list = page(100, 100);
+  list.commands.emplace_back(fill_of(rect(0, 0, 100, 100), kRed));
+  list.commands.emplace_back(Save{});
+  list.commands.emplace_back(ClipPath{.path = circle(50, 50, 30), .ctm = {}, .rule = FillRule::kNonZero});  // a layer, not a rectangle
+  list.commands.emplace_back(fill_of(rect(0, 0, 100, 100), kBlue, 1, BlendMode::kMultiply));
+  list.commands.emplace_back(Restore{});
+  const Bitmap b = render(list);
+  EXPECT_TRUE(near(at(b, 50, 50), {0, 0, 0, 255})) << show(at(b, 50, 50));  // red × blue
+  EXPECT_EQ(at(b, 5, 5), kRedPixel);                                        // outside the clip
+}
+
+TEST(Raster, SoftMaskTransferFunction) {
+  DisplayList list = page(100, 100);
+  list.colors.push_back(Color{.family = ColorSpaceFamily::kGray, .components = {}, .pattern = {}, .rgb = {1, 1, 1}});
+  auto inverted = std::make_shared<std::vector<std::uint8_t>>(256);
+  for (std::size_t v = 0; v < 256; ++v) {
+    (*inverted)[v] = static_cast<std::uint8_t>(255 - v);
+  }
+  list.commands.emplace_back(BeginSoftMask{.kind = SoftMaskKind::kAlpha, .backdrop = Rgb{}, .transfer = inverted});
+  list.commands.emplace_back(fill_of(rect(0, 0, 50, 100), 3));
+  list.commands.emplace_back(EndSoftMask{});
+  list.commands.emplace_back(fill_of(rect(0, 0, 100, 100), kRed));
+  const Bitmap b = render(list);
+  EXPECT_EQ(at(b, 25, 50), kWhite);     // the mask's opaque half, inverted: nothing
+  EXPECT_EQ(at(b, 75, 50), kRedPixel);  // its empty half, inverted: everything
+}
+
+std::shared_ptr<ImagePixels> image_of(int w, int h, const std::vector<std::uint8_t>& rgba) {
+  return std::make_shared<ImagePixels>(ImagePixels{.width = w, .height = h, .rgba = rgba});
+}
+
+Boxed<DrawImage> draw_image(const Matrix& ctm, std::shared_ptr<const ImagePixels> pixels, double alpha = 1) {
+  DrawImage image;
+  image.ctm = ctm;
+  image.alpha = alpha;
+  image.pixels = std::move(pixels);
+  return {std::move(image)};
+}
+
+TEST(Raster, ImagesFillTheirUnitSquareFirstRowOnTop) {
+  DisplayList list = page(100, 100);
+  // 1 x 2: a red row above a blue one, stretched over the whole page.
+  list.commands.emplace_back(draw_image(Matrix{100, 0, 0, 100, 0, 0}, image_of(1, 2, {255, 0, 0, 255, 0, 0, 255, 255})));
+  const Bitmap b = render(list);
+  EXPECT_EQ(at(b, 50, 90), kRedPixel);
+  EXPECT_EQ(at(b, 50, 10), kBluePixel);
+  // Transparent pixels and the image's alpha let the page through.
+  DisplayList faded = page(100, 100);
+  faded.commands.emplace_back(draw_image(Matrix{100, 0, 0, 100, 0, 0}, image_of(2, 1, {255, 0, 0, 0, 0, 0, 255, 255}), 0.5));
+  const Bitmap f = render(faded);
+  EXPECT_EQ(at(f, 25, 50), kWhite);
+  EXPECT_TRUE(near(at(f, 75, 50), {128, 128, 255, 255})) << show(at(f, 75, 50));
+}
+
+TEST(Raster, ImagesDrawnMuchSmallerAreAveraged) {
+  // A 400 x 400 black-and-white checkerboard of single pixels in a 10 x 10 square: gray, not a moiré of
+  // whichever pixels bilinear sampling happens to pick.
+  std::vector<std::uint8_t> checks;
+  for (int y = 0; y < 400; ++y) {
+    for (int x = 0; x < 400; ++x) {
+      const std::uint8_t v = (x + y) % 2 == 0 ? 0 : 255;
+      checks.insert(checks.end(), {v, v, v, 255});
+    }
+  }
+  DisplayList list = page(10, 10);
+  list.commands.emplace_back(draw_image(Matrix{10, 0, 0, 10, 0, 0}, image_of(400, 400, checks)));
+  const Bitmap b = render(list);
+  for (const auto& [x, y] : {std::pair{2.0, 2.0}, std::pair{5.0, 5.0}, std::pair{8.0, 3.0}}) {
+    EXPECT_TRUE(near(at(b, x, y), {128, 128, 128, 255}, 3)) << show(at(b, x, y));
+  }
+}
+
+TEST(Raster, UndecodedImagesInASoftMaskDrawNothing) {
+  // A luminosity mask on black made of an image the engine cannot decode: no placeholder, so the mask
+  // stays black and hides what it masks, rather than showing it through a solid box.
+  DisplayList list = page(100, 100);
+  list.commands.emplace_back(BeginSoftMask{.kind = SoftMaskKind::kLuminosity, .backdrop = Rgb{}, .transfer = nullptr});
+  list.commands.emplace_back(draw_image(Matrix{100, 0, 0, 100, 0, 0}, nullptr));
+  list.commands.emplace_back(EndSoftMask{});
+  list.commands.emplace_back(fill_of(rect(0, 0, 100, 100), kRed));
+  EXPECT_EQ(at(render(list), 50, 50), kWhite);
+}
+
 TEST(Raster, UnbalancedTransparencyCommandsDoNotBreakTheRendering) {
   // A list cut short (the command limit), or ends without beginnings.
   DisplayList list = page(50, 50);
   list.commands.emplace_back(EndGroup{});
   list.commands.emplace_back(EndSoftMask{});
   list.commands.emplace_back(BeginGroup{.alpha = 0.5, .blend = BlendMode::kHue, .isolated = true, .knockout = true});
-  list.commands.emplace_back(BeginSoftMask{.kind = SoftMaskKind::kAlpha, .backdrop = Rgb{}});
+  list.commands.emplace_back(BeginSoftMask{.kind = SoftMaskKind::kAlpha, .backdrop = Rgb{}, .transfer = nullptr});
   list.commands.emplace_back(fill_of(rect(0, 0, 50, 50), kRed));
   const Bitmap b = render(list);
   EXPECT_EQ(at(b, 25, 25), kWhite);  // the mask's group, never finished, draws nothing on the page

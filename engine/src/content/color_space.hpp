@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "capriole/content/function.hpp"
 #include "capriole/document/document.hpp"
 #include "capriole/graphics/display_list.hpp"
 #include "capriole/model/object.hpp"
@@ -22,8 +23,10 @@ struct ColorSpace {
   std::shared_ptr<const ColorSpace> base;
   std::vector<std::byte> lookup;
   // ICCBased: the family is Gray, RGB or CMYK from /N (the profile itself is not applied yet).
-  // Separation: the colorant name (for "All" and "None").
+  // Separation and DeviceN: the colorant name (for "All" and "None"), and the tint transform into the
+  // alternate space (held in base); without a usable one, tints are approximated as ink coverage.
   std::string colorant;
+  std::shared_ptr<const Function> tint;
 };
 
 // Collects warnings without repeating them (a page can hit the same approximation thousands of times).
@@ -43,6 +46,9 @@ ColorSpace resolve_color_space(Document& document, const model::Object& spec, co
 
 // The initial colour of a space (§8.6.8: black, or 1.0 tint for Separation/DeviceN, index 0).
 graphics::Color initial_color(const ColorSpace& space);
+
+// The sRGB approximation of a colour given by its components in the space.
+graphics::Rgb to_rgb(const ColorSpace& space, std::span<const double> components);
 
 // A colour from operands (sc/scn/...): missing components are 0, extra ones ignored.
 graphics::Color make_color(const ColorSpace& space, std::span<const double> components, std::string pattern, Warnings& warnings);
