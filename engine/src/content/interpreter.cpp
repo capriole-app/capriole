@@ -695,11 +695,16 @@ class Interpreter {
   std::shared_ptr<const graphics::ImagePixels> pixels_of(const model::Dict& dict, const std::vector<std::byte>& data) {
     detail::ImageLimits limits;
     limits.max_pixels = std::min(limits_->max_image_pixels, limits_->max_page_image_pixels - image_pixels_);
+    // Large images are read at a reduced size within the limit; once the page's budget is nearly spent,
+    // placeholders.
+    constexpr std::int64_t kMinUsefulPixels = 65'536;
+    if (limits.max_pixels < kMinUsefulPixels) {
+      warnings_.add("too many image pixels on the page: the rest are placeholders");
+      return nullptr;
+    }
     auto pixels = detail::decode_image(*document_, dict, data, resources_, state_.fill.rgb, warnings_, limits);
     if (!pixels) {
-      warnings_.add(pixels.error().code == ErrorCode::kLimitExceeded && limits.max_pixels < limits_->max_image_pixels
-                        ? "too many image pixels on the page: the rest are placeholders"
-                        : "image not decoded: " + pixels.error().message);
+      warnings_.add("image not decoded: " + pixels.error().message);
       return nullptr;
     }
     image_pixels_ += static_cast<std::int64_t>((*pixels)->width) * (*pixels)->height;

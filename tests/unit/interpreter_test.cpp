@@ -354,19 +354,21 @@ TEST(Interpreter, SoftMaskMatteIsUndone) {
   EXPECT_EQ(rgba[3], 128);
 }
 
-TEST(Interpreter, ImagesThatCannotBeDecodedArePlaceholders) {
+TEST(Interpreter, BrokenHugeAndShortImages) {
   const auto list = interpret(
       {.content = "/Jpeg Do /Huge Do /Short Do",
        .resources = "/XObject<</Jpeg 12 0 R/Huge 13 0 R/Short 14 0 R>>",
        .objects = {{12, "<</Subtype/Image/Width 1/Height 1/ColorSpace/DeviceGray/BitsPerComponent 8/Filter/DCTDecode/Length 1>>\nstream\nx\nendstream"},
-                   {13, hex_image("/Subtype/Image/Width 100000/Height 100000/ColorSpace/DeviceGray/BitsPerComponent 8", "00>")},
+                   {13, hex_image("/Subtype/Image/Width 5000/Height 5000/ColorSpace/DeviceGray/BitsPerComponent 8", "00>")},
                    {14, hex_image("/Subtype/Image/Width 2/Height 2/ColorSpace/DeviceGray/BitsPerComponent 8", "FF>")}}});
   const auto images = all<graphics::DrawImage>(list);
   ASSERT_EQ(images.size(), 3U);
   EXPECT_EQ(images[0].pixels, nullptr);
-  EXPECT_EQ(images[1].pixels, nullptr);
-  EXPECT_TRUE(has_warning(list, "DCTDecode"));
-  EXPECT_TRUE(has_warning(list, "too large"));
+  EXPECT_TRUE(has_warning(list, "DCTDecode"));  // broken JPEG data
+  // Beyond the per-image limit (16 Mpixel): read at a reduced size, not refused.
+  ASSERT_NE(images[1].pixels, nullptr);
+  EXPECT_EQ(images[1].pixels->width, 2500);
+  EXPECT_TRUE(has_warning(list, "read at 2500x2500"));
   // Short data: what is missing reads as 0, with a warning.
   EXPECT_EQ(rgba_of(images[2]), (std::vector<std::uint8_t>{255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255}));
   EXPECT_TRUE(has_warning(list, "shorter"));

@@ -20,7 +20,9 @@
 namespace capriole::content::detail {
 
 struct ImageLimits {
-  std::int64_t max_pixels = 16'000'000;  // per image (4 bytes each once decoded), masks included
+  // Per image (4 bytes each once decoded): a larger image is read at a reduced size, every s-th sample
+  // of every s-th row, rather than refused.
+  std::int64_t max_pixels = 16'000'000;
 };
 
 // The pixels of an image. dict is the image dictionary — inline images with their abbreviated keys

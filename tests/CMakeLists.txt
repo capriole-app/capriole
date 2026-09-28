@@ -15,6 +15,7 @@ add_executable(capriole_unit_tests
   unit/content_parser_test.cpp
   unit/interpreter_test.cpp
   unit/blend_test.cpp
+  unit/ccitt_test.cpp
   unit/dct_test.cpp
   unit/function_test.cpp
   unit/png_test.cpp
@@ -38,6 +39,8 @@ if(EMSCRIPTEN)
   # Trap on stack overflow instead of corrupting memory: the nesting-limit tests then prove that the
   # deepest recursion allowed by ParseLimits fits the WebAssembly stack (see the root CMakeLists).
   target_link_options(capriole_unit_tests PRIVATE "-sSTACK_OVERFLOW_CHECK=2")
+  # Memory grows as in the real module (bindings/wasm): images decode to tens of megabytes.
+  target_link_options(capriole_unit_tests PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sMAXIMUM_MEMORY=4GB")
 endif()
 
 # PRE_TEST: discover at ctest time, so cross-compiled (WASM) test binaries are not run during the build.

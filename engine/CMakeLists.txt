@@ -14,6 +14,7 @@ add_library(capriole_engine STATIC
   src/render/png.cpp
   src/render/raster.cpp
   src/filters/basic.cpp
+  src/filters/ccitt.cpp
   src/filters/dct.cpp
   src/filters/decode.cpp
   src/filters/flate.cpp

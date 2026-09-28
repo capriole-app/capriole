@@ -16,36 +16,34 @@ using graphics::ColorSpaceFamily;
 using graphics::Rgb;
 using model::Object;
 
-// Reads bit fields of a row of samples, most significant bit first (§8.9.5.2).
-class SampleReader {
- public:
-  SampleReader(std::span<const std::byte> row, int bits) : row_(row), bits_(bits) {}
-
-  std::uint32_t next() {
-    if (bits_ == 8) {
-      return at_ < row_.size() ? std::to_integer<std::uint32_t>(row_[at_++]) : 0;
-    }
-    if (bits_ == 16) {
-      const std::uint32_t hi = at_ < row_.size() ? std::to_integer<std::uint32_t>(row_[at_]) : 0;
-      const std::uint32_t lo = at_ + 1 < row_.size() ? std::to_integer<std::uint32_t>(row_[at_ + 1]) : 0;
-      at_ += 2;
-      return (hi << 8U) | lo;
-    }
-    std::uint32_t v = 0;
-    for (int b = 0; b < bits_; ++b, ++bit_) {
-      const std::size_t byte = bit_ / 8;
-      const std::uint32_t set = byte < row_.size() ? (std::to_integer<std::uint32_t>(row_[byte]) >> (7 - (bit_ % 8))) & 1U : 0U;
-      v = (v << 1U) | set;
-    }
-    return v;
+// The sample that starts at bit `bit` of data, most significant bit first (§8.9.5.2); past the end, 0.
+// Samples of 1, 2 and 4 bits never straddle a byte; 16-bit ones are big-endian.
+std::uint32_t sample_at(std::span<const std::byte> data, std::size_t bit, int bits) {
+  const std::size_t byte = bit / 8;
+  const auto at = [&](std::size_t i) { return i < data.size() ? std::to_integer<std::uint32_t>(data[i]) : 0U; };
+  if (bits == 8) {
+    return at(byte);
   }
+  if (bits == 16) {
+    return (at(byte) << 8U) | at(byte + 1);
+  }
+  const auto shift = static_cast<unsigned>(8 - bits - static_cast<int>(bit % 8));
+  return (at(byte) >> shift) & ((1U << static_cast<unsigned>(bits)) - 1U);
+}
 
- private:
-  std::span<const std::byte> row_;
-  int bits_;
-  std::size_t at_ = 0;   // 8 and 16 bits
-  std::size_t bit_ = 0;  // 1, 2 and 4 bits
-};
+// Absurd sizes are refused outright; large ones are read at a reduced size (below).
+constexpr std::int64_t kMaxSide = std::int64_t{1} << 24;
+
+// The step s that brings width × height within max_pixels when only every s-th sample of every s-th
+// row is read.
+std::int64_t reduction(std::int64_t width, std::int64_t height, std::int64_t max_pixels) {
+  std::int64_t step = 1;
+  const auto ceil_div = [](std::int64_t a, std::int64_t b) { return (a + b - 1) / b; };
+  while (ceil_div(width, step) * ceil_div(height, step) > std::max<std::int64_t>(max_pixels, 1)) {
+    ++step;
+  }
+  return step;
+}
 
 const Object* entry(const model::Dict& dict, std::string_view key) { return dict.find(key); }
 
@@ -87,10 +85,10 @@ std::vector<double> numbers(Document& document, const Object* value) {
   return out;
 }
 
-// The samples of a one-component image (a soft mask or an explicit mask) as 0..255, resampled to
-// width × height by the nearest sample. invert: stencil masks mark with 1 what is masked out.
-Result<std::vector<std::uint8_t>> single_channel(Document& document, const Object& reference, int width, int height, bool stencil, Warnings& warnings,
-                                                 const ImageLimits& limits) {
+// The samples of a one-component image (a soft mask or an explicit mask) as 0..255, read at width ×
+// height by the nearest sample (the mask may have any size). stencil: an explicit mask, whose 1 masks
+// out.
+Result<std::vector<std::uint8_t>> single_channel(Document& document, const Object& reference, int width, int height, bool stencil, Warnings& warnings) {
   auto resolved = document.resolve(reference);
   const model::Stream* stream = resolved ? resolved->as_stream() : nullptr;
   if (stream == nullptr) {
@@ -99,8 +97,8 @@ Result<std::vector<std::uint8_t>> single_channel(Document& document, const Objec
   const model::Dict& dict = stream->dict;
   const std::int64_t w = integer(document, dict, "Width", 0);
   const std::int64_t h = integer(document, dict, "Height", 0);
-  if (w < 1 || h < 1 || w > limits.max_pixels / h) {
-    return make_error(ErrorCode::kLimitExceeded, "image mask size invalid or too large");
+  if (w < 1 || h < 1 || w > kMaxSide || h > kMaxSide) {
+    return make_error(ErrorCode::kLimitExceeded, "image mask size invalid");
   }
   const int bits = stencil ? 1 : static_cast<int>(integer(document, dict, "BitsPerComponent", 8));
   if (bits != 1 && bits != 2 && bits != 4 && bits != 8 && bits != 16) {
@@ -116,35 +114,24 @@ Result<std::vector<std::uint8_t>> single_channel(Document& document, const Objec
   }
   const double top = std::ldexp(1.0, bits) - 1;
   const std::size_t row_bytes = ((static_cast<std::size_t>(w) * static_cast<std::size_t>(bits)) + 7) / 8;
-  if (data->size() < row_bytes * static_cast<std::size_t>(h)) {
+  if (data->size() / row_bytes < static_cast<std::size_t>(h)) {
     warnings.add("image mask data shorter than its size: the rest reads as 0");
   }
-  // The mask at its own size, then resampled.
-  std::vector<std::uint8_t> own(static_cast<std::size_t>(w) * static_cast<std::size_t>(h));
-  for (std::int64_t y = 0; y < h; ++y) {
-    const std::size_t start = std::min(data->size(), static_cast<std::size_t>(y) * row_bytes);
-    SampleReader reader{std::span(*data).subspan(start, std::min(row_bytes, data->size() - start)), bits};
-    for (std::int64_t x = 0; x < w; ++x) {
-      const double v = decode[0] + ((reader.next() / top) * (decode[1] - decode[0]));
+  std::vector<std::uint8_t> out(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+  for (int y = 0; y < height; ++y) {
+    const std::int64_t sy = std::min<std::int64_t>(h - 1, (static_cast<std::int64_t>(y) * h) / height);
+    const std::size_t row = static_cast<std::size_t>(sy) * row_bytes * 8;
+    for (int x = 0; x < width; ++x) {
+      const std::int64_t sx = std::min<std::int64_t>(w - 1, (static_cast<std::int64_t>(x) * w) / width);
+      const std::uint32_t raw = sample_at(*data, row + (static_cast<std::size_t>(sx) * static_cast<std::size_t>(bits)), bits);
+      const double v = decode[0] + ((raw / top) * (decode[1] - decode[0]));
       // A stencil's 1 masks out; a soft mask's value is the alpha itself.
       double alpha = v;
       if (stencil) {
         alpha = v >= 0.5 ? 0.0 : 1.0;
       }
-      own[(static_cast<std::size_t>(y) * static_cast<std::size_t>(w)) + static_cast<std::size_t>(x)] =
-          static_cast<std::uint8_t>(std::lround(std::clamp(alpha, 0.0, 1.0) * 255));
-    }
-  }
-  if (w == width && h == height) {
-    return own;
-  }
-  std::vector<std::uint8_t> out(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
-  for (int y = 0; y < height; ++y) {
-    const std::int64_t sy = std::min<std::int64_t>(h - 1, (static_cast<std::int64_t>(y) * h) / height);
-    for (int x = 0; x < width; ++x) {
-      const std::int64_t sx = std::min<std::int64_t>(w - 1, (static_cast<std::int64_t>(x) * w) / width);
       out[(static_cast<std::size_t>(y) * static_cast<std::size_t>(width)) + static_cast<std::size_t>(x)] =
-          own[(static_cast<std::size_t>(sy) * static_cast<std::size_t>(w)) + static_cast<std::size_t>(sx)];
+          static_cast<std::uint8_t>(std::lround(std::clamp(alpha, 0.0, 1.0) * 255));
     }
   }
   return out;
@@ -213,8 +200,8 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
                                                                   const model::Dict* resources, Rgb fill, Warnings& warnings, const ImageLimits& limits) {
   const std::int64_t width = integer(document, dict, "Width", 0);
   const std::int64_t height = integer(document, dict, "Height", 0);
-  if (width < 1 || height < 1 || width > limits.max_pixels / height) {
-    return make_error(ErrorCode::kLimitExceeded, "image size invalid or too large: " + std::to_string(width) + "x" + std::to_string(height));
+  if (width < 1 || height < 1 || width > kMaxSide || height > kMaxSide) {
+    return make_error(ErrorCode::kLimitExceeded, "image size invalid: " + std::to_string(width) + "x" + std::to_string(height));
   }
   const bool stencil = flag(document, dict, "ImageMask");
   const int bits = stencil ? 1 : static_cast<int>(integer(document, dict, "BitsPerComponent", 8));
@@ -252,13 +239,33 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
   const auto w = static_cast<std::size_t>(width);
   const auto h = static_cast<std::size_t>(height);
   const std::size_t row_bytes = ((w * n * static_cast<std::size_t>(bits)) + 7) / 8;
-  if (data.size() < row_bytes * h) {
+  if (data.size() / row_bytes < h) {
     warnings.add("image data shorter than its size: the rest reads as 0");
   }
+  // Too many pixels to keep: every step-th sample of every step-th row (viewers never refuse an image;
+  // a 600 dpi A4 scan is 35 million pixels).
+  const auto step = static_cast<std::size_t>(reduction(width, height, limits.max_pixels));
+  const std::size_t ow = (w + step - 1) / step;
+  const std::size_t oh = (h + step - 1) / step;
+  if (step > 1) {
+    warnings.add("image of " + std::to_string(width) + "x" + std::to_string(height) + " read at " + std::to_string(ow) + "x" + std::to_string(oh) +
+                 " to stay within the memory limit");
+  }
   auto pixels = std::make_shared<graphics::ImagePixels>();
-  pixels->width = static_cast<std::int32_t>(width);
-  pixels->height = static_cast<std::int32_t>(height);
-  pixels->rgba.resize(w * h * 4);
+  pixels->width = static_cast<std::int32_t>(ow);
+  pixels->height = static_cast<std::int32_t>(oh);
+  pixels->rgba.resize(ow * oh * 4);
+
+  // Colour key masking (§8.9.6.4): samples whose every component lies in its range are not painted.
+  std::vector<double> key;
+  if (const Object* mask = dict.find("Mask"); mask != nullptr && !stencil && !dict.contains("SMask")) {
+    if (auto resolved = document.resolve(*mask); resolved && resolved->as_array() != nullptr) {
+      key = numbers(document, &*resolved);
+      if (key.size() != 2 * n) {
+        key.clear();
+      }
+    }
+  }
 
   // One-component spaces (and Indexed): a table of every sample value, computed once.
   std::vector<Rgb> table;
@@ -272,13 +279,16 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
   }
   std::vector<double> components(n);
   std::vector<std::uint32_t> raw(n);
-  for (std::size_t y = 0; y < h; ++y) {
-    const std::size_t start = std::min(data.size(), y * row_bytes);
-    SampleReader reader{std::span(data).subspan(start, std::min(row_bytes, data.size() - start)), bits};
-    for (std::size_t x = 0; x < w; ++x) {
-      std::uint8_t* p = &pixels->rgba[((y * w) + x) * 4];
+  const auto sample_bits = n * static_cast<std::size_t>(bits);
+  for (std::size_t oy = 0; oy < oh; ++oy) {
+    const std::size_t row = oy * step * row_bytes * 8;
+    for (std::size_t ox = 0; ox < ow; ++ox) {
+      std::uint8_t* p = &pixels->rgba[((oy * ow) + ox) * 4];
+      const std::size_t first = row + (ox * step * sample_bits);
+      bool keyed = !key.empty();
       for (std::size_t i = 0; i < n; ++i) {
-        raw[i] = reader.next();
+        raw[i] = sample_at(data, first + (i * static_cast<std::size_t>(bits)), bits);
+        keyed = keyed && raw[i] >= key[2 * i] && raw[i] <= key[(2 * i) + 1];
       }
       if (stencil) {
         // §8.9.6.2: with /Decode [0 1], 0 paints the fill colour and 1 leaves the backdrop.
@@ -301,18 +311,19 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
       p[0] = byte_of(rgb.r);
       p[1] = byte_of(rgb.g);
       p[2] = byte_of(rgb.b);
-      p[3] = 255;
+      p[3] = keyed ? 0 : 255;
     }
   }
   if (stencil) {
     return pixels;
   }
+  const std::size_t count = ow * oh;
 
   // Transparency: a soft mask image (§11.6.5.3) wins over /Mask (§8.9.6).
   if (const Object* smask = dict.find("SMask")) {
-    auto alpha = single_channel(document, *smask, pixels->width, pixels->height, false, warnings, limits);
+    auto alpha = single_channel(document, *smask, pixels->width, pixels->height, false, warnings);
     if (alpha) {
-      for (std::size_t i = 0; i < w * h; ++i) {
+      for (std::size_t i = 0; i < count; ++i) {
         pixels->rgba[(i * 4) + 3] = (*alpha)[i];
       }
       // /Matte: the colours were blended with this colour by the alpha (§11.6.5.3); undo it:
@@ -321,7 +332,7 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
         if (const std::vector<double> matte = numbers(document, mask->as_stream()->dict.find("Matte")); matte.size() == n) {
           const Rgb m = to_rgb(space, matte);
           const std::array<double, 3> base = {m.r, m.g, m.b};
-          for (std::size_t i = 0; i < w * h; ++i) {
+          for (std::size_t i = 0; i < count; ++i) {
             const double a = pixels->rgba[(i * 4) + 3] / 255.0;
             for (std::size_t c = 0; c < 3 && a > 0; ++c) {
               std::uint8_t& v = pixels->rgba[(i * 4) + c];
@@ -335,29 +346,10 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
     }
   } else if (const Object* mask = dict.find("Mask")) {
     auto resolved = document.resolve(*mask);
-    if (resolved && resolved->as_array() != nullptr) {
-      // Colour key masking: samples whose every component lies in its range are not painted.
-      const std::vector<double> ranges = numbers(document, &*resolved);
-      if (ranges.size() == 2 * n) {
-        for (std::size_t y = 0; y < h; ++y) {
-          const std::size_t start = std::min(data.size(), y * row_bytes);
-          SampleReader reader{std::span(data).subspan(start, std::min(row_bytes, data.size() - start)), bits};
-          for (std::size_t x = 0; x < w; ++x) {
-            bool keyed = true;
-            for (std::size_t i = 0; i < n; ++i) {
-              const auto v = static_cast<double>(reader.next());
-              keyed = keyed && v >= ranges[2 * i] && v <= ranges[(2 * i) + 1];
-            }
-            if (keyed) {
-              pixels->rgba[(((y * w) + x) * 4) + 3] = 0;
-            }
-          }
-        }
-      }
-    } else if (resolved && resolved->as_stream() != nullptr) {
-      auto alpha = single_channel(document, *mask, pixels->width, pixels->height, true, warnings, limits);
+    if (resolved && resolved->as_stream() != nullptr) {
+      auto alpha = single_channel(document, *mask, pixels->width, pixels->height, true, warnings);
       if (alpha) {
-        for (std::size_t i = 0; i < w * h; ++i) {
+        for (std::size_t i = 0; i < count; ++i) {
           pixels->rgba[(i * 4) + 3] = (*alpha)[i];
         }
       } else {

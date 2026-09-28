@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "capriole/filters/basic.hpp"
+#include "capriole/filters/ccitt.hpp"
 #include "capriole/filters/dct.hpp"
 #include "capriole/filters/flate.hpp"
 
@@ -49,6 +50,13 @@ Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const s
   }
   if (name == "RunLengthDecode") {
     return run_length_decode(data, max, lenient);
+  }
+  if (name == "CCITTFaxDecode" || name == "CCF") {
+    auto params = ccitt_params(parms);
+    if (!params) {
+      return std::unexpected(std::move(params.error()));
+    }
+    return ccitt_decode(data, *params, max);
   }
   if (name == "DCTDecode" || name == "DCT") {
     return dct_decode(data, parms, max);
