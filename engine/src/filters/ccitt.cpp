@@ -332,6 +332,13 @@ class Decoder {
       reference_.push_back(columns_);
       ++rows;
     }
+    // An EOFB after the last row of a known height belongs to this data.
+    if (p_.k < 0 && p_.rows > 0 && rows == p_.rows) {
+      const std::size_t start = in_.position();
+      if (!(skip_eol(in_) && skip_eol(in_))) {
+        in_.seek(start);
+      }
+    }
     // A known height: the rows the data did not give read as white.
     const std::uint8_t white = p_.black_is_1 ? 0x00 : 0xFF;
     while (p_.rows > 0 && rows < p_.rows) {
@@ -343,6 +350,8 @@ class Decoder {
     }
     return {};
   }
+
+  [[nodiscard]] std::size_t bytes_consumed() const { return (in_.position() + 7) / 8; }
 
  private:
   enum class Status : std::uint8_t { kRow, kEnd, kError };
@@ -492,11 +501,14 @@ Result<CcittParams> ccitt_params(const model::Dict* decode_parms) {
   return p;
 }
 
-Result<std::vector<std::byte>> ccitt_decode(std::span<const std::byte> input, const CcittParams& params, std::size_t max_output) {
+Result<std::vector<std::byte>> ccitt_decode(std::span<const std::byte> input, const CcittParams& params, std::size_t max_output, std::size_t* consumed) {
   std::vector<std::byte> out;
   Decoder decoder(input, params);
   if (auto done = decoder.run(out, max_output); !done) {
     return std::unexpected(std::move(done.error()));
+  }
+  if (consumed != nullptr) {
+    *consumed = std::min(decoder.bytes_consumed(), input.size());
   }
   return out;
 }

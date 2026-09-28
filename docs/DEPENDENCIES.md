@@ -28,7 +28,9 @@ LZW, RunLength, ASCIIHex/ASCII85, crittografia dei PDF (MD5, RC4, AES, SHA-2).
 
 ## Solo strumenti esterni di test (mai linkati)
 
-MuPDF/mutool (AGPL), Poppler (GPL), PDFium (BSD, ma API da viewer), pdf.js (Apache-2.0), qpdf (Apache-2.0).
+MuPDF/mutool (AGPL), Poppler (GPL), PDFium (BSD, ma API da viewer), pdf.js (Apache-2.0), qpdf (Apache-2.0),
+jbig2dec (AGPL: oracolo delle fixture JBIG2, `tests/data/jbig2/make_fixtures.py`), libtiff tramite Pillow
+(generazione delle fixture CCITT e MMR).
 
 ## Inspector app (`apps/inspector`) — npm, devDependencies only
 

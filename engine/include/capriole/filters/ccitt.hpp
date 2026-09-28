@@ -33,7 +33,9 @@ struct CcittParams {
 // The parameters of a /DecodeParms dictionary (nullptr: all defaults), validated.
 [[nodiscard]] Result<CcittParams> ccitt_params(const model::Dict* decode_parms);
 
-// kLimitExceeded when the image would exceed max_output bytes.
-[[nodiscard]] Result<std::vector<std::byte>> ccitt_decode(std::span<const std::byte> input, const CcittParams& params, std::size_t max_output);
+// kLimitExceeded when the image would exceed max_output bytes. consumed (may be null) receives how many
+// bytes of input the rows took, an EOFB after them included (JBIG2 reads MMR data back to back).
+[[nodiscard]] Result<std::vector<std::byte>> ccitt_decode(std::span<const std::byte> input, const CcittParams& params, std::size_t max_output,
+                                                          std::size_t* consumed = nullptr);
 
 }  // namespace capriole::filters

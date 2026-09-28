@@ -7,6 +7,7 @@
 #include "capriole/filters/ccitt.hpp"
 #include "capriole/filters/dct.hpp"
 #include "capriole/filters/flate.hpp"
+#include "capriole/filters/jbig2.hpp"
 
 namespace capriole::filters {
 
@@ -57,6 +58,16 @@ Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const s
       return std::unexpected(std::move(params.error()));
     }
     return ccitt_decode(data, *params, max);
+  }
+  if (name == "JBIG2Decode") {
+    // /JBIG2Globals arrives decoded, as a string (Document::decode_stream resolves the stream).
+    std::span<const std::byte> globals;
+    if (const model::Object* value = parms != nullptr ? parms->find("JBIG2Globals") : nullptr) {
+      if (const model::String* bytes = value->as_string()) {
+        globals = std::as_bytes(std::span(bytes->bytes));
+      }
+    }
+    return jbig2_decode(data, globals, max);
   }
   if (name == "DCTDecode" || name == "DCT") {
     return dct_decode(data, parms, max);

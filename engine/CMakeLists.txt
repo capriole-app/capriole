@@ -18,6 +18,9 @@ add_library(capriole_engine STATIC
   src/filters/dct.cpp
   src/filters/decode.cpp
   src/filters/flate.cpp
+  src/filters/jbig2.cpp
+  src/filters/jbig2_arith.cpp
+  src/filters/jbig2_huffman.cpp
   src/model/object.cpp
   src/parser/header.cpp
   src/parser/lexer.cpp

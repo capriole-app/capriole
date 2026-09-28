@@ -327,6 +327,46 @@ Result<std::vector<std::byte>> Document::decode_stream(const model::Stream& stre
     }
   }
 
+  // /JBIG2Globals (§7.4.7) refers to a stream of shared segments: the filter gets its decoded bytes, as
+  // a string in place of the reference. Only one level: globals that have globals of their own (a
+  // cycle, or nonsense) are dropped.
+  const auto expand_globals = [&](Object& parms) -> Result<void> {
+    model::Dict* p = parms.as_dict();
+    Object* globals = p != nullptr ? p->find("JBIG2Globals") : nullptr;
+    if (globals == nullptr) {
+      return {};
+    }
+    auto target = resolve(*globals);
+    const model::Stream* shared = target ? target->as_stream() : nullptr;
+    if (shared == nullptr) {
+      p->erase("JBIG2Globals");
+      return {};
+    }
+    model::Stream plain = *shared;
+    if (Object* inner = plain.dict.find("DecodeParms"); inner != nullptr && inner->as_dict() != nullptr) {
+      inner->as_dict()->erase("JBIG2Globals");
+    }
+    plain.dict.erase("DecodeParms");
+    auto bytes = decode_stream(plain);
+    if (!bytes) {
+      return std::unexpected(std::move(bytes.error()));
+    }
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): bytes as the chars of a string
+    *globals = model::String{.bytes = std::string(reinterpret_cast<const char*>(bytes->data()), bytes->size()), .form = model::StringForm::kHex};
+    return {};
+  };
+  if (Object* parms = dict.find("DecodeParms")) {
+    if (model::Array* array = parms->as_array()) {
+      for (Object& element : *array) {
+        if (auto r = expand_globals(element); !r) {
+          return std::unexpected(std::move(r.error()));
+        }
+      }
+    } else if (auto r = expand_globals(*parms); !r) {
+      return std::unexpected(std::move(r.error()));
+    }
+  }
+
   // Reading (and decrypting) is the loader's job; the filter chain uses the resolved dictionary.
   auto encoded = loader_->read_stream_data(stream);
   if (!encoded) {
