@@ -21,6 +21,11 @@ build=build/fuzz/fuzz
 out=fuzz/campaign
 mkdir -p "$out"
 rm -f "$out"/*.log "$out"/summary.txt
+# The findings of an earlier campaign are kept aside, not counted again (archive them in CORPORA/reports).
+if [[ -n "$(find "$out/crashes" -type f 2>/dev/null)" ]]; then
+  mkdir -p "$out/previous-crashes"
+  mv "$out"/crashes/* "$out/previous-crashes/"
+fi
 
 # A target counts only if it has a seed corpus: stale binaries left in the build tree by renamed
 # targets are ignored.
