@@ -30,6 +30,8 @@ export class EngineClient {
       for (const pending of this.#pending.values()) pending.reject(error);
       this.#pending.clear();
     };
+    // Where the resource pack is served: fonts and CMaps a page needs are fetched from there.
+    void this.#call({ kind: 'resourceBase', base: new URL('resources/', document.baseURI).href });
   }
 
   #call<T>(request: Request, transfer: Transferable[] = []): Promise<T> {

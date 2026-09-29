@@ -17,16 +17,16 @@
 #include "capriole/content/page_content.hpp"
 #include "capriole/filters/decode.hpp"
 #include "color_space.hpp"
+#include "font/font.hpp"
 #include "image.hpp"
-#include "text_font.hpp"
 
 namespace capriole::content {
 
 namespace {
 
 using detail::ColorSpace;
-using detail::TextFont;
 using detail::Warnings;
+using font::detail::Font;
 using graphics::Color;
 using graphics::Matrix;
 using graphics::Point;
@@ -61,13 +61,14 @@ struct GraphicsState {
   std::int32_t render_mode = 0;
   std::string font_name;
   std::optional<model::ObjectRef> font_ref;
-  std::shared_ptr<const TextFont> font;
+  std::shared_ptr<Font> font;
   double font_size = 0;
 };
 
 class Interpreter {
  public:
-  Interpreter(Document& document, const InterpreterLimits& limits, graphics::DisplayList& out) : document_(&document), limits_(&limits), out_(&out) {}
+  Interpreter(Document& document, const InterpreterLimits& limits, const font::Resources* resources, graphics::DisplayList& out)
+      : document_(&document), limits_(&limits), out_(&out), fonts_(resources) {}
 
   void run(std::span<const std::byte> content, const model::Dict* resources, std::size_t form_depth) {
     ContentParser parser(content, limits_->parse, parser::ParseMode::kTolerant);
@@ -104,6 +105,7 @@ class Interpreter {
   }
 
   std::vector<std::string> take_warnings() { return warnings_.take(); }
+  [[nodiscard]] std::vector<std::string> missing_resources() const { return fonts_.missing(); }
 
  private:
   // Colours and stroke styles go into the list's tables once; a command refers to them by index. The
@@ -247,6 +249,9 @@ class Interpreter {
   }
 
   void set_color(const Operation& op, bool for_fill) {
+    if (uncolored_glyph_) {
+      return;
+    }
     const ColorSpace& space = for_fill ? state_.fill_space : state_.stroke_space;
     std::vector<double> components;
     std::string pattern;
@@ -261,6 +266,9 @@ class Interpreter {
   }
 
   void set_device_color(const Operation& op, bool for_fill, graphics::ColorSpaceFamily family, std::size_t count) {
+    if (uncolored_glyph_) {
+      return;
+    }
     const auto values = numbers(op, count);
     if (!values) {
       return;
@@ -273,6 +281,9 @@ class Interpreter {
   }
 
   void set_color_space(const Operation& op, bool for_fill) {
+    if (uncolored_glyph_) {
+      return;
+    }
     const model::Name* name = last_name(op);
     if (name == nullptr) {
       return;
@@ -315,7 +326,7 @@ class Interpreter {
       } else if (key == "Font" && value->as_array() != nullptr && value->as_array()->size() == 2) {
         const Object& font = (*value->as_array())[0];
         state_.font_ref = font.as_ref();
-        state_.font = std::make_shared<const TextFont>(detail::load_text_font(*document_, font, warnings_));
+        state_.font = load_font(font);
         state_.font_size = number((*value->as_array())[1]).value_or(0);
       } else if (key == "BM") {
         set_blend_mode(*value);
@@ -417,6 +428,25 @@ class Interpreter {
 
   // ── Text ─────────────────────────────────────────────────────────────────────────────────
 
+  // A font resource, loaded once per page when it is an indirect object (the usual case).
+  std::shared_ptr<Font> load_font(const Object& entry) {
+    const auto ref = entry.as_ref();
+    if (ref) {
+      if (const auto found = font_cache_.find(ref->number); found != font_cache_.end()) {
+        return found->second;
+      }
+    }
+    std::vector<std::string> problems;
+    auto font = Font::load(*document_, entry, fonts_, problems);
+    for (std::string& problem : problems) {
+      warnings_.add(std::move(problem));
+    }
+    if (ref) {
+      font_cache_.emplace(ref->number, font);
+    }
+    return font;
+  }
+
   void set_font(const Operation& op) {
     if (op.operands.size() < 2 || op.operands[0].as_name() == nullptr) {
       warnings_.add("Tf without a font name and size: skipped");
@@ -427,13 +457,13 @@ class Interpreter {
     state_.font_size = number(op.operands[1]).value_or(0);
     const auto entry = resource("Font", name);
     if (!entry) {
-      warnings_.add("font /" + name + " not found in the resources: text advances estimated");
-      state_.font = std::make_shared<const TextFont>(detail::load_text_font(*document_, Object(), warnings_));
+      warnings_.add("font /" + name + " not found in the resources: a substitute is used");
+      state_.font = load_font(Object());
       state_.font_ref.reset();
       return;
     }
     state_.font_ref = entry->as_ref();
-    state_.font = std::make_shared<const TextFont>(detail::load_text_font(*document_, *entry, warnings_));
+    state_.font = load_font(*entry);
   }
 
   // Moves to the start of the next line, offset by (tx, ty) from the current one (Td).
@@ -443,17 +473,18 @@ class Interpreter {
   }
 
   // Tj, TJ, ' and ": a run of glyphs, advancing the text matrix (§9.4.4).
-  void show(const Object& operand) {
+  void show(const Object& operand, std::size_t form_depth) {
     if (!in_text_) {
       warnings_.add("text shown outside BT/ET: drawn anyway");
     }
     if (!state_.font) {
-      warnings_.add("text shown before any Tf: advances estimated");
-      state_.font = std::make_shared<const TextFont>(detail::load_text_font(*document_, Object(), warnings_));
+      warnings_.add("text shown before any Tf: a substitute is used");
+      state_.font = load_font(Object());
     }
-    const TextFont& font = *state_.font;
+    Font& font = *state_.font;
     graphics::ShowText run;
     run.text_matrix = text_matrix_.then(state_.ctm);
+    run.tm = text_matrix_;
     run.ctm = state_.ctm;
     run.font = state_.font_name;
     run.font_ref = state_.font_ref;
@@ -462,23 +493,39 @@ class Interpreter {
     run.render_mode = state_.render_mode;
     run.fill = intern(state_.fill, last_fill_);
     run.stroke = intern(state_.stroke, last_stroke_);
+    run.stroke_style = intern(state_.stroke_style);
     run.alpha = state_.fill_alpha;
+    run.stroke_alpha = state_.stroke_alpha;
     run.blend = state_.blend;
-    run.widths_known = font.widths_known;
-    run.latin_codes = font.latin_codes;
+    run.widths_known = font.widths_known();
+    run.latin_codes = font.latin_codes();
+    run.glyph_procedures = font.kind() == Font::Kind::kType3;
 
+    // Horizontal: tx = ((w0 · Tfs) + Tc + Tw) · Th. Vertical: ty = (w1 · Tfs) + Tc + Tw (§9.4.4); Tw for
+    // the single-byte code 32 only.
+    const bool vertical = font.vertical();
+    const bool outlines = font.kind() != Font::Kind::kType3;
     double x = 0;
+    double y = 0;
+    std::vector<Font::Code> codes;
     const auto add_string = [&](const std::string& bytes) {
       run.bytes += bytes;
-      for (const std::uint32_t code : font.codes(bytes)) {
-        // tx = ((w0 · Tfs) + Tc + Tw) · Th, Tw only for the single-byte code 32 (§9.4.4).
-        double advance = (font.width(code) * font.scale * state_.font_size) + state_.char_spacing;
-        if (!font.two_byte && code == 32) {
-          advance += state_.word_spacing;
+      codes.clear();
+      font.codes(bytes, codes);
+      for (const Font::Code& code : codes) {
+        graphics::Glyph glyph{.code = code.code, .cid = code.cid, .origin = {x, y + state_.rise}, .advance = 0, .outline = nullptr};
+        const double spacing = state_.char_spacing + (Font::is_word_space(code) ? state_.word_spacing : 0);
+        if (vertical) {
+          glyph.advance = (font.vertical_metrics(code).advance * 0.001 * state_.font_size) + spacing;
+          y += glyph.advance;
+        } else {
+          glyph.advance = ((font.width(code) * font.scale() * state_.font_size) + spacing) * state_.scale;
+          x += glyph.advance;
         }
-        advance *= state_.scale;
-        run.glyphs.push_back({.code = code, .origin = {x, state_.rise}, .advance = advance});
-        x += advance;
+        if (outlines) {
+          glyph.outline = font.outline(code);
+        }
+        run.glyphs.push_back(std::move(glyph));
       }
     };
     if (const model::String* string = operand.as_string()) {
@@ -488,16 +535,113 @@ class Interpreter {
         if (const model::String* part = element.as_string()) {
           add_string(part->bytes);
         } else if (const auto adjust = number(element)) {
-          x -= (*adjust / 1000) * state_.font_size * state_.scale;  // TJ numbers move back (§9.4.3)
+          // TJ numbers move back along the writing direction (§9.4.3).
+          if (vertical) {
+            y -= (*adjust / 1000) * state_.font_size;
+          } else {
+            x -= (*adjust / 1000) * state_.font_size * state_.scale;
+          }
         }
       }
     } else {
       warnings_.add("text operator without a string: skipped");
       return;
     }
-    text_matrix_ = Matrix::translate(x, 0).then(text_matrix_);
-    if (!run.glyphs.empty()) {
+    text_matrix_ = Matrix::translate(x, y).then(text_matrix_);
+    if (run.glyphs.empty()) {
+      return;
+    }
+    // Modes 4–7 add the glyphs to the clip that ET sets (§9.3.6).
+    if (state_.render_mode >= 4) {
+      append_transformed(text_clip_, graphics::glyph_run_path(run), state_.ctm);
+    }
+    if (run.glyph_procedures && state_.render_mode != 3 && state_.render_mode != 7) {
+      const std::vector<graphics::Glyph> glyphs = run.glyphs;
+      const Matrix placement = run.text_matrix;
       emit(graphics::Boxed<graphics::ShowText>(std::move(run)));
+      draw_type3_glyphs(font, glyphs, placement, form_depth);
+      return;
+    }
+    emit(graphics::Boxed<graphics::ShowText>(std::move(run)));
+  }
+
+  static void append_transformed(graphics::Path& into, const graphics::Path& path, const Matrix& m) {
+    path.for_each([&](graphics::SegmentKind kind, const Point* p) {
+      switch (kind) {
+        case graphics::SegmentKind::kMove:
+          into.move_to(m.apply(p[0]));
+          break;
+        case graphics::SegmentKind::kLine:
+          into.line_to(m.apply(p[0]));
+          break;
+        case graphics::SegmentKind::kCubic:
+          into.cubic_to(m.apply(p[0]), m.apply(p[1]), m.apply(p[2]));
+          break;
+        case graphics::SegmentKind::kClose:
+          into.close();
+          break;
+      }
+    });
+  }
+
+  // ET: the clip of the glyphs shown in modes 4–7, if any (§9.3.6).
+  void end_text() {
+    in_text_ = false;
+    if (!text_clip_.empty()) {
+      emit(graphics::ClipPath{.path = std::exchange(text_clip_, {}), .ctm = Matrix{}, .rule = graphics::FillRule::kNonZero});
+    }
+  }
+
+  // Type 3 glyphs (§9.6.4): each glyph's procedure runs like a form, with the glyph matrix — FontMatrix
+  // × the glyph's place in the run — as its CTM, and the font's resources (the page's when it has none).
+  void draw_type3_glyphs(const Font& font, const std::vector<graphics::Glyph>& glyphs, const Matrix& placement, std::size_t form_depth) {
+    if (form_depth + 1 >= limits_->max_form_depth) {
+      warnings_.add("Type 3 glyphs nested too deeply: skipped");
+      return;
+    }
+    const model::Dict* resources = font.type3_resources() != nullptr ? font.type3_resources() : resources_;
+    const double size = state_.font_size;
+    const double h = state_.scale;
+    for (const graphics::Glyph& glyph : glyphs) {
+      const Object* proc = font.char_proc(glyph.code);
+      if (proc == nullptr || stopped_) {
+        continue;
+      }
+      const auto ref = proc->as_ref();
+      auto object = document_->resolve(*proc);
+      const model::Stream* stream = object ? object->as_stream() : nullptr;
+      if (stream == nullptr || (ref && active_forms_.contains(ref->number))) {
+        continue;
+      }
+      auto content = document_->decode_stream(*stream);
+      if (!content) {
+        warnings_.add("Type 3 glyph procedure unreadable: " + content.error().message);
+        continue;
+      }
+      if (ref) {
+        active_forms_.insert(ref->number);
+      }
+      save();
+      state_.ctm = font.font_matrix().then(Matrix{size * h, 0, 0, size, glyph.origin.x, glyph.origin.y}).then(placement);
+      const graphics::Path saved_path = std::exchange(path_, {});
+      const bool saved_in_text = std::exchange(in_text_, false);
+      const Matrix saved_text = text_matrix_;
+      const Matrix saved_line = line_matrix_;
+      graphics::Path saved_clip = std::exchange(text_clip_, {});
+      const bool saved_uncolored = std::exchange(uncolored_glyph_, false);
+      ++type3_depth_;
+      run(*content, resources, form_depth + 1);
+      --type3_depth_;
+      uncolored_glyph_ = saved_uncolored;
+      text_clip_ = std::move(saved_clip);
+      line_matrix_ = saved_line;
+      text_matrix_ = saved_text;
+      in_text_ = saved_in_text;
+      path_ = saved_path;
+      restore();
+      if (ref) {
+        active_forms_.erase(ref->number);
+      }
     }
   }
 
@@ -908,9 +1052,10 @@ class Interpreter {
       case kBeginText:
         in_text_ = true;
         text_matrix_ = line_matrix_ = Matrix{};
+        text_clip_ = {};
         break;
       case kEndText:
-        in_text_ = false;
+        end_text();
         break;
       // Text state
       case kSetCharSpacing:
@@ -970,13 +1115,13 @@ class Interpreter {
       case kShowText:
       case kShowTextArray:
         if (!op.operands.empty()) {
-          show(op.operands.back());
+          show(op.operands.back(), form_depth);
         }
         break;
       case kNextLineShowText:
         next_line(0, -state_.leading);
         if (!op.operands.empty()) {
-          show(op.operands.back());
+          show(op.operands.back(), form_depth);
         }
         break;
       case kNextLineSpacingShowText:  // aw ac string " (§9.4.3)
@@ -985,14 +1130,17 @@ class Interpreter {
           state_.word_spacing = number(op.operands[n - 3]).value_or(state_.word_spacing);
           state_.char_spacing = number(op.operands[n - 2]).value_or(state_.char_spacing);
           next_line(0, -state_.leading);
-          show(op.operands.back());
+          show(op.operands.back(), form_depth);
         }
         break;
-      // Type 3 glyph descriptions: meaningful only inside a glyph procedure.
+      // Type 3 glyph descriptions: meaningful only inside a glyph procedure. After d1 the glyph is a
+      // shape painted with the colour of the text: its own colour operators are ignored (§9.6.4).
       case kSetCharWidth:
-      case kSetCacheDevice:
         break;
-      // Colour
+      case kSetCacheDevice:
+        uncolored_glyph_ = type3_depth_ > 0;
+        break;
+      // Colour (ignored inside an uncoloured Type 3 glyph)
       case kSetStrokeColorSpace:
         set_color_space(op, false);
         break;
@@ -1072,6 +1220,11 @@ class Interpreter {
   bool in_text_ = false;
   Matrix text_matrix_;
   Matrix line_matrix_;
+  graphics::Path text_clip_;  // glyphs shown in modes 4–7 since BT, in default user space
+  font::detail::FontContext fonts_;
+  std::map<std::uint32_t, std::shared_ptr<Font>> font_cache_;
+  std::size_t type3_depth_ = 0;
+  bool uncolored_glyph_ = false;
   std::size_t compatibility_ = 0;
   std::set<std::uint32_t> active_forms_;
   std::map<std::uint32_t, std::shared_ptr<const graphics::ImagePixels>> images_;
@@ -1122,7 +1275,7 @@ std::optional<graphics::Rect> rect_of(const std::optional<Object>& object) {
 
 }  // namespace
 
-Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRef page, const InterpreterLimits& limits) {
+Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRef page, const InterpreterLimits& limits, const font::Resources* resources) {
   auto node = document.get(page);
   if (!node) {
     return std::unexpected(std::move(node.error()));
@@ -1151,9 +1304,10 @@ Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRe
     list.warnings.push_back("page content unreadable: " + content.error().message);
     return list;
   }
-  const auto resources = inherited(document, page, "Resources");
-  Interpreter interpreter(document, limits, list);
-  interpreter.run(*content, resources && resources->as_dict() != nullptr ? resources->as_dict() : nullptr, 0);
+  const auto page_resources = inherited(document, page, "Resources");
+  Interpreter interpreter(document, limits, resources, list);
+  interpreter.run(*content, page_resources && page_resources->as_dict() != nullptr ? page_resources->as_dict() : nullptr, 0);
+  list.missing_resources = interpreter.missing_resources();
   auto found = interpreter.take_warnings();
   list.warnings.insert(list.warnings.end(), found.begin(), found.end());
   return list;

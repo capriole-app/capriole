@@ -173,11 +173,42 @@ TEST(CApiDocument, PageRender) {
   EXPECT_EQ(pixel(150, 50)[1], 255);  // white page, right half
   EXPECT_EQ(pixel(150, 50)[3], 255);
   capriole_free(rgba);
+  char* json = nullptr;
+  ASSERT_EQ(capriole_last_missing_resources_json(&json), CAPRIOLE_OK);
+  EXPECT_EQ(take_json(json), "[]");
   EXPECT_EQ(capriole_document_page_render(document, 1, 72, &rgba, &width, &height), CAPRIOLE_ERROR_OUT_OF_RANGE);
   EXPECT_EQ(rgba, nullptr);
   EXPECT_EQ(capriole_document_page_render(document, 0, 0, &rgba, &width, &height), CAPRIOLE_ERROR_INVALID_ARGUMENT);
   EXPECT_EQ(capriole_document_page_render(document, 0, 1e6, &rgba, &width, &height), CAPRIOLE_ERROR_LIMIT_EXCEEDED);
   EXPECT_EQ(capriole_document_page_render(document, 0, 72, nullptr, &width, &height), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  capriole_document_close(document);
+}
+
+TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {
+  // A Japanese font that is not embedded, with a predefined CMap: both come from the resource pack.
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 50]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>");
+  b.add_stream(4, "BT /F1 12 Tf <0041> Tj ET");
+  b.add_object(5,
+               "<</Type/Font/Subtype/Type0/BaseFont/X/Encoding/UniJIS-UCS2-H/DescendantFonts[<</Type/Font/Subtype/CIDFontType0/BaseFont/X"
+               "/CIDSystemInfo<</Registry(Adobe)/Ordering(Japan1)/Supplement 4>>>>]>>");
+  b.finish_table("/Size 6/Root 1 0 R");
+  capriole_document* document = open_document(b.str());
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_page_preview_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("missing_resources":["cmap/UniJIS-UCS2-H","font/NotoSansJP-Regular.otf"])"), std::string::npos);
+  ASSERT_EQ(capriole_last_missing_resources_json(&json), CAPRIOLE_OK);
+  EXPECT_EQ(take_json(json), R"(["cmap/UniJIS-UCS2-H","font/NotoSansJP-Regular.otf"])");
+  const std::string cmap = "1 begincodespacerange <0000> <FFFF> endcodespacerange 1 begincidchar <0041> 34 endcidchar";
+  ASSERT_EQ(capriole_resource_add("cmap/UniJIS-UCS2-H", reinterpret_cast<const std::uint8_t*>(cmap.data()),
+                                  cmap.size()),  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+            CAPRIOLE_OK);
+  ASSERT_EQ(capriole_document_page_preview_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("missing_resources":["font/NotoSansJP-Regular.otf"])"), std::string::npos);
+  EXPECT_EQ(capriole_resource_add(nullptr, nullptr, 0), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_last_missing_resources_json(nullptr), CAPRIOLE_ERROR_INVALID_ARGUMENT);
   capriole_document_close(document);
 }
 

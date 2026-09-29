@@ -1,0 +1,19 @@
+%!PS-Adobe-3.0 Resource-CMap
+/CIDInit /ProcSet findresource begin
+12 dict begin begincmap
+/CMapName /Test-H def /WMode 1 def
+2 begincodespacerange
+<00> <80>
+<8140> <9FFC>
+endcodespacerange
+2 begincidrange
+<20> <7E> 1
+<8140> <817E> 633
+endcidrange
+1 begincidchar
+<8150> 999
+endcidchar
+1 beginnotdefrange
+<9000> <90FF> 7
+endnotdefrange
+endcmap CMapName currentdict /CMap defineresource pop end end

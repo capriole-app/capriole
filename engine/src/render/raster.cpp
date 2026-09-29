@@ -771,31 +771,23 @@ class Rasterizer {
   void draw(const Boxed<PaintShading>& /*unused*/) {}
 
   void draw(const Boxed<ShowText>& boxed) {
-    // The glyph boxes until the fonts step, as in the SVG preview.
+    // The glyph outlines, filled and/or stroked as the text rendering mode says (§9.3.6); the clip of
+    // modes 4–7 is a ClipPath of its own. Type 3 glyphs are the commands that follow.
     const ShowText& run = *boxed;
-    const double h = run.horizontal_scale != 0 ? run.horizontal_scale : 1;
-    const double unit = run.font_size * h;
-    if (run.render_mode == 3 || run.render_mode == 7 || unit == 0 || run.glyphs.empty()) {
+    if (run.render_mode == 3 || run.render_mode == 7 || run.glyph_procedures) {
       return;
     }
-    const Matrix element = Matrix{unit, 0, 0, run.font_size, 0, run.glyphs.front().origin.y}.then(run.text_matrix);
-    double x0 = 0;
-    double x1 = 0;
-    for (const Glyph& glyph : run.glyphs) {
-      x0 = std::min(x0, glyph.origin.x / unit);
-      x1 = std::max(x1, (glyph.origin.x / unit) + std::max(glyph.advance / unit * 0.85, 0.05));
-    }
-    const double opacity = run.alpha * 0.35;
-    if (!rect_within_safe_range(x0, 0, x1, 0.68, element.then(page_))) {
+    Path path = glyph_run_path(run);
+    if (path.empty()) {
       return;
     }
-    paint(run.blend, opacity, bounds_of_rect(x0, 0, x1, 0.68, element.then(page_)), [&](Surface& s) {
-      s.context.set_transform(to_blend2d(device(element, s)));
-      const BLRgba fill = color(run.fill, opacity);
-      for (const Glyph& glyph : run.glyphs) {
-        s.context.fill_rect(BLRect(glyph.origin.x / unit, 0, std::max(glyph.advance / unit * 0.85, 0.05), 0.68), fill);
-      }
-    });
+    const int mode = run.render_mode % 4;
+    if (mode == 0 || mode == 2) {
+      draw(FillPath{.path = path, .ctm = run.ctm, .rule = FillRule::kNonZero, .blend = run.blend, .color = run.fill, .alpha = run.alpha});
+    }
+    if (mode == 1 || mode == 2) {
+      draw(StrokePath{.path = std::move(path), .ctm = run.ctm, .style = run.stroke_style, .color = run.stroke, .alpha = run.stroke_alpha, .blend = run.blend});
+    }
   }
 
   // ── Transparency groups and soft masks ─────────────────────────────────────────────────────

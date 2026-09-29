@@ -24,6 +24,8 @@ set(_capriole_exports
   _capriole_document_page_render
   _capriole_document_stream_data
   _capriole_document_save
+  _capriole_resource_add
+  _capriole_last_missing_resources_json
   _malloc
   _free)
 list(JOIN _capriole_exports "," _capriole_exports)

@@ -91,8 +91,8 @@ capriole_status capriole_document_page_content_json(capriole_document* document,
 
 /*
  * A vector preview of page page_index (0-based) as JSON: the page interpreted (content streams, forms,
- * graphics state) and written as SVG — paths, colours and clips exact, text in a generic font, images
- * as placeholders — with the size of the drawing, the commands by kind and the interpreter's warnings.
+ * graphics state) and written as SVG — paths, colours, clips, glyph outlines and images — with the size
+ * of the drawing, the commands by kind, the interpreter's warnings and the missing resources.
  * The SVG is plain ASCII (the document's text is escaped). Format in capi/README.md.
  */
 capriole_status capriole_document_page_preview_json(capriole_document* document, uint32_t page_index, char** json);
@@ -100,11 +100,26 @@ capriole_status capriole_document_page_preview_json(capriole_document* document,
 /*
  * Page page_index (0-based) drawn at dpi dots per inch (72 = one pixel per point): *rgba receives
  * *width x *height pixels, rows top to bottom, 4 bytes each (R, G, B, A, not premultiplied), on a white
- * page. Release *rgba with capriole_free. What is drawn follows the vector preview: paths, colours,
- * clips, dashes and transparency exact; text as glyph boxes, images as placeholders.
+ * page. Release *rgba with capriole_free. Paths, colours, clips, dashes, transparency, text and images;
+ * resources the page wanted and did not find: capriole_last_missing_resources_json.
  * CAPRIOLE_ERROR_LIMIT_EXCEEDED when the bitmap would be larger than 50 million pixels.
  */
 capriole_status capriole_document_page_render(capriole_document* document, uint32_t page_index, double dpi, uint8_t** rgba, uint32_t* width, uint32_t* height);
+
+/*
+ * Registers a resource pages may need (fonts and CMaps too large to build into the engine: the resource
+ * pack of scripts/fetch_resources.sh), by its name in the pack — "cmap/UniJIS-UCS2-H",
+ * "font/NotoSansJP-Regular.otf" — with its bytes (copied). For every document of the process, from the
+ * next page interpreted on; registering a name again replaces its data. Thread-safe.
+ */
+capriole_status capriole_resource_add(const char* name, const uint8_t* data, size_t size);
+
+/*
+ * The resources the last page interpreted on this thread (preview or render) wanted and did not find,
+ * as a JSON array of names (sorted; release with capriole_free): what to fetch and register before
+ * drawing the page again. [] when nothing was missing or no page was interpreted.
+ */
+capriole_status capriole_last_missing_resources_json(char** json);
 
 /*
  * The data of stream object number: decoded (all filters undone) when decoded is nonzero, otherwise

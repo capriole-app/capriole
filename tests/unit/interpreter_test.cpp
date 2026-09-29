@@ -190,15 +190,22 @@ TEST(Interpreter, CompositeFontWithIdentityCMap) {
   EXPECT_DOUBLE_EQ(runs[0].glyphs[1].advance, 15);  // 750/1000 · 20, from the range 66–70
 }
 
-TEST(Interpreter, StandardFontsWithoutWidthsAreEstimated) {
-  const auto list = interpret({.content = "BT /F1 10 Tf (Hi) Tj ET /F2 10 Tf BT (Hi) Tj ET",
-                               .resources = "/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>/F2<</Type/Font/Subtype/Type1/BaseFont/Courier>>>>"});
+TEST(Interpreter, StandardFontsWithoutWidthsUseTheirMetrics) {
+  // The standard 14 may come without /Widths (§9.6.2.2): their substitutes carry Adobe's metrics.
+  const auto list = interpret({.content = "BT /F1 10 Tf (Hi) Tj ET /F2 10 Tf BT (Hi) Tj ET /F3 10 Tf BT (Hi) Tj ET",
+                               .resources = "/Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>/F2<</Type/Font/Subtype/Type1/BaseFont/Courier>>"
+                                            "/F3<</Type/Font/Subtype/Type1/BaseFont/Unknown>>>>"});
   const auto runs = all<graphics::ShowText>(list);
-  ASSERT_EQ(runs.size(), 2U);
-  EXPECT_FALSE(runs[0].widths_known);
-  EXPECT_TRUE(runs[1].widths_known);  // Courier: 600 for every glyph
-  EXPECT_DOUBLE_EQ(runs[1].glyphs[0].advance, 6);
-  EXPECT_TRUE(has_warning(list, "Helvetica has no /Widths"));
+  ASSERT_EQ(runs.size(), 3U);
+  EXPECT_TRUE(runs[0].widths_known);
+  EXPECT_DOUBLE_EQ(runs[0].glyphs[0].advance, 7.22);  // Helvetica H: 722
+  EXPECT_DOUBLE_EQ(runs[0].glyphs[1].advance, 2.22);  // i: 222
+  EXPECT_TRUE(runs[1].widths_known);
+  EXPECT_DOUBLE_EQ(runs[1].glyphs[0].advance, 6);  // Courier: 600 for every glyph
+  EXPECT_NE(runs[0].glyphs[0].outline, nullptr);
+  EXPECT_FALSE(runs[2].widths_known);  // not a standard font: the substitute's advances are an estimate
+  EXPECT_TRUE(has_warning(list, "Unknown has no /Widths"));
+  EXPECT_FALSE(has_warning(list, "Helvetica"));
 }
 
 TEST(Interpreter, FormXObjects) {
@@ -475,15 +482,17 @@ TEST(Svg, WritesPathsClipsAndEscapedText) {
   EXPECT_NE(svg.find(R"(width="200" height="100")"), std::string::npos);
   EXPECT_NE(svg.find("<clipPath"), std::string::npos);
   EXPECT_NE(svg.find(R"(fill="#ff0000")"), std::string::npos);
-  EXPECT_EQ(svg.find("<a&b>"), std::string::npos);                       // the document's text never becomes markup
-  EXPECT_NE(svg.find("&#x25AF;a&#x25AF;b&#x25AF;"), std::string::npos);  // Courier, no /Encoding: Latin codes
-  // A font with a custom encoding is drawn as boxes, not as made-up letters.
-  const auto custom = interpret({.content = "BT /F1 12 Tf (ab) Tj ET",
-                                 .resources = "/Font<</F1<</Subtype/Type1/BaseFont/X/FirstChar 97/LastChar 98/Widths[500 500]"
-                                              "/Encoding<</Differences[97/c/d]>>>>>>"});
+  EXPECT_EQ(svg.find("<a&b>"), std::string::npos);  // the document's text never becomes markup
+  EXPECT_EQ(svg.find("<text"), std::string::npos);  // glyphs with outlines are paths
+  // Glyphs without outlines (here a CMap that is not available): nothing drawn, as in the bitmap.
+  const auto custom = interpret({.content = "BT /F1 12 Tf <00410042> Tj ET",
+                                 .resources = "/Font<</F1<</Subtype/Type0/BaseFont/X/Encoding/UniJIS-UCS2-H/DescendantFonts[<</Subtype/CIDFontType0"
+                                              "/BaseFont/X/CIDSystemInfo<</Registry(Adobe)/Ordering(Japan1)/Supplement 6>>>>]>>>>"});
   const std::string boxes = graphics::to_svg(custom);
   EXPECT_EQ(boxes.find("<text"), std::string::npos);
-  EXPECT_NE(boxes.find("v-0.68"), std::string::npos);
+  EXPECT_EQ(boxes.find("<use"), std::string::npos);
+  EXPECT_NE(svg.find("<use href=\"#g0\""), std::string::npos);  // each glyph defined once, then placed
+  EXPECT_EQ(custom.missing_resources, (std::vector<std::string>{"cmap/UniJIS-UCS2-H", "font/NotoSansJP-Regular.otf"}));
   // Balanced groups.
   std::size_t open = 0;
   std::size_t close = 0;

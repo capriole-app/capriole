@@ -56,4 +56,32 @@ std::string_view command_kind(const Command& command) {
                     command);
 }
 
+Path glyph_run_path(const ShowText& run) {
+  Path out;
+  const double h = run.horizontal_scale != 0 ? run.horizontal_scale : 1;
+  for (const Glyph& glyph : run.glyphs) {
+    if (!glyph.outline) {
+      continue;
+    }
+    const Matrix m = Matrix{run.font_size * h, 0, 0, run.font_size, glyph.origin.x, glyph.origin.y}.then(run.tm);
+    glyph.outline->for_each([&](SegmentKind kind, const Point* p) {
+      switch (kind) {
+        case SegmentKind::kMove:
+          out.move_to(m.apply(p[0]));
+          break;
+        case SegmentKind::kLine:
+          out.line_to(m.apply(p[0]));
+          break;
+        case SegmentKind::kCubic:
+          out.cubic_to(m.apply(p[0]), m.apply(p[1]), m.apply(p[2]));
+          break;
+        case SegmentKind::kClose:
+          out.close();
+          break;
+      }
+    });
+  }
+  return out;
+}
+
 }  // namespace capriole::graphics

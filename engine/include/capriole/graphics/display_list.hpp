@@ -207,33 +207,44 @@ struct PaintShading {
   model::Object shading;
 };
 
-// A run of glyphs of one Tj/TJ/'/" with their positions. Drawing the glyphs needs the font program
-// (a later phase); the positions come from the widths in the font dictionary.
+// A run of glyphs of one Tj/TJ/'/" with their positions and outlines.
 struct Glyph {
-  std::uint32_t code = 0;  // the character code, 1 or 2 bytes (Type0 fonts with Identity CMaps)
-  Point origin;            // in text space: x from the start of the run, y the text rise
-  double advance = 0;      // in text space units, after spacing and scaling
+  std::uint32_t code = 0;  // the character code (1 to 4 bytes, as the font's CMap splits them)
+  std::uint32_t cid = 0;   // composite fonts: the CID the code selects; the code itself otherwise
+  Point origin;            // in text space, from the start of the run (the text rise included in y)
+  double advance = 0;      // in text space units, after spacing and scaling (vertical fonts: downwards)
+  // The glyph in text space for a font size of 1 (font/font.hpp); null when there is nothing to draw — a
+  // missing glyph, or a Type 3 font, whose glyphs are the commands that follow the run.
+  std::shared_ptr<const Path> outline;
 };
 
 struct ShowText {
-  // Text space → user space at the start of the run: Tm × CTM. A glyph is drawn with the matrix
-  // [size·horizontal_scale 0 0 size origin.x origin.y] × text_matrix (§9.4.4: the rise is in origin.y).
+  // Text space → user space at the start of the run: Tm × CTM, and Tm alone (strokes keep their line
+  // width in user space). A glyph is drawn with the matrix [size·horizontal_scale 0 0 size origin.x
+  // origin.y] × text_matrix (§9.4.4).
   Matrix text_matrix;
+  Matrix tm;
   Matrix ctm;
   std::string font;  // the font resource name (/F1)
   std::optional<model::ObjectRef> font_ref;
   double font_size = 0;
   double horizontal_scale = 1;   // Tz / 100
-  std::int32_t render_mode = 0;  // Tr (§9.3.6)
+  std::int32_t render_mode = 0;  // Tr (§9.3.6): fill, stroke, both, invisible; 4–7 also clip (a ClipPath at ET)
   std::string bytes;             // the string shown, as bytes
   std::vector<Glyph> glyphs;
   ColorIndex fill = 0;
   ColorIndex stroke = 0;
-  double alpha = 1;
+  StyleIndex stroke_style = 0;
+  double alpha = 1;         // of the fill
+  double stroke_alpha = 1;  // of the stroke
   BlendMode blend = BlendMode::kNormal;
-  bool widths_known = false;  // false: the font gives no widths (e.g. a standard 14 font), advances are estimated
-  bool latin_codes = false;   // the codes read as Latin text (a standard encoding); otherwise unknown until ToUnicode
+  bool widths_known = false;      // false: the font gives no widths, advances are estimated
+  bool latin_codes = false;       // the codes read as Latin text (a standard encoding); otherwise unknown until ToUnicode
+  bool glyph_procedures = false;  // a Type 3 font: the glyphs are drawn by the commands after the run
 };
+
+// The outlines of a run's glyphs as one path in user space (to be drawn with the run's CTM, nonzero).
+[[nodiscard]] Path glyph_run_path(const ShowText& run);
 
 // A transparency group (§11.4.7, a form XObject with /Group /S /Transparency): what is drawn up to the
 // matching EndGroup is composed on its own, then composited as one object with `alpha`, `blend` and the
@@ -318,6 +329,8 @@ struct DisplayList {
   std::vector<StrokeStyle> styles;  // referred to by StyleIndex
   // What the interpreter could not do or had to guess: shown to a person, not a failure.
   std::vector<std::string> warnings;
+  // Resources the page needed that the host did not supply (font/resources.hpp), sorted.
+  std::vector<std::string> missing_resources;
 };
 
 // Where a page goes on an output (an SVG, a bitmap): the crop box, y flipped (outputs grow downwards),

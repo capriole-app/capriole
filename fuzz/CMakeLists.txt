@@ -26,3 +26,8 @@ capriole_add_fuzzer(fuzz_dct fuzz_dct.cpp)
 capriole_add_fuzzer(fuzz_ccitt fuzz_ccitt.cpp)
 capriole_add_fuzzer(fuzz_jbig2 fuzz_jbig2.cpp)
 capriole_add_fuzzer(fuzz_jpx fuzz_jpx.cpp)
+capriole_add_fuzzer(fuzz_font fuzz_font.cpp)
+capriole_add_fuzzer(fuzz_cmap fuzz_cmap.cpp)
+# These two exercise the engine's internals (font/): its sources are their include path.
+target_include_directories(fuzz_font PRIVATE ${PROJECT_SOURCE_DIR}/engine/src)
+target_include_directories(fuzz_cmap PRIVATE ${PROJECT_SOURCE_DIR}/engine/src)

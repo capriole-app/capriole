@@ -1,3 +1,12 @@
+# The substitutes of the standard 14 fonts (font/standard_fonts.hpp), built in: in StandardFont order.
+include(${PROJECT_SOURCE_DIR}/cmake/EmbedFiles.cmake)
+set(_foxit ${CAPRIOLE_FOXIT_FONTS_DIR})
+capriole_embed_files(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/standard_fonts_data.cpp FUNCTION embedded_standard_font FILES
+  ${_foxit}/FoxitSans.pfb ${_foxit}/FoxitSansBold.pfb ${_foxit}/FoxitSansItalic.pfb ${_foxit}/FoxitSansBoldItalic.pfb
+  ${_foxit}/FoxitSerif.pfb ${_foxit}/FoxitSerifBold.pfb ${_foxit}/FoxitSerifItalic.pfb ${_foxit}/FoxitSerifBoldItalic.pfb
+  ${_foxit}/FoxitFixed.pfb ${_foxit}/FoxitFixedBold.pfb ${_foxit}/FoxitFixedItalic.pfb ${_foxit}/FoxitFixedBoldItalic.pfb
+  ${_foxit}/FoxitSymbol.pfb ${_foxit}/FoxitDingbats.pfb)
+
 add_library(capriole_engine STATIC
   src/core/byte_source.cpp
   src/core/error.cpp
@@ -22,6 +31,14 @@ add_library(capriole_engine STATIC
   src/filters/jbig2_arith.cpp
   src/filters/jbig2_huffman.cpp
   src/filters/jpx.cpp
+  src/font/cmap.cpp
+  src/font/font.cpp
+  src/font/glyph_names.cpp
+  src/font/glyph_tables.cpp
+  src/font/program.cpp
+  src/font/resources.cpp
+  src/font/standard_fonts.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/standard_fonts_data.cpp
   src/model/object.cpp
   src/parser/header.cpp
   src/parser/lexer.cpp
@@ -37,7 +54,6 @@ add_library(capriole_engine STATIC
   src/content/function.cpp
   src/content/image.cpp
   src/content/interpreter.cpp
-  src/content/text_font.cpp
   src/content/operators.cpp
   src/content/page_content.cpp
   src/writer/full_save.cpp
@@ -48,7 +64,8 @@ add_library(capriole::engine ALIAS capriole_engine)
 
 target_include_directories(capriole_engine PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>)
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_features(capriole_engine PUBLIC cxx_std_23)
 # The C bridge to libjpeg (its errors longjmp, which must stay out of C++ frames): C, with C warnings.
 add_library(capriole_jpeg_shim STATIC src/filters/jpeg_shim.c)
@@ -58,7 +75,7 @@ if(NOT MSVC)
   target_compile_options(capriole_jpeg_shim PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow $<$<BOOL:${CAPRIOLE_WARNINGS_AS_ERRORS}>:-Werror>)
 endif()
 
-target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim capriole::openjpeg)
+target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim capriole::openjpeg capriole::freetype)
 capriole_set_warnings(capriole_engine)
 
 configure_file(src/core/version_config.hpp.in include/capriole/core/version_config.hpp @ONLY)

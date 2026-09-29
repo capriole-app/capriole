@@ -1,9 +1,11 @@
 #include "capriole/graphics/svg.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <map>
 #include <span>
 #include <string_view>
 #include <variant>
@@ -93,19 +95,6 @@ std::string base64(std::span<const std::byte> bytes) {
 
 std::string opacity(std::string_view attribute, double alpha) {
   return alpha < 1 ? std::format(" {}=\"{}\"", attribute, num(std::max(alpha, 0.0))) : std::string();
-}
-
-// A character code as text: printable Latin-1 as itself (as a character reference beyond ASCII),
-// anything else as a placeholder box. Mapping codes to Unicode properly needs the font's encoding and
-// ToUnicode (the text phase).
-std::string glyph_text(std::uint32_t code) {
-  if (code >= 0x20 && code < 0x7F && code != '<' && code != '>' && code != '&' && code != '"' && code != '\'') {
-    return {static_cast<char>(code)};
-  }
-  if (code >= 0xA0 && code <= 0xFF) {
-    return std::format("&#x{:X};", code);
-  }
-  return "&#x25AF;";
 }
 
 class Writer {
@@ -301,44 +290,46 @@ class Writer {
 
   void command(const PaintShading& /*unused*/) {}
 
+  // The id of a glyph outline, defined (<defs>) the first time it is used.
+  std::size_t glyph_id(const Path& outline) {
+    const auto [at, added] = glyph_ids_.try_emplace(&outline, glyph_ids_.size());
+    if (added) {
+      out_ += std::format(R"(<defs><path id="g{}" d="{}"/></defs>)", at->second, path_data(outline));
+    }
+    return at->second;
+  }
+
   void command(const ShowText& c) {
-    if (c.render_mode == 3 || c.render_mode == 7 || c.glyphs.empty()) {
-      return;  // invisible text (e.g. the OCR layer of a scan)
+    if (c.render_mode == 3 || c.render_mode == 7 || c.glyphs.empty() || c.glyph_procedures) {
+      return;  // invisible text (e.g. the OCR layer of a scan), or Type 3 glyphs (the commands that follow)
     }
-    const double scale = c.horizontal_scale != 0 ? c.horizontal_scale : 1;
-    const double size = c.font_size;
-    if (size == 0) {
-      return;
-    }
-    // Text element space: x in glyph units along the baseline, y down; see ShowText for the matrix.
-    const Matrix element = Matrix{size * scale, 0, 0, -size, 0, c.glyphs.front().origin.y}.then(c.text_matrix);
-    if (!c.latin_codes) {
-      // Codes that do not read as text (a custom encoding): one outlined box per glyph, with its real
-      // advance — where the text is and how it flows, without inventing characters.
-      std::string d;
-      for (const Glyph& glyph : c.glyphs) {
-        const double x = glyph.origin.x / (size * scale);
-        const double w = std::max(glyph.advance / (size * scale) * 0.85, 0.05);
-        d += "M" + num(x) + " 0h" + num(w) + "v-0.68h" + num(-w) + "Z";
+    // The glyphs as paths, filled and/or stroked as the rendering mode says.
+    if (std::ranges::any_of(c.glyphs, [](const Glyph& g) { return g.outline != nullptr; })) {
+      const int mode = c.render_mode % 4;
+      if (mode == 0) {
+        // Filled: each distinct glyph defined once, then placed — a page of text stays small.
+        const double h = c.horizontal_scale != 0 ? c.horizontal_scale : 1;
+        out_ += "<g transform=\"" + matrix(c.ctm) + "\" fill=\"" + color(rgb(c.fill)) + "\"" + opacity("fill-opacity", c.alpha) + blend_style(c.blend) + ">";
+        for (const Glyph& glyph : c.glyphs) {
+          if (glyph.outline) {
+            const Matrix m = Matrix{c.font_size * h, 0, 0, c.font_size, glyph.origin.x, glyph.origin.y}.then(c.tm);
+            out_ += std::format(R"(<use href="#g{}" transform="{}"/>)", glyph_id(*glyph.outline), matrix(m));
+          }
+        }
+        out_ += "</g>";
+        return;
       }
-      out_ += "<path d=\"" + d + "\" transform=\"" + matrix(element) + "\" fill=\"" + color(rgb(c.fill)) + R"(" fill-opacity="0.18" stroke=")" +
-              color(rgb(c.fill)) + R"(" stroke-width="0.5" vector-effect="non-scaling-stroke"/>)";
+      Path path = glyph_run_path(c);
+      if (mode == 0 || mode == 2) {
+        command(FillPath{.path = path, .ctm = c.ctm, .rule = FillRule::kNonZero, .blend = c.blend, .color = c.fill, .alpha = c.alpha});
+      }
+      if (mode == 1 || mode == 2) {
+        command(StrokePath{.path = std::move(path), .ctm = c.ctm, .style = c.stroke_style, .color = c.stroke, .alpha = c.stroke_alpha, .blend = c.blend});
+      }
       return;
     }
-    std::string xs;
-    std::string text;
-    for (const Glyph& glyph : c.glyphs) {
-      xs += (xs.empty() ? "" : " ") + num(glyph.origin.x / (size * scale));
-      text += glyph_text(glyph.code);
-    }
-    const bool stroke = c.render_mode == 1 || c.render_mode == 2 || c.render_mode == 5 || c.render_mode == 6;
-    const bool fill = c.render_mode != 1 && c.render_mode != 5;
-    std::string paint = " fill=\"" + (fill ? color(rgb(c.fill)) : std::string("none")) + "\"" + opacity("fill-opacity", c.alpha) + blend_style(c.blend);
-    if (stroke) {
-      paint += " stroke=\"" + color(rgb(c.stroke)) + R"(" stroke-width="0.75" vector-effect="non-scaling-stroke")";
-    }
-    out_ += "<text transform=\"" + matrix(element) + "\" x=\"" + xs + R"(" font-size="1" font-family="Helvetica, Arial, sans-serif")" + paint + ">" + text +
-            "</text>";
+    // No outlines (a CMap or CJK font the host has not supplied, glyphs a font lacks): nothing drawn, as
+    // in the bitmap; the page's warnings say why.
   }
 
   SvgOptions options_;
@@ -354,6 +345,7 @@ class Writer {
   std::vector<OpenMask> masks_;
   Rect page_box_;
   std::size_t next_id_ = 0;
+  std::map<const Path*, std::size_t> glyph_ids_;  // outlines are shared: one per glyph of a font
 };
 
 }  // namespace

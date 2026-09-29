@@ -5,7 +5,9 @@
 #include <cstring>
 #include <format>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <utility>
@@ -20,6 +22,7 @@
 #include "capriole/core/version_config.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/render/raster.hpp"
@@ -32,6 +35,27 @@ namespace {
 
 // Per-thread last error, the errno-style contract documented in capriole.h.
 thread_local std::string g_last_error;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+// The resources hosts register (capriole_resource_add), shared by every document; and, per thread, what
+// the last page interpreted did not find.
+struct SharedResources {
+  std::shared_mutex mutex;
+  capriole::font::Resources resources;
+};
+SharedResources& shared_resources() {
+  static SharedResources shared;
+  return shared;
+}
+thread_local std::vector<std::string> g_missing_resources;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+// A page interpreted with the registered resources; what it missed is remembered for this thread.
+capriole::Result<capriole::graphics::DisplayList> interpret(capriole::Document& document, capriole::model::ObjectRef page) {
+  SharedResources& shared = shared_resources();
+  const std::shared_lock lock(shared.mutex);
+  auto list = capriole::content::interpret_page(document, page, {}, &shared.resources);
+  g_missing_resources = list ? list->missing_resources : std::vector<std::string>{};
+  return list;
+}
 
 capriole_status to_status(capriole::ErrorCode code) noexcept {
   switch (code) {
@@ -375,7 +399,7 @@ capriole_status capriole_document_page_preview_json(capriole_document* document,
     if (page_index >= pages->size()) {
       return fail(CAPRIOLE_ERROR_OUT_OF_RANGE, std::format("page index {} out of 0..{}", page_index, pages->size()));
     }
-    auto list = capriole::content::interpret_page(doc, (*pages)[page_index]);
+    auto list = interpret(doc, (*pages)[page_index]);
     if (!list) {
       return fail(list.error());
     }
@@ -398,6 +422,11 @@ capriole_status capriole_document_page_preview_json(capriole_document* document,
     for (std::size_t i = 0; i < list->warnings.size(); ++i) {
       out += i == 0 ? "" : ",";
       capriole::capi::append_json_string(out, list->warnings[i]);
+    }
+    out += R"(],"missing_resources":[)";
+    for (std::size_t i = 0; i < list->missing_resources.size(); ++i) {
+      out += i == 0 ? "" : ",";
+      capriole::capi::append_json_string(out, list->missing_resources[i]);
     }
     out += R"(],"svg":)";
     capriole::capi::append_json_string(out, capriole::graphics::to_svg(*list));
@@ -428,7 +457,7 @@ capriole_status capriole_document_page_render(capriole_document* document, uint3
     if (page_index >= pages->size()) {
       return fail(CAPRIOLE_ERROR_OUT_OF_RANGE, std::format("page index {} out of 0..{}", page_index, pages->size()));
     }
-    auto list = capriole::content::interpret_page(doc, (*pages)[page_index]);
+    auto list = interpret(doc, (*pages)[page_index]);
     if (!list) {
       return fail(list.error());
     }
@@ -446,6 +475,43 @@ capriole_status capriole_document_page_render(capriole_document* document, uint3
       *height = static_cast<uint32_t>(bitmap->height);
     }
     return status;
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_resource_add(const char* name, const uint8_t* data, size_t size) {
+  g_last_error.clear();
+  if (name == nullptr || (data == nullptr && size > 0)) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    std::vector<std::byte> bytes(size);
+    if (size > 0) {
+      std::memcpy(bytes.data(), data, size);
+    }
+    SharedResources& shared = shared_resources();
+    const std::unique_lock lock(shared.mutex);
+    shared.resources.add(name, std::move(bytes));
+    return CAPRIOLE_OK;
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_last_missing_resources_json(char** json) {
+  g_last_error.clear();
+  if (json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    std::string out = "[";
+    for (std::size_t i = 0; i < g_missing_resources.size(); ++i) {
+      out += i == 0 ? "" : ",";
+      capriole::capi::append_json_string(out, g_missing_resources[i]);
+    }
+    out += ']';
+    return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

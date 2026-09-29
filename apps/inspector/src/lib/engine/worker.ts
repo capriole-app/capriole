@@ -66,6 +66,43 @@ function takeBytes(m: CaprioleModule, call: (outData: number, outSize: number) =
   });
 }
 
+// The resource pack (ADR 0005): fonts and CMaps the engine asks for when a page needs them, fetched from
+// resourceBase once each (a name that is not there is not asked for again) and registered in the module.
+let resourceBase: string | null = null;
+const attempted = new Set<string>();
+
+/** Registers what the last page missed and was not tried yet; true when anything was added. */
+async function supplyMissing(m: CaprioleModule): Promise<boolean> {
+  if (resourceBase === null) return false;
+  const missing = takeJson(m, (out) => m._capriole_last_missing_resources_json(out)) as string[];
+  const wanted = missing.filter((name) => !attempted.has(name));
+  if (wanted.length === 0) return false;
+  for (const name of wanted) attempted.add(name);
+  const base = resourceBase;
+  const fetched = await Promise.all(
+    wanted.map(async (name) => {
+      try {
+        const response = await fetch(new URL(name, base));
+        return response.ok ? { name, data: new Uint8Array(await response.arrayBuffer()) } : null;
+      } catch {
+        return null; // offline, or not served: the page is drawn without it
+      }
+    }),
+  );
+  let added = false;
+  for (const resource of fetched) {
+    if (resource === null) continue;
+    withString(m, resource.name, (name) =>
+      withScratch(m, Math.max(resource.data.length, 1), (data) => {
+        m.HEAPU8.set(resource.data, data);
+        check(m, m._capriole_resource_add(name, data, resource.data.length));
+      }),
+    );
+    added = true;
+  }
+  return added;
+}
+
 function requireDocument(): number {
   if (documentHandle === 0) {
     throw new EngineFailure(Status.invalidArgument, 'no document is open');
@@ -107,24 +144,32 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         ),
         transfer: [],
       };
-    case 'pagePreview':
-      return {
-        value: takeJson(m, (out) => m._capriole_document_page_preview_json(requireDocument(), request.index, out)),
-        transfer: [],
-      };
+    case 'resourceBase':
+      resourceBase = request.base;
+      return { value: null, transfer: [] };
+    case 'pagePreview': {
+      const preview = () =>
+        takeJson(m, (out) => m._capriole_document_page_preview_json(requireDocument(), request.index, out));
+      let value = preview();
+      if (await supplyMissing(m)) value = preview();
+      return { value, transfer: [] };
+    }
     case 'pageRender': {
       const document = requireDocument();
-      const raster = withScratch(m, 12, (out) => {
-        check(m, m._capriole_document_page_render(document, request.index, request.dpi, out, out + 4, out + 8));
-        const pointer = m.HEAPU32[out >> 2]!;
-        const width = m.HEAPU32[(out >> 2) + 1]!;
-        const height = m.HEAPU32[(out >> 2) + 2]!;
-        try {
-          return { width, height, pixels: m.HEAPU8.slice(pointer, pointer + width * height * 4).buffer };
-        } finally {
-          m._capriole_free(pointer);
-        }
-      });
+      const render = () =>
+        withScratch(m, 12, (out) => {
+          check(m, m._capriole_document_page_render(document, request.index, request.dpi, out, out + 4, out + 8));
+          const pointer = m.HEAPU32[out >> 2]!;
+          const width = m.HEAPU32[(out >> 2) + 1]!;
+          const height = m.HEAPU32[(out >> 2) + 2]!;
+          try {
+            return { width, height, pixels: m.HEAPU8.slice(pointer, pointer + width * height * 4).buffer };
+          } finally {
+            m._capriole_free(pointer);
+          }
+        });
+      let raster = render();
+      if (await supplyMissing(m)) raster = render();
       return { value: raster, transfer: [raster.pixels] };
     }
     case 'stream': {

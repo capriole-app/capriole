@@ -61,9 +61,15 @@ in snake_case (`unknown` for operators the standard does not define); `total` co
 ```json
 {"page":0, "width":595.44, "height":842.4, "rotate":0,
  "commands":{"save":2,"restore":2,"clip":1,"fill":10,"stroke":4,"image":1,"shading":0,"text":12,"group":0,"soft_mask":0},
- "warnings":["font /Helvetica has no /Widths: text advances estimated", …],
+ "warnings":["font /Calibri is not embedded: a substitute is used", …],
+ "missing_resources":["cmap/UniJIS-UCS2-H","font/NotoSansJP-Regular.otf"],
  "svg":"<svg xmlns=… width=… height=…>…</svg>"}
 ```
+
+`missing_resources` lists what the page wanted from the resource pack (CMaps, CJK and Liberation fonts:
+`scripts/fetch_resources.sh`) and was not registered. A host fetches those files, registers each with
+`capriole_resource_add(name, data, size)` (process-wide, thread-safe) and draws the page again; after a
+render, `capriole_last_missing_resources_json` gives the same list as a JSON array.
 
 `width` and `height` are in points, with /Rotate applied. The SVG is ASCII: text from the document is
 written as character references, so it cannot inject markup.

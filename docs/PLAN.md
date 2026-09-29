@@ -385,7 +385,29 @@ Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
 di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
 immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · **6h** gli altri codec (CCITT, JBIG2, JPX) ✅ ·
-poi font, shading e pattern, annotazioni, profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+**6i** font ✅ · poi shading e pattern, annotazioni, profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+
+**6i (2026-09-29):** i font ([ADR 0005](adr/0005-font.md)). **FreeType 2.14.3** per i soli contorni
+(moduli sfnt/TrueType/Type 1/CFF/CID, niente hinting né interprete di bytecode, una libreria e un budget
+di memoria per programma); tutto il resto nostro in `engine/src/font/`: encoding e `/Differences` (AGL
+generata da `scripts/gen_glyph_tables.py`), scelta del glifo di §9.6.5 (TrueType simbolici per codice
+nella cmap (3,0), non simbolici per nome), CMap (codespace 1–4 byte, cid/notdef, `usecmap`, bf per
+ToUnicode), CIDToGIDMap, `/W` `/W2` e scrittura verticale, Type 3 eseguiti come contenuto (`d1` senza
+colore), i modi di rendering con il clip a ET. **Non incorporati:** i 14 Foxit nel motore (metriche
+Adobe: gli standard senza `/Widths` hanno le larghezze giuste), glifi adattati alle `/Widths`.
+**Pacchetto di risorse** fuori dal motore (`scripts/fetch_resources.sh`, 34 MB: CMap Adobe, Noto Sans
+CJK, Liberation): l'host lo registra, ogni pagina dice che cosa le è mancato; `cpdf render
+--resources`, API C `capriole_resource_add`/`capriole_last_missing_resources_json`, l'Inspector lo
+scarica su richiesta. L'anteprima SVG definisce ogni glifo una volta (`<use>`): 0,5–0,6 MB per una pagina
+fitta invece di 3–4,5. Fixture di font scritte da zero (`tests/data/fonts/make_fixtures.py`: TrueType,
+CFF, CFF CID-keyed, Type 1). Fuzzer `fuzz_font` (10 min, ~4,6 milioni di esecuzioni, pulito dopo
+la correzione) e `fuzz_cmap` (5 min, pulito); `fuzz_font` ha trovato un `memcpy(p, NULL, 0)` dentro
+FreeType: con i sanitizer `nonnull-attribute` è spento solo per FreeType, l'input è fra i semi.
+**Corpus** (prima pagina dei 1.000 SafeDocs, 40 dpi, contro `pdftoppm -cropbox`, pixel entro tolleranza
+dopo una leggera sfocatura): **88% delle pagine sopra il 95%** (con il pacchetto di risorse); le pagine
+peggiori guardate a vista hanno il testo giusto e perdono per sfumature e pattern (6j), linee sottili,
+e il contenuto opzionale (`/OC`, non ancora gestito: 0000337). Modulo WASM 3,23 MB, **1,30 MB gzip**
+(+429 KB: i Foxit 232 KB, FreeType e tabelle il resto).
 
 **6h (2026-09-29):** gli altri codec immagine. **CCITTFaxDecode** nostro (T.4 1D/2D e T.6, `/K`,
 `/EncodedByteAlign`, `/BlackIs1`, EOL ed EOFB): identico a libtiff (via Pillow) su tutte le varianti

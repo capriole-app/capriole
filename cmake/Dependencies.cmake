@@ -160,6 +160,56 @@ target_compile_definitions(capriole_openjpeg INTERFACE OPJ_STATIC)
 add_dependencies(capriole_openjpeg openjpeg)
 add_library(capriole::openjpeg ALIAS capriole_openjpeg)
 
+# FreeType 2.14.3 — FreeType License (FTL, BSD-style; chosen over its GPLv2 alternative) (ADR 0005).
+# Glyph outlines of the fonts in PDFs: TrueType/OpenType, Type 1, CFF, CID-keyed. Built from its sources
+# like zlib (the tarball's GPG signature checked at the upgrade, the hash pinned here): only the font
+# drivers PDF needs, no rasterizers or hinters, our options and module list in cmake/freetype/.
+FetchContent_Declare(freetype
+  URL https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz
+  URL_HASH SHA256=36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_SUBDIR do-not-add-freetype-cmake)
+FetchContent_MakeAvailable(freetype)
+add_library(capriole_freetype STATIC
+  ${freetype_SOURCE_DIR}/src/base/ftsystem.c
+  ${freetype_SOURCE_DIR}/src/base/ftinit.c
+  ${freetype_SOURCE_DIR}/src/base/ftdebug.c
+  ${freetype_SOURCE_DIR}/src/base/ftbase.c
+  ${freetype_SOURCE_DIR}/src/base/ftcid.c
+  ${freetype_SOURCE_DIR}/src/base/fttype1.c
+  ${freetype_SOURCE_DIR}/src/sfnt/sfnt.c
+  ${freetype_SOURCE_DIR}/src/truetype/truetype.c
+  ${freetype_SOURCE_DIR}/src/type1/type1.c
+  ${freetype_SOURCE_DIR}/src/cff/cff.c
+  ${freetype_SOURCE_DIR}/src/cid/type1cid.c
+  ${freetype_SOURCE_DIR}/src/psaux/psaux.c
+  ${freetype_SOURCE_DIR}/src/psnames/psnames.c)
+add_library(capriole::freetype ALIAS capriole_freetype)
+# Our options and modules first; SYSTEM: third-party headers must not trip our warning flags.
+target_include_directories(capriole_freetype SYSTEM PUBLIC ${CMAKE_CURRENT_LIST_DIR}/freetype ${freetype_SOURCE_DIR}/include)
+target_compile_definitions(capriole_freetype
+  PUBLIC "FT_CONFIG_OPTIONS_H=<capriole_ftoption.h>" "FT_CONFIG_MODULES_H=<capriole_ftmodule.h>"
+  PRIVATE FT2_BUILD_LIBRARY)
+set_target_properties(capriole_freetype PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON)
+if(CAPRIOLE_SANITIZERS)
+  # FreeType copies zero bytes from a null pointer (memcpy(p, NULL, 0), an empty CFF index entry: found
+  # by fuzz_font): undefined in C before C2y, harmless on every real libc, and its code. That one check
+  # is off for FreeType alone; every other sanitizer stays on.
+  target_compile_options(capriole_freetype PRIVATE -fno-sanitize=nonnull-attribute)
+endif()
+
+# The standard 14 fonts' substitutes (ADR 0005): the Foxit fonts — BSD-3-Clause (the PDFium authors),
+# CFF programs with the metrics of Adobe's core fonts — taken from the pdfjs-dist 2.16.105 package on
+# npm, the last one that carries all fourteen (with its LICENSE_FOXIT). Only data: built into the engine
+# by engine/CMakeLists.txt (cmake/EmbedFiles.cmake); nothing of pdf.js is used.
+FetchContent_Declare(foxit_fonts
+  URL https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-2.16.105.tgz
+  URL_HASH SHA256=b14d705aa185c548af0381d6835fc4f917451985a6358c2dae0ba8dd01355141
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_SUBDIR do-not-add-pdfjs)
+FetchContent_MakeAvailable(foxit_fonts)
+set(CAPRIOLE_FOXIT_FONTS_DIR ${foxit_fonts_SOURCE_DIR}/standard_fonts CACHE INTERNAL "")
+
 if(CAPRIOLE_BUILD_TESTS)
   # GoogleTest 1.17.0 — BSD-3-Clause. Test-only, never linked into the engine.
   FetchContent_Declare(googletest

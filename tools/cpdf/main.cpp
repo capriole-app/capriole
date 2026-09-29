@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <format>
 #include <fstream>
 #include <iostream>
@@ -26,6 +27,7 @@
 #include "capriole/core/source_reader.hpp"
 #include "capriole/core/version.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/parser/lexer.hpp"
@@ -59,10 +61,11 @@ void print_usage() {
                "  stream <file> <number>\n"
                "                  write the decoded data of a stream object to stdout\n"
                "  pages <file>    print the page count and the page object references\n"
-               "  render [--dpi N] <file> <page> <output.svg|output.png>\n"
+               "  render [--dpi N] [--resources DIR] <file> <page> <output.svg|output.png>\n"
                "                  interpret a page and write its vector preview (.svg) or draw it (.png,\n"
-               "                  at N dpi, default 150); text approximated, images as placeholders;\n"
-               "                  prints what was drawn and the warnings\n"
+               "                  at N dpi, default 150); DIR: the resource pack (CMaps, CJK fonts,\n"
+               "                  scripts/fetch_resources.sh); prints what was drawn, the warnings and\n"
+               "                  the resources the page wanted and did not find\n"
                "  content <file> <page>\n"
                "                  print the operations of a page's content stream (page from 1)\n"
                "  save [--incremental] [--moddate D:...] <file> <output>\n"
@@ -372,7 +375,15 @@ int cmd_content(std::string_view path, std::uint64_t page_number) {
   return kExitOk;
 }
 
-int cmd_render(std::string_view path, std::uint64_t page_number, std::string_view output, double dpi) {
+int cmd_render(std::string_view path, std::uint64_t page_number, std::string_view output, double dpi, std::string_view resources_dir) {
+  capriole::font::Resources resources;
+  if (!resources_dir.empty()) {
+    auto loaded = capriole::font::Resources::load_directory(std::filesystem::path(std::string(resources_dir)));
+    if (!loaded) {
+      return fail(resources_dir, loaded.error());
+    }
+    resources = std::move(*loaded);
+  }
   auto document = open_document(path);
   if (!document) {
     return fail(path, document.error());
@@ -385,7 +396,7 @@ int cmd_render(std::string_view path, std::uint64_t page_number, std::string_vie
     std::cerr << std::format("cpdf: {}: page {} out of 1..{}\n", path, page_number, pages->size());
     return kExitUsage;
   }
-  auto list = capriole::content::interpret_page(*document, (*pages)[page_number - 1]);
+  auto list = capriole::content::interpret_page(*document, (*pages)[page_number - 1], {}, &resources);
   if (!list) {
     return fail(path, list.error());
   }
@@ -419,6 +430,9 @@ int cmd_render(std::string_view path, std::uint64_t page_number, std::string_vie
   std::cout << '\n';
   for (const auto& warning : list->warnings) {
     std::cout << "  warning: " << warning << '\n';
+  }
+  for (const auto& missing : list->missing_resources) {
+    std::cout << "  missing resource: " << missing << '\n';
   }
   return kExitOk;
 }
@@ -530,11 +544,23 @@ int run(std::span<char*> args) {
   if (command == "pages" && args.size() == 3) {
     return cmd_pages(args[2]);
   }
-  if (command == "render" && (args.size() == 5 || (args.size() == 7 && std::string_view(args[2]) == "--dpi"))) {
-    const std::size_t i = args.size() == 7 ? 4 : 2;
-    const auto dpi = args.size() == 7 ? parse_uint(args[3]) : std::optional<std::uint64_t>(150);
-    if (const auto page = parse_uint(args[i + 1]); page && dpi && *dpi > 0 && *dpi <= 4800) {
-      return cmd_render(args[i], *page, args[i + 2], static_cast<double>(*dpi));
+  if (command == "render") {
+    std::optional<std::uint64_t> dpi = 150;
+    std::string_view resources_dir;
+    std::size_t i = 2;
+    for (; i + 1 < args.size(); i += 2) {
+      if (std::string_view(args[i]) == "--dpi") {
+        dpi = parse_uint(args[i + 1]);
+      } else if (std::string_view(args[i]) == "--resources") {
+        resources_dir = args[i + 1];
+      } else {
+        break;
+      }
+    }
+    if (i + 3 == args.size()) {
+      if (const auto page = parse_uint(args[i + 1]); page && dpi && *dpi > 0 && *dpi <= 4800) {
+        return cmd_render(args[i], *page, args[i + 2], static_cast<double>(*dpi), resources_dir);
+      }
     }
   }
   if (command == "content" && args.size() == 4) {

@@ -6,13 +6,13 @@
 //
 // Done here: graphics state and its stack (q/Q, cm, line style, ExtGState: line style, alpha, font),
 // paths, painting and clipping, colour spaces (Device*, Cal*, ICCBased by component count, Indexed,
-// Lab; Separation and DeviceN approximated until PDF functions exist), text state and positioning with
-// the glyph widths of the font dictionary (simple fonts, and Type0 fonts with Identity CMaps), form
-// XObjects (matrix, bounding box clip, own resources, recursion bounded and cycle-safe), image
-// XObjects, images decoded to pixels (JPEG included; JPX, JBIG2, CCITT not yet), shadings as placed
-// commands; transparency (§11): blend modes, soft masks
-// (their group drawn as commands between BeginSoftMask and EndSoftMask) and transparency groups.
-// Shadings, glyph outlines and patterns belong to the renderer phases.
+// Lab, Separation and DeviceN through their functions), text (§9): fonts of every kind with their
+// glyph outlines (font/font.hpp: embedded programs, substitutes, CMaps, vertical writing), the text
+// rendering modes including clipping, Type 3 glyphs run as content; form XObjects (matrix, bounding
+// box clip, own resources, recursion bounded and cycle-safe), images decoded to pixels, shadings as
+// placed commands; transparency (§11): blend modes, soft masks (their group drawn as commands between
+// BeginSoftMask and EndSoftMask) and transparency groups. Shadings and patterns belong to the
+// renderer phases.
 //
 // Content is read tolerantly, as viewers do: a malformed operation is skipped with a warning, never a
 // failure of the page. Only a page that cannot be reached at all is an error.
@@ -24,6 +24,7 @@
 #include "capriole/core/error.hpp"
 #include "capriole/core/limits.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/font/resources.hpp"
 #include "capriole/graphics/display_list.hpp"
 #include "capriole/model/object.hpp"
 
@@ -45,7 +46,9 @@ struct InterpreterLimits {
 };
 
 // The display list of page (a page object of the document). Errors only when the page itself cannot
-// be read; everything inside is best effort, with warnings.
-[[nodiscard]] Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRef page, const InterpreterLimits& limits = {});
+// be read; everything inside is best effort, with warnings. resources: the fonts and CMaps the host can
+// supply (font/resources.hpp); what the page wanted of them and did not find is listed in the result.
+[[nodiscard]] Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRef page, const InterpreterLimits& limits = {},
+                                                           const font::Resources* resources = nullptr);
 
 }  // namespace capriole::content

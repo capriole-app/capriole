@@ -33,6 +33,8 @@ export interface CaprioleModule {
     outData: number,
     outSize: number,
   ): number;
+  _capriole_resource_add(name: number, data: number, size: number): number;
+  _capriole_last_missing_resources_json(out: number): number;
   _capriole_document_save(
     document: number,
     incremental: number,

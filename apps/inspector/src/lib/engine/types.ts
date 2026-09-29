@@ -85,6 +85,8 @@ export interface PagePreview {
     number
   >;
   warnings: string[];
+  /** What the page wanted from the resource pack and did not find (the worker fetches it first). */
+  missing_resources: string[];
   svg: string;
 }
 
@@ -115,6 +117,7 @@ export type Request =
   | { kind: 'open'; data: ArrayBuffer; password: string; repair: boolean }
   | { kind: 'object'; number: number }
   | { kind: 'pageContent'; index: number; max: number }
+  | { kind: 'resourceBase'; base: string }
   | { kind: 'pagePreview'; index: number }
   | { kind: 'pageRender'; index: number; dpi: number }
   | { kind: 'stream'; number: number; decoded: boolean }
