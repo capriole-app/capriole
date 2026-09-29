@@ -12,12 +12,12 @@ con licenza verificata alla fonte, e in `cmake/Dependencies.cmake` con versione 
 | Blend2D     | commit `58ca9460b413` (2026-09-05) | Zlib | motore (rendering) | FetchContent, hash fissato; statico; JIT solo nelle build native di rilascio (ADR 0002) |
 | AsmJit      | commit `0d7f01052f2d` (2026-09-22) | Zlib | dentro Blend2D | FetchContent, hash fissato; compilato da Blend2D (JIT delle pipeline) |
 | libjpeg-turbo | 3.2.0 (2026-06-30) | IJG + BSD-3-Clause | motore (DCTDecode) | ExternalProject (l'upstream rifiuta `add_subdirectory`), hash fissato; firma GPG del tarball verificata (chiave del progetto `0338 C8D8 D9FD A62C F9C4 21BD 7EC2 DBB6 F4DB F434`); statico, senza SIMD (il codice SIMD, zlib-licensed, non è compilato), solo l'API libjpeg a 8 bit (ADR 0003) |
+| OpenJPEG | 2.5.4 | BSD-2-Clause | motore (JPXDecode) | ExternalProject come libjpeg-turbo, hash fissato (SHA-256 del tarball del tag ufficiale: nessuna firma pubblicata); statico, una sola thread (`OPJ_USE_THREAD=OFF`), niente strumenti né test; con clang+sanitizer `-fsanitize=function` spento solo per la libreria (ADR 0004) |
 
 ## Previste (da verificare all'aggiunta)
 
 | Libreria        | Licenza attesa        | Fase | Uso |
 |-----------------|-----------------------|------|-----|
-| OpenJPEG        | BSD-2-Clause          | 6    | JPXDecode |
 | FreeType        | FTL (BSD-like)        | 6    | font — **scegliere FTL, non GPLv2** (doppia licenza) |
 | HarfBuzz        | MIT ("Old MIT")       | 8    | shaping del testo inserito |
 | Little CMS      | MIT                   | 6    | ICC |

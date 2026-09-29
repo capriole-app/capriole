@@ -384,8 +384,28 @@ Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **
 ([ADR 0002](adr/0002-rasterizzatore.md)) · **6d** rendering con Blend2D nel motore, confronto
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
 di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
-immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · poi gli altri codec (JPX, CCITT, JBIG2),
-font, shading, pattern, annotazioni.
+immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · **6h** gli altri codec (CCITT, JBIG2, JPX) ✅ ·
+poi font, shading e pattern, annotazioni, profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+
+**6h (2026-09-29):** gli altri codec immagine. **CCITTFaxDecode** nostro (T.4 1D/2D e T.6, `/K`,
+`/EncodedByteAlign`, `/BlackIs1`, EOL ed EOFB): identico a libtiff (via Pillow) su tutte le varianti
+delle fixture (`tests/data/ccitt/make_fixtures.py`); le 46 pagine CCITT del corpus decodificano.
+**JBIG2Decode** nostro (T.88; jbig2dec è AGPL, usato solo come oracolo esterno): coder aritmetico MQ,
+IAx/IAID, tabelle Huffman B.1–B.15, regioni generiche, di raffinamento, di simboli, di testo, pattern
+e halftone, `/JBIG2Globals`; budget di pixel per bitmap e totale, scalato col limite di uscita.
+**378/378 stream del corpus identici pixel per pixel a jbig2dec.** Due divergenze volute da jbig2dec,
+dove seguiamo la specifica (come pdfium e pdf.js): il contesto TPGRON col template 1 e l'offset del
+riferimento alla pagina; documentate nello script delle fixture. **JPXDecode** con **OpenJPEG 2.5.4**
+([ADR 0004](adr/0004-jpeg2000.md)): l'immagine descrive sé stessa (componenti, spazio colore, alfa;
+sYCC → RGB; componenti sottocampionate riportate alla griglia piena), `/SMaskInData`, oltre 16 Mpixel
+decodificata a **risoluzione ridotta** (livelli della wavelet) invece che rifiutata. Corpus: 19 file con
+JPX, nessun errore di decodifica, un avviso (0000190: `/ColorSpace` non coerente con i componenti → si
+usa quello del file, come pdftoppm); le pagine controllate escono come in pdftoppm.
+Fuzzer nuovi: `fuzz_ccitt`, `fuzz_jbig2` (timeout trovati e corretti: dati esauriti, griglia halftone
+0×1,8 miliardi, budget), `fuzz_jpx` (5 min, ~42.000 esecuzioni, pulito). La campagna lunga su render ha
+trovato un **heap-buffer-overflow in Blend2D** con CTM attorno a 10¹⁶: corretto nel nostro confine
+(ritaglio in doppia precisione oltre ±10⁶ pixel), con file di regressione. Modulo WASM 2,52 MB,
+866 KB gzip (+71 KB gzip per OpenJPEG; CCITT e JBIG2 +33 KB).
 
 **6g (2026-09-28):** DCTDecode con **libjpeg-turbo 3.2.0** ([ADR 0003](adr/0003-jpeg.md), sostituibile
 in futuro): `ExternalProject` con hash e firma GPG verificati, senza SIMD (stessi pixel in nativo e WASM),
@@ -545,8 +565,8 @@ workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri)
 | Licenza di Capriole | pubblicazione, OSS-Fuzz, contributi | proposta da discutere: Apache-2.0 o MPL-2.0 |
 | ~~Skia vs Blend2D~~ | fase 6 | **deciso: Blend2D** (ADR 0002) |
 | ~~Decodificatore JPEG (DCT)~~ | fase 6 | **deciso: libjpeg-turbo** (ADR 0003), sostituibile |
-| JPEG 2000 (JPX) | fase 6 | OpenJPEG (BSD-2) o proprio |
-| JBIG2 / CCITT con licenza compatibile | fase 6 | implementazione propria |
+| ~~JPEG 2000 (JPX)~~ | fase 6 | **deciso: OpenJPEG 2.5.4** (ADR 0004), sostituibile |
+| ~~JBIG2 / CCITT con licenza compatibile~~ | fase 6 | **fatto: implementazione propria** |
 | Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |
 | Firma qualificata nel browser | fase 8 | smart card non accessibili dal web → desktop o firma remota |
 | Framework UI / shell desktop | fase 8 | Svelte 5 + Tauri proposto |

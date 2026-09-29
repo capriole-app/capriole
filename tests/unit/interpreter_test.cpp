@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <variant>
@@ -352,6 +354,30 @@ TEST(Interpreter, SoftMaskMatteIsUndone) {
   EXPECT_LE(rgba[1], 2);
   EXPECT_LE(rgba[2], 2);
   EXPECT_EQ(rgba[3], 128);
+}
+
+TEST(Interpreter, Jpeg2000ImagesDescribeThemselves) {
+  // A JP2 with an opacity channel, no /ColorSpace, no /BitsPerComponent (§7.4.9), /SMaskInData 1.
+  std::ifstream file(std::string(CAPRIOLE_TEST_DATA_DIR) + "/jpx/rgba.jp2", std::ios::binary);
+  const std::string jp2((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  std::ifstream raw_file(std::string(CAPRIOLE_TEST_DATA_DIR) + "/jpx/rgba.raw", std::ios::binary);
+  const std::string rgba((std::istreambuf_iterator<char>(raw_file)), std::istreambuf_iterator<char>());
+  const auto list = interpret(
+      {.content = "/Im Do /Opaque Do",
+       .resources = "/XObject<</Im 12 0 R/Opaque 13 0 R>>",
+       .objects = {{12, "<</Subtype/Image/Width 48/Height 32/SMaskInData 1/Filter/JPXDecode/Length " + std::to_string(jp2.size()) + ">>\nstream\n" + jp2 +
+                            "\nendstream"},
+                   {13, "<</Subtype/Image/Width 48/Height 32/Filter/JPXDecode/Length " + std::to_string(jp2.size()) + ">>\nstream\n" + jp2 + "\nendstream"}}});
+  const auto images = all<graphics::DrawImage>(list);
+  ASSERT_EQ(images.size(), 2U);
+  ASSERT_NE(images[0].pixels, nullptr);
+  ASSERT_EQ(images[0].pixels->rgba.size(), rgba.size());
+  for (std::size_t i = 0; i < rgba.size(); ++i) {
+    ASSERT_EQ(images[0].pixels->rgba[i], static_cast<std::uint8_t>(rgba[i])) << i;  // the file's RGB and alpha
+  }
+  // Without /SMaskInData the opacity channel is not the image's: opaque.
+  ASSERT_NE(images[1].pixels, nullptr);
+  EXPECT_EQ(images[1].pixels->rgba[3], 255);
 }
 
 TEST(Interpreter, BrokenHugeAndShortImages) {

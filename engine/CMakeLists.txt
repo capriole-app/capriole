@@ -21,6 +21,7 @@ add_library(capriole_engine STATIC
   src/filters/jbig2.cpp
   src/filters/jbig2_arith.cpp
   src/filters/jbig2_huffman.cpp
+  src/filters/jpx.cpp
   src/model/object.cpp
   src/parser/header.cpp
   src/parser/lexer.cpp
@@ -57,7 +58,7 @@ if(NOT MSVC)
   target_compile_options(capriole_jpeg_shim PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow $<$<BOOL:${CAPRIOLE_WARNINGS_AS_ERRORS}>:-Werror>)
 endif()
 
-target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim)
+target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim capriole::openjpeg)
 capriole_set_warnings(capriole_engine)
 
 configure_file(src/core/version_config.hpp.in include/capriole/core/version_config.hpp @ONLY)

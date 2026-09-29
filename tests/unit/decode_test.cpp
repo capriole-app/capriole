@@ -83,10 +83,10 @@ TEST(Decode, DecodeParmsArrayWithNull) {
 }
 
 TEST(Decode, Errors) {
-  const auto unsupported = decode(bytes("\xFF\xD8"), with_filter(Name{"JPXDecode"}), kDefaultParseLimits);
+  const auto unsupported = decode(bytes("\xFF\xD8"), with_filter(Name{"NoSuchDecode"}), kDefaultParseLimits);
   ASSERT_FALSE(unsupported.has_value());
   EXPECT_EQ(unsupported.error().code, ErrorCode::kUnsupported);
-  EXPECT_NE(unsupported.error().message.find("JPXDecode"), std::string::npos);
+  EXPECT_NE(unsupported.error().message.find("NoSuchDecode"), std::string::npos);
 
   EXPECT_EQ(decode(bytes("x"), with_filter(5), kDefaultParseLimits).error().code, ErrorCode::kSyntax);
   EXPECT_EQ(decode(bytes("x"), with_filter(Array{5}), kDefaultParseLimits).error().code, ErrorCode::kSyntax);

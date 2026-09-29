@@ -8,6 +8,8 @@
 #include <string_view>
 #include <utility>
 
+#include "capriole/filters/jpx.hpp"
+
 namespace capriole::content::detail {
 
 namespace {
@@ -138,6 +140,50 @@ Result<std::vector<std::uint8_t>> single_channel(Document& document, const Objec
 }
 
 std::uint8_t byte_of(double v) { return static_cast<std::uint8_t>(std::lround(std::clamp(v, 0.0, 1.0) * 255)); }
+
+// The image's own transparency: a soft mask image (§11.6.5.3) wins over /Mask (§8.9.6, the stencil
+// form here: colour keys are applied while the samples are read). n: colour components of space.
+void apply_transparency(Document& document, const model::Dict& dict, const ColorSpace& space, std::size_t n, graphics::ImagePixels& image, Warnings& warnings) {
+  graphics::ImagePixels* pixels = &image;
+  const std::size_t count = static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height);
+  if (const Object* smask = dict.find("SMask")) {
+    auto alpha = single_channel(document, *smask, pixels->width, pixels->height, false, warnings);
+    if (alpha) {
+      for (std::size_t i = 0; i < count; ++i) {
+        pixels->rgba[(i * 4) + 3] = (*alpha)[i];
+      }
+      // /Matte: the colours were blended with this colour by the alpha (§11.6.5.3); undo it:
+      // c = m + (c' − m) / α.
+      if (auto mask = document.resolve(*smask); mask && mask->as_stream() != nullptr) {
+        if (const std::vector<double> matte = numbers(document, mask->as_stream()->dict.find("Matte")); matte.size() == n) {
+          const Rgb m = to_rgb(space, matte);
+          const std::array<double, 3> base = {m.r, m.g, m.b};
+          for (std::size_t i = 0; i < count; ++i) {
+            const double a = pixels->rgba[(i * 4) + 3] / 255.0;
+            for (std::size_t c = 0; c < 3 && a > 0; ++c) {
+              std::uint8_t& v = pixels->rgba[(i * 4) + c];
+              v = byte_of(base.at(c) + (((v / 255.0) - base.at(c)) / a));
+            }
+          }
+        }
+      }
+    } else {
+      warnings.add("image soft mask unreadable: " + alpha.error().message);
+    }
+  } else if (const Object* mask = dict.find("Mask")) {
+    auto resolved = document.resolve(*mask);
+    if (resolved && resolved->as_stream() != nullptr) {
+      auto alpha = single_channel(document, *mask, pixels->width, pixels->height, true, warnings);
+      if (alpha) {
+        for (std::size_t i = 0; i < count; ++i) {
+          pixels->rgba[(i * 4) + 3] = (*alpha)[i];
+        }
+      } else {
+        warnings.add("image mask unreadable: " + alpha.error().message);
+      }
+    }
+  }
+}
 
 }  // namespace
 
@@ -317,46 +363,103 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
   if (stencil) {
     return pixels;
   }
-  const std::size_t count = ow * oh;
+  apply_transparency(document, dict, space, n, *pixels, warnings);
+  return pixels;
+}
 
-  // Transparency: a soft mask image (§11.6.5.3) wins over /Mask (§8.9.6).
-  if (const Object* smask = dict.find("SMask")) {
-    auto alpha = single_channel(document, *smask, pixels->width, pixels->height, false, warnings);
-    if (alpha) {
-      for (std::size_t i = 0; i < count; ++i) {
-        pixels->rgba[(i * 4) + 3] = (*alpha)[i];
-      }
-      // /Matte: the colours were blended with this colour by the alpha (§11.6.5.3); undo it:
-      // c = m + (c' − m) / α.
-      if (auto mask = document.resolve(*smask); mask && mask->as_stream() != nullptr) {
-        if (const std::vector<double> matte = numbers(document, mask->as_stream()->dict.find("Matte")); matte.size() == n) {
-          const Rgb m = to_rgb(space, matte);
-          const std::array<double, 3> base = {m.r, m.g, m.b};
-          for (std::size_t i = 0; i < count; ++i) {
-            const double a = pixels->rgba[(i * 4) + 3] / 255.0;
-            for (std::size_t c = 0; c < 3 && a > 0; ++c) {
-              std::uint8_t& v = pixels->rgba[(i * 4) + c];
-              v = byte_of(base.at(c) + (((v / 255.0) - base.at(c)) / a));
-            }
-          }
-        }
-      }
-    } else {
-      warnings.add("image soft mask unreadable: " + alpha.error().message);
-    }
-  } else if (const Object* mask = dict.find("Mask")) {
-    auto resolved = document.resolve(*mask);
-    if (resolved && resolved->as_stream() != nullptr) {
-      auto alpha = single_channel(document, *mask, pixels->width, pixels->height, true, warnings);
-      if (alpha) {
-        for (std::size_t i = 0; i < count; ++i) {
-          pixels->rgba[(i * 4) + 3] = (*alpha)[i];
-        }
-      } else {
-        warnings.add("image mask unreadable: " + alpha.error().message);
-      }
+bool is_jpx(Document& document, const model::Dict& dict) {
+  const Object* filter = dict.find("Filter");
+  if (filter == nullptr) {
+    return false;
+  }
+  auto resolved = document.resolve(*filter);
+  if (!resolved) {
+    return false;
+  }
+  if (const model::Array* list = resolved->as_array(); list != nullptr && list->size() == 1) {
+    return (*list)[0].is_name("JPXDecode");
+  }
+  return resolved->is_name("JPXDecode");
+}
+
+Result<std::shared_ptr<const graphics::ImagePixels>> decode_jpx_image(Document& document, const model::Dict& dict, std::span<const std::byte> data,
+                                                                      const model::Dict* resources, Warnings& warnings, const ImageLimits& limits) {
+  auto jpx = filters::jpx_decode(data, limits.max_pixels);
+  if (!jpx) {
+    return std::unexpected(std::move(jpx.error()));
+  }
+  if (jpx->reduction > 0) {
+    warnings.add("JPEG 2000 image decoded at a lower resolution to stay within the memory limit");
+  }
+  const auto n = static_cast<std::size_t>(jpx->components);
+  const std::size_t colour = n - (jpx->has_alpha ? 1 : 0);
+  // The dictionary's colour space when it has one that fits the data; otherwise the file's (§7.4.9).
+  ColorSpace space;
+  bool from_dictionary = false;
+  if (const Object* spec = dict.find("ColorSpace")) {
+    space = resolve_color_space(document, *spec, resources, warnings);
+    from_dictionary = space.components == colour && space.family != ColorSpaceFamily::kPattern;
+    if (!from_dictionary) {
+      warnings.add("JPEG 2000 image whose /ColorSpace does not match its components: the file's colour space used");
     }
   }
+  if (!from_dictionary) {
+    using S = filters::JpxImage::Space;
+    S kind = jpx->space;
+    if (kind == S::kUnknown) {
+      kind = colour == 1 ? S::kGray : S::kRgb;
+      if (colour == 4) {
+        kind = S::kCmyk;
+      }
+    }
+    space = ColorSpace{};
+    switch (kind) {
+      case S::kGray:
+        space.family = ColorSpaceFamily::kGray;
+        space.components = 1;
+        break;
+      case S::kCmyk:
+        space.family = ColorSpaceFamily::kCMYK;
+        space.components = 4;
+        break;
+      default:
+        space.family = ColorSpaceFamily::kRGB;
+        space.components = 3;
+        break;
+    }
+    if (space.components != colour) {
+      return make_error(ErrorCode::kUnsupported, "JPEG 2000 image with " + std::to_string(colour) + " colour components and no matching colour space");
+    }
+  }
+  auto pixels = std::make_shared<graphics::ImagePixels>();
+  pixels->width = jpx->width;
+  pixels->height = jpx->height;
+  const std::size_t count = static_cast<std::size_t>(jpx->width) * static_cast<std::size_t>(jpx->height);
+  pixels->rgba.resize(count * 4);
+  // /SMaskInData 1 or 2 (§7.4.9): the file's opacity channel is the image's soft mask (2: the colours
+  // were premultiplied by it).
+  const Object* in_data = dict.find("SMaskInData");
+  const std::int64_t smask_in_data = in_data != nullptr ? in_data->as_integer().value_or(0) : 0;
+  const bool use_alpha = jpx->has_alpha && smask_in_data != 0 && !dict.contains("SMask");
+  std::vector<double> components(colour);
+  for (std::size_t i = 0; i < count; ++i) {
+    const std::uint8_t* s = &jpx->samples[i * n];
+    const double alpha = jpx->has_alpha ? s[n - 1] / 255.0 : 1.0;
+    for (std::size_t c = 0; c < colour; ++c) {
+      double v = s[c] / 255.0;
+      if (use_alpha && smask_in_data == 2 && alpha > 0) {
+        v = std::min(1.0, v / alpha);
+      }
+      components[c] = v;
+    }
+    const Rgb rgb = to_rgb(space, components);
+    std::uint8_t* p = &pixels->rgba[i * 4];
+    p[0] = byte_of(rgb.r);
+    p[1] = byte_of(rgb.g);
+    p[2] = byte_of(rgb.b);
+    p[3] = use_alpha ? s[n - 1] : 255;
+  }
+  apply_transparency(document, dict, space, colour, *pixels, warnings);
   return pixels;
 }
 

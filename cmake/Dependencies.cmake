@@ -116,6 +116,50 @@ target_include_directories(capriole_jpeg SYSTEM INTERFACE ${_jpeg_prefix}/includ
 add_dependencies(capriole_jpeg libjpeg_turbo)
 add_library(capriole::jpeg ALIAS capriole_jpeg)
 
+# OpenJPEG 2.5.4 — BSD-2-Clause (ADR 0004). JPXDecode: JPEG 2000 images.
+# Built like libjpeg-turbo (ExternalProject, the same compiler, toolchain and flags), static library
+# only, one thread (deterministic, and the same in WebAssembly).
+set(_opj_prefix ${CMAKE_BINARY_DIR}/_deps/openjpeg)
+# OpenJPEG calls its codec functions through pointers cast to a common signature (a void* first
+# parameter): undefined in C, harmless on every real ABI, and its design. Clang's -fsanitize=function
+# flags each call, so it is off for OpenJPEG alone; every other sanitizer stays on.
+set(_opj_c_flags "${_jpeg_c_flags}")
+if(CAPRIOLE_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+  string(APPEND _opj_c_flags " -fno-sanitize=function")
+endif()
+set(_opj_library ${_opj_prefix}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}openjp2${CMAKE_STATIC_LIBRARY_SUFFIX})
+ExternalProject_Add(openjpeg
+  URL https://github.com/uclouvain/openjpeg/archive/refs/tags/v2.5.4.tar.gz
+  URL_HASH SHA256=a695fbe19c0165f295a8531b1e4e855cd94d0875d2f88ec4b61080677e27188a
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  PREFIX ${_opj_prefix}/build
+  INSTALL_DIR ${_opj_prefix}
+  CMAKE_ARGS
+    -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+    -DCMAKE_INSTALL_LIBDIR=lib
+    -DCMAKE_INSTALL_INCLUDEDIR=include
+    -DCMAKE_BUILD_TYPE=${_jpeg_build_type}
+    -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+    -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+    -DCMAKE_C_FLAGS=${_opj_c_flags}
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DBUILD_SHARED_LIBS=OFF
+    -DBUILD_STATIC_LIBS=ON
+    -DBUILD_CODEC=OFF
+    -DBUILD_TESTING=OFF
+    -DBUILD_DOC=OFF
+    -DBUILD_THIRDPARTY=OFF
+    -DBUILD_PKGCONFIG_FILES=OFF
+    -DOPJ_USE_THREAD=OFF
+  BUILD_BYPRODUCTS ${_opj_library})
+file(MAKE_DIRECTORY ${_opj_prefix}/include/openjpeg-2.5)
+add_library(capriole_openjpeg STATIC IMPORTED GLOBAL)
+set_target_properties(capriole_openjpeg PROPERTIES IMPORTED_LOCATION ${_opj_library})
+target_include_directories(capriole_openjpeg SYSTEM INTERFACE ${_opj_prefix}/include/openjpeg-2.5)
+target_compile_definitions(capriole_openjpeg INTERFACE OPJ_STATIC)
+add_dependencies(capriole_openjpeg openjpeg)
+add_library(capriole::openjpeg ALIAS capriole_openjpeg)
+
 if(CAPRIOLE_BUILD_TESTS)
   # GoogleTest 1.17.0 — BSD-3-Clause. Test-only, never linked into the engine.
   FetchContent_Declare(googletest

@@ -1,5 +1,7 @@
 #include "capriole/filters/decode.hpp"
 
+#include <algorithm>
+#include <cstring>
 #include <string>
 #include <utility>
 
@@ -8,6 +10,7 @@
 #include "capriole/filters/dct.hpp"
 #include "capriole/filters/flate.hpp"
 #include "capriole/filters/jbig2.hpp"
+#include "capriole/filters/jpx.hpp"
 
 namespace capriole::filters {
 
@@ -68,6 +71,17 @@ Result<std::vector<std::byte>> apply_filter(std::vector<std::byte> data, const s
       }
     }
     return jbig2_decode(data, globals, max);
+  }
+  if (name == "JPXDecode") {
+    // The samples as the image describes them: 8 bits per component, interleaved (images are decoded
+    // through content/image, which keeps the description).
+    auto image = jpx_decode(data, static_cast<std::int64_t>(std::min<std::size_t>(max, std::size_t{1} << 30U)));
+    if (!image) {
+      return std::unexpected(std::move(image.error()));
+    }
+    std::vector<std::byte> out(image->samples.size());
+    std::memcpy(out.data(), image->samples.data(), out.size());
+    return out;
   }
   if (name == "DCTDecode" || name == "DCT") {
     return dct_decode(data, parms, max);

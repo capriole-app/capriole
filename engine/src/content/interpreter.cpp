@@ -680,16 +680,44 @@ class Interpreter {
         return found->second;
       }
     }
-    auto data = document_->decode_stream(stream);
-    if (!data) {
-      warnings_.add("image not decoded: " + data.error().message);
-      return nullptr;
+    std::shared_ptr<const graphics::ImagePixels> pixels;
+    if (detail::is_jpx(*document_, stream.dict)) {
+      pixels = jpx_pixels(stream);
+    } else {
+      auto data = document_->decode_stream(stream);
+      if (!data) {
+        warnings_.add("image not decoded: " + data.error().message);
+        return nullptr;
+      }
+      pixels = pixels_of(stream.dict, *data);
     }
-    auto pixels = pixels_of(stream.dict, *data);
     if (cached) {
       images_.emplace(ref->number, pixels);
     }
     return pixels;
+  }
+
+  // JPEG 2000: from the stored bytes (decrypted, not filtered), with the page's image budget.
+  std::shared_ptr<const graphics::ImagePixels> jpx_pixels(const model::Stream& stream) {
+    detail::ImageLimits limits;
+    limits.max_pixels = std::min(limits_->max_image_pixels, limits_->max_page_image_pixels - image_pixels_);
+    constexpr std::int64_t kMinUsefulPixels = 65'536;
+    if (limits.max_pixels < kMinUsefulPixels) {
+      warnings_.add("too many image pixels on the page: the rest are placeholders");
+      return nullptr;
+    }
+    auto data = document_->encoded_stream_data(stream);
+    if (!data) {
+      warnings_.add("image not decoded: " + data.error().message);
+      return nullptr;
+    }
+    auto pixels = detail::decode_jpx_image(*document_, stream.dict, *data, resources_, warnings_, limits);
+    if (!pixels) {
+      warnings_.add("image not decoded: " + pixels.error().message);
+      return nullptr;
+    }
+    image_pixels_ += static_cast<std::int64_t>((*pixels)->width) * (*pixels)->height;
+    return *pixels;
   }
 
   std::shared_ptr<const graphics::ImagePixels> pixels_of(const model::Dict& dict, const std::vector<std::byte>& data) {

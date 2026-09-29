@@ -19,6 +19,7 @@ add_executable(capriole_unit_tests
   unit/dct_test.cpp
   unit/function_test.cpp
   unit/jbig2_test.cpp
+  unit/jpx_test.cpp
   unit/png_test.cpp
   unit/render_test.cpp
   unit/basic_filters_test.cpp
