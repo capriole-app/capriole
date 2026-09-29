@@ -9,12 +9,14 @@
 #include <memory>
 #include <numbers>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
 
 #include "blend2d/blend2d.h"
 #include "capriole/graphics/dash.hpp"
+#include "capriole/graphics/shading.hpp"
 #include "capriole/render/blend.hpp"
 
 namespace capriole::render {
@@ -451,7 +453,8 @@ class Rasterizer {
  public:
   Rasterizer(const DisplayList& list, const RenderLimits& limits, const Matrix& page) : list_(&list), limits_(&limits), page_(page) {}
 
-  Result<Bitmap> run(int width, int height) {
+  // The list drawn onto a transparent image (premultiplied); run() composes it onto the white paper.
+  Result<BLImage> render(int width, int height) {
     Surface root;
     if (root.image.create(width, height, BL_FORMAT_PRGB32) != BL_SUCCESS || root.context.begin(root.image) != BL_SUCCESS) {
       return make_error(ErrorCode::kLimitExceeded, "cannot allocate a " + std::to_string(width) + "x" + std::to_string(height) + " bitmap");
@@ -474,13 +477,20 @@ class Rasterizer {
     }
     Surface& page = stack_.back();
     page.context.end();
+    return std::move(page.image);
+  }
 
+  Result<Bitmap> run(int width, int height) {
+    auto image = render(width, height);
+    if (!image) {
+      return std::unexpected(std::move(image.error()));
+    }
     Bitmap out;
     out.width = width;
     out.height = height;
     out.rgba.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4);
     BLImageData data{};
-    page.image.get_data(&data);
+    image->get_data(&data);
     for (int row = 0; row < height; ++row) {
       std::uint8_t* target = &out.rgba[static_cast<std::size_t>(row) * static_cast<std::size_t>(width) * 4];
       for (int col = 0; col < width; ++col) {
@@ -519,7 +529,8 @@ class Rasterizer {
               using C = std::decay_t<decltype(c)>;
               if constexpr (std::is_same_v<C, FillPath> || std::is_same_v<C, StrokePath>) {
                 return c.blend;
-              } else if constexpr (std::is_same_v<C, Boxed<DrawImage>> || std::is_same_v<C, Boxed<ShowText>>) {
+              } else if constexpr (std::is_same_v<C, Boxed<DrawImage>> || std::is_same_v<C, Boxed<ShowText>> || std::is_same_v<C, Boxed<PaintShading>> ||
+                                   std::is_same_v<C, Boxed<PaintTiling>>) {
                 return c->blend;
               } else {
                 return BlendMode::kNormal;
@@ -768,7 +779,143 @@ class Rasterizer {
     return &pictures_.emplace(key, std::move(picture)).first->second;
   }
 
-  void draw(const Boxed<PaintShading>& /*unused*/) {}
+  // A shading (§8.7.4): its pixels computed over the part of the clip it can reach, then painted through
+  // the clip like an image; a pattern fill paints its background first.
+  void draw(const Boxed<PaintShading>& boxed) {
+    const PaintShading& c = *boxed;
+    if (!c.shading) {
+      return;
+    }
+    const Matrix to_device = c.ctm.then(page_);
+    PixelBox box = clip_.intersect(stack_.front().box());
+    if (c.shading->bbox) {
+      const Rect b = *c.shading->bbox;
+      box = box.intersect(bounds_of_rect(b.x0, b.y0, b.x1, b.y1, to_device));
+    }
+    if (box.empty()) {
+      return;
+    }
+    const int w = box.x1 - box.x0;
+    const int h = box.y1 - box.y0;
+    if (c.background && c.shading->background) {
+      const Rgb& bg = *c.shading->background;
+      paint(c.blend, c.alpha, box, [&](Surface& s) {
+        s.context.set_transform(to_blend2d(Matrix::translate(-s.x, -s.y)));
+        s.context.fill_rect(BLRectI(box.x0, box.y0, w, h), BLRgba(static_cast<float>(bg.r), static_cast<float>(bg.g), static_cast<float>(bg.b),
+                                                                  static_cast<float>(std::clamp(c.alpha, 0.0, 1.0))));
+      });
+    }
+    const BLImage image = premultiplied(shade(*c.shading, to_device.then(Matrix::translate(-box.x0, -box.y0)), w, h));
+    paint(c.blend, c.alpha, box, [&](Surface& s) {
+      s.context.set_transform(to_blend2d(Matrix::translate(-s.x, -s.y)));
+      s.context.set_global_alpha(std::clamp(c.alpha, 0.0, 1.0));
+      s.context.blit_image(BLPointI(box.x0, box.y0), image);
+      s.context.set_global_alpha(1);
+    });
+  }
+
+  // A tiling pattern (§8.7.3.2): its cell drawn once into an image at the device resolution of pattern
+  // space, then repeated over the clip. Along an axis whose step is longer than the page, at most one copy
+  // can show: that copy alone is drawn (its /BBox, with a transparent margin) and not repeated.
+  void draw(const Boxed<PaintTiling>& boxed) {
+    const PaintTiling& t = *boxed;
+    const PixelBox box = clip_.intersect(stack_.front().box());
+    const Matrix to_device = t.matrix.then(page_);
+    const auto to_pattern = to_device.inverse();
+    const double sx = std::hypot(to_device.a, to_device.b);  // device pixels per pattern unit, along each axis
+    const double sy = std::hypot(to_device.c, to_device.d);
+    if (!t.cell || box.empty() || !to_pattern || !(sx > 0) || !(sy > 0) || !std::isfinite(sx * sy * t.xstep * t.ystep)) {
+      return;
+    }
+    const PixelBox page = stack_.front().box();
+    const double reach = std::hypot(page.x1 - page.x0, page.y1 - page.y0);  // no step longer than this repeats on the page
+    const Point centre = to_pattern->apply(Point{(box.x0 + box.x1) / 2.0, (box.y0 + box.y1) / 2.0});
+    struct Axis {
+      bool repeat = true;
+      double start = 0;
+      double extent = 0;
+    };
+    const auto axis = [&](double step, double scale, double low, double high, double at) {
+      if (step * scale <= reach) {
+        return Axis{.repeat = true, .start = low, .extent = step};
+      }
+      const double margin = 1 / scale;
+      const double copy = std::round((at - low) / step) * step;  // the copy nearest the clip's centre
+      return Axis{.repeat = false, .start = low + copy - margin, .extent = std::min(high - low, step) + (2 * margin)};
+    };
+    const Axis x = axis(t.xstep, sx, t.bbox.x0, t.bbox.x1, centre.x);
+    const Axis y = axis(t.ystep, sy, t.bbox.y0, t.bbox.y1, centre.y);
+    const double across = x.extent * sx;
+    const double down = y.extent * sy;
+    // Deep in nested patterns, smaller tiles: the memory stays bounded.
+    const double max_pixels = depth_ == 0 ? 4'000'000.0 : 1'000'000.0;
+    constexpr double kMaxSide = 16'384;
+    const double shrink =
+        std::min({1.0, std::sqrt(max_pixels / std::max(across * down, 1.0)), kMaxSide / std::max(across, 1.0), kMaxSide / std::max(down, 1.0)});
+    const int tw = std::max(1, static_cast<int>(std::lround(across * shrink)));
+    const int th = std::max(1, static_cast<int>(std::lround(down * shrink)));
+    // Tile pixel → pattern space: the rectangle from (x.start, y.start), rows downwards.
+    const Matrix tile_to_pattern{x.extent / tw, 0, 0, -y.extent / th, x.start, y.start + y.extent};
+    const BLImage* tile = tile_of(t, tile_to_pattern, tw, th);
+    if (tile == nullptr) {
+      return;
+    }
+    BLExtendMode extend = BL_EXTEND_MODE_REPEAT;
+    if (!x.repeat && !y.repeat) {
+      extend = BL_EXTEND_MODE_PAD;
+    } else if (!x.repeat) {
+      extend = BL_EXTEND_MODE_PAD_X_REPEAT_Y;
+    } else if (!y.repeat) {
+      extend = BL_EXTEND_MODE_REPEAT_X_PAD_Y;
+    }
+    const Matrix to_device_from_tile = tile_to_pattern.then(to_device);
+    paint(t.blend, t.alpha, box, [&](Surface& s) {
+      s.context.set_transform(to_blend2d(Matrix::translate(-s.x, -s.y)));
+      s.context.set_pattern_quality(BL_PATTERN_QUALITY_BILINEAR);
+      s.context.set_global_alpha(std::clamp(t.alpha, 0.0, 1.0));
+      s.context.fill_rect(BLRectI(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0), BLPattern(*tile, extend, to_blend2d(to_device_from_tile)));
+      s.context.set_global_alpha(1);
+    });
+  }
+
+  const BLImage* tile_of(const PaintTiling& t, const Matrix& tile_to_pattern, int width, int height) {
+    const auto key = std::tuple{t.cell.get(), width, height, tile_to_pattern.e, tile_to_pattern.f};
+    if (const auto found = tiles_.find(key); found != tiles_.end()) {
+      return &found->second;
+    }
+    const auto pattern_to_tile = tile_to_pattern.inverse();
+    if (!pattern_to_tile) {
+      return nullptr;
+    }
+    Rasterizer inner(*t.cell, *limits_, *pattern_to_tile);
+    inner.depth_ = depth_ + 1;
+    auto image = inner.render(width, height);
+    if (!image) {
+      return nullptr;
+    }
+    return &tiles_.emplace(key, std::move(*image)).first->second;
+  }
+
+  // Straight RGBA as a premultiplied Blend2D image.
+  static BLImage premultiplied(const ImagePixels& pixels) {
+    BLImage image;
+    if (pixels.width <= 0 || pixels.height <= 0 || image.create(pixels.width, pixels.height, BL_FORMAT_PRGB32) != BL_SUCCESS) {
+      return image;
+    }
+    BLImageData data{};
+    image.make_mutable(&data);
+    for (int y = 0; y < pixels.height; ++y) {
+      auto* row = static_cast<std::uint8_t*>(data.pixel_data) + (static_cast<std::ptrdiff_t>(y) * data.stride);
+      for (int x = 0; x < pixels.width; ++x) {
+        const std::uint8_t* p = &pixels.rgba[((static_cast<std::size_t>(y) * static_cast<std::size_t>(pixels.width)) + static_cast<std::size_t>(x)) * 4];
+        const std::uint32_t a = p[3];
+        const auto pre = [a](std::uint32_t v) { return ((v * a) + 127) / 255; };
+        const std::uint32_t argb = (a << 24U) | (pre(p[0]) << 16U) | (pre(p[1]) << 8U) | pre(p[2]);
+        std::memcpy(row + (static_cast<std::ptrdiff_t>(x) * 4), &argb, 4);
+      }
+    }
+    return image;
+  }
 
   void draw(const Boxed<ShowText>& boxed) {
     // The glyph outlines, filled and/or stroked as the text rendering mode says (§9.3.6); the clip of
@@ -1304,7 +1451,9 @@ class Rasterizer {
   std::shared_ptr<const SoftMask> soft_mask_;
   std::int64_t layer_pixels_ = 0;
   std::int64_t layer_budget_ = 0;
-  std::map<std::pair<const ImagePixels*, int>, BLImage> pictures_;  // images ready to draw, per reduction
+  std::map<std::pair<const ImagePixels*, int>, BLImage> pictures_;                     // images ready to draw, per reduction
+  std::map<std::tuple<const DisplayList*, int, int, double, double>, BLImage> tiles_;  // tiling patterns' cells, per size and place
+  int depth_ = 0;                                                                      // tiling patterns inside tiling patterns
 };
 
 }  // namespace

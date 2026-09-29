@@ -385,7 +385,27 @@ Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
 di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
 immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · **6h** gli altri codec (CCITT, JBIG2, JPX) ✅ ·
-**6i** font ✅ · poi shading e pattern, annotazioni, profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+**6i** font ✅ · **6j** sfumature e pattern ✅ · poi annotazioni, profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+
+**6j (2026-09-29):** sfumature e pattern (§8.7). L'interprete prepara ogni sfumatura come
+`graphics::Shading` (`content/shading`): colori già in sRGB attraverso funzione e spazio colore, una
+rampa di 1024 campioni lungo t (assiali, radiali, mesh con funzione), una griglia 256×256 per quelle a
+funzione (tipo 1); le mesh decodificate bit a bit (tipi 4 e 5, con `/Decode`), le patch di Coons e
+tensoriali (6, 7, con i lati condivisi dei flag 1–3) suddivise in triangoli secondo la loro misura sulla
+pagina. **I pixel si calcolano uno per uno dalla geometria** (`graphics/shading`): proiezione sull'asse,
+il cerchio più grande che passa per il punto (radiali a due cerchi, anche a cono), `/Extend`,
+`/BBox`, Gouraud sui triangoli (con un tetto di lavoro contro le mesh ostili); li usano il rasterizzatore
+(sul riquadro del clip) e l'SVG (PNG a 1,5 pixel per punto). **Pattern:** lo spazio del pattern è quello
+del flusso di contenuto che lo usa (pagina, form, glifo); riempimenti, testo e modi di clip con un
+pattern diventano clip + pittura. Shading pattern con `/Background`; **tiling** come lista di disegno a
+sé (clip al `/BBox`, cache per pagina; non colorati nel colore dato, i loro operatori di colore
+ignorati), disegnata una volta in un'immagine alla risoluzione del dispositivo e ripetuta da Blend2D;
+lungo un asse con un passo più lungo della pagina (sfondi con `/XStep 99999`) si disegna l'unica copia
+visibile. Nell'SVG i tiling sono `<pattern>` vettoriali. I contorni con un pattern restano in tinta unita
+(avviso). Test in `shading_test.cpp` (16), fuzzer nuovo `fuzz_shading`. **Corpus:** 44 pagine migliorate,
+nessuna peggiorata; con la metrica sfocata il **90,4% delle pagine sopra il 95%** (88,4% prima); le
+peggiori rimaste perdono per linee sottili (6l), contenuto opzionale e annotazioni (campi modulo: 0000854).
+Modulo WASM 3,28 MB, 1,32 MB gzip (+21 KB).
 
 **6i (2026-09-29):** i font ([ADR 0005](adr/0005-font.md)). **FreeType 2.14.3** per i soli contorni
 (moduli sfnt/TrueType/Type 1/CFF/CID, niente hinting né interprete di bytecode, una libreria e un budget

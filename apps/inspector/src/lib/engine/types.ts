@@ -81,7 +81,7 @@ export interface PagePreview {
   height: number;
   rotate: number;
   commands: Record<
-    'save' | 'restore' | 'clip' | 'fill' | 'stroke' | 'image' | 'shading' | 'text' | 'group' | 'soft_mask',
+    'save' | 'restore' | 'clip' | 'fill' | 'stroke' | 'image' | 'shading' | 'pattern' | 'text' | 'group' | 'soft_mask',
     number
   >;
   warnings: string[];

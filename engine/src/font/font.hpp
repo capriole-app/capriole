@@ -47,6 +47,7 @@ class FontContext {
   explicit FontContext(const Resources* resources, FontLimits limits = {});
 
   [[nodiscard]] const FontLimits& limits() const noexcept { return limits_; }
+  [[nodiscard]] const Resources* resources() const noexcept { return resources_; }
   // A predefined CMap (Identity-H/V built in, the others from the resources) — nullptr when missing.
   [[nodiscard]] std::shared_ptr<const CMap> predefined_cmap(std::string_view name, std::size_t depth = 0);
   // A substitute built into the engine.

@@ -8,6 +8,7 @@
 // Colours are kept as the document gives them (space + components) together with an sRGB
 // approximation; exact colour management (ICC, spot colours) is a renderer concern for later.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -201,10 +202,66 @@ struct DrawImage {
   bool interpolate = false;  // /Interpolate: smooth when drawn larger (drawn smaller, images are always smoothed)
 };
 
-// A shading (sh, §8.7.4.2), painted over the current clip.
+// A shading (§8.7.4.5), as the interpreter prepares it for any renderer: geometry in shading space,
+// colours already in sRGB (graphics/shading.hpp computes its pixels).
+struct Shading {
+  enum class Kind : std::uint8_t {
+    kFunction,  // type 1: a colour for each point of a domain
+    kAxial,     // type 2: along the axis from (x0, y0) to (x1, y1)
+    kRadial,    // type 3: between the circles (x0, y0, r0) and (x1, y1, r1)
+    kMesh,      // types 4–7: triangles with a colour at each corner (patches are subdivided)
+  };
+  Kind kind = Kind::kAxial;
+  std::array<double, 6> coords{};  // axial: x0 y0 x1 y1; radial: x0 y0 r0 x1 y1 r1
+  // Axial and radial: t runs from t0 to t1 along the geometry; beyond it, the end colours when extended.
+  double t0 = 0;
+  double t1 = 1;
+  bool extend_start = false;
+  bool extend_end = false;
+  // The colours of t from t0 to t1, evenly spaced (axial, radial, and meshes whose corners give t).
+  std::vector<Rgb> ramp;
+  // Function shadings: the domain, its matrix into shading space, and colours sampled on a grid over the
+  // domain (grid_width × grid_height, row 0 at the domain's y0).
+  Rect domain{0, 0, 1, 1};
+  Matrix matrix;
+  std::int32_t grid_width = 0;
+  std::int32_t grid_height = 0;
+  std::vector<Rgb> grid;
+  // Meshes: each corner has a colour, or with a ramp a t (interpolated, then looked up: §8.7.4.5.5).
+  struct Vertex {
+    Point point;
+    Rgb color;
+    double t = 0;
+  };
+  std::vector<std::array<Vertex, 3>> triangles;
+  // /Background (painted first where the shading is a pattern's), /BBox (in shading space).
+  std::optional<Rgb> background;
+  std::optional<Rect> bbox;
+};
+
+// A shading painted over the current clip (sh, §8.7.4.2), or over the area a shading pattern fills
+// (§8.7.3.3, after a ClipPath of that area; with its background).
 struct PaintShading {
-  Matrix ctm;
-  model::Object shading;
+  Matrix ctm;  // shading space → user space
+  std::shared_ptr<const Shading> shading;
+  double alpha = 1;
+  BlendMode blend = BlendMode::kNormal;
+  bool background = false;  // a pattern fill: /Background is painted too
+};
+
+struct DisplayList;
+
+// A tiling pattern (§8.7.3.2) painted over the current clip (a ClipPath of the area it fills comes
+// first): its cell — the pattern's content as a display list of its own, in pattern space, painted over
+// the rectangle bbox — repeated every xstep, ystep.
+struct PaintTiling {
+  Matrix matrix;  // pattern space → user space
+  std::shared_ptr<const DisplayList> cell;
+  Rect bbox;
+  double xstep = 1;
+  double ystep = 1;
+  double alpha = 1;
+  BlendMode blend = BlendMode::kNormal;
 };
 
 // A run of glyphs of one Tj/TJ/'/" with their positions and outlines.
@@ -297,8 +354,8 @@ class Boxed {
   std::unique_ptr<T> value_;
 };
 
-using Command = std::variant<Save, Restore, ClipPath, FillPath, StrokePath, Boxed<DrawImage>, Boxed<PaintShading>, Boxed<ShowText>, BeginGroup, EndGroup,
-                             BeginSoftMask, EndSoftMask, ClearSoftMask>;
+using Command = std::variant<Save, Restore, ClipPath, FillPath, StrokePath, Boxed<DrawImage>, Boxed<PaintShading>, Boxed<PaintTiling>, Boxed<ShowText>,
+                             BeginGroup, EndGroup, BeginSoftMask, EndSoftMask, ClearSoftMask>;
 
 // A short name for the kind of a command ("fill", "group", "soft_mask", "group_end", ...), for summaries.
 [[nodiscard]] std::string_view command_kind(const Command& command);

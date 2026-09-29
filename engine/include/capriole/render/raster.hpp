@@ -8,7 +8,8 @@
 // with the formulas of render/blend. Groups are composed isolated (the same result as non-isolated
 // unless blend modes inside them act on the backdrop), knockout is not applied.
 //
-// Text is drawn with its glyph outlines (in the display list). Shadings and patterns: not yet.
+// Text is drawn with its glyph outlines (in the display list); shadings with the pixels graphics/shading
+// computes; tiling patterns as their cell, drawn once and repeated.
 
 #include <cstddef>
 #include <cstdint>

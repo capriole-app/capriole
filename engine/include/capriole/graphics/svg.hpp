@@ -2,9 +2,9 @@
 
 // A display list as SVG: a vector preview of a page, for the Inspector and for checking the
 // interpreter by eye. Paths, colours, alpha, line styles, clipping, blend modes, groups, soft masks and
-// decoded images (embedded as PNG) are as in the file; what the renderer phases will draw properly is
-// approximated: text in a generic font at the right positions (glyph outlines need the font
-// programs), images not decoded as framed placeholders, shadings and patterns not drawn.
+// decoded images (embedded as PNG), glyph outlines (each defined once) and tiling patterns (as SVG
+// patterns) are as in the file; shadings are embedded as PNG at 1.5 pixels per point; images not
+// decoded are framed placeholders.
 //
 // The output is plain ASCII: every string that comes from the document is written as XML character
 // references, so the SVG cannot carry markup or scripts from the file.

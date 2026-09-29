@@ -403,7 +403,8 @@ capriole_status capriole_document_page_preview_json(capriole_document* document,
     if (!list) {
       return fail(list.error());
     }
-    constexpr std::array<std::string_view, 10> kKinds = {"save", "restore", "clip", "fill", "stroke", "image", "shading", "text", "group", "soft_mask"};
+    constexpr std::array<std::string_view, 11> kKinds = {"save",    "restore", "clip", "fill",  "stroke",   "image",
+                                                         "shading", "pattern", "text", "group", "soft_mask"};
     std::array<std::size_t, kKinds.size()> counts{};
     for (const auto& command : list->commands) {
       const std::string_view kind = capriole::graphics::command_kind(command);

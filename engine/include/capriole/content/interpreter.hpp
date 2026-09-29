@@ -9,10 +9,10 @@
 // Lab, Separation and DeviceN through their functions), text (§9): fonts of every kind with their
 // glyph outlines (font/font.hpp: embedded programs, substitutes, CMaps, vertical writing), the text
 // rendering modes including clipping, Type 3 glyphs run as content; form XObjects (matrix, bounding
-// box clip, own resources, recursion bounded and cycle-safe), images decoded to pixels, shadings as
-// placed commands; transparency (§11): blend modes, soft masks (their group drawn as commands between
-// BeginSoftMask and EndSoftMask) and transparency groups. Shadings and patterns belong to the
-// renderer phases.
+// box clip, own resources, recursion bounded and cycle-safe), images decoded to pixels, shadings of
+// the seven types (content/shading) painted by sh or by shading patterns, tiling patterns (their cell a
+// display list of its own; uncoloured ones in the colour given); transparency (§11): blend modes, soft
+// masks (their group drawn as commands between BeginSoftMask and EndSoftMask) and transparency groups.
 //
 // Content is read tolerantly, as viewers do: a malformed operation is skipped with a warning, never a
 // failure of the page. Only a page that cannot be reached at all is an error.

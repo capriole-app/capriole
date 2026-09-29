@@ -11,6 +11,7 @@
 #include <variant>
 #include <vector>
 
+#include "capriole/graphics/shading.hpp"
 #include "capriole/render/png.hpp"
 
 namespace capriole::graphics {
@@ -99,7 +100,7 @@ std::string opacity(std::string_view attribute, double alpha) {
 
 class Writer {
  public:
-  explicit Writer(const SvgOptions& options) : options_(options) {}
+  explicit Writer(const SvgOptions& options, std::string prefix = {}) : options_(options), prefix_(std::move(prefix)) {}
 
   std::string write(const DisplayList& list) {
     list_ = &list;
@@ -113,6 +114,15 @@ class Writer {
     out_ += R"(<rect width="100%" height="100%" fill="#ffffff"/>)";
     // Isolated from the white page: blend modes act on the content, not on the paper.
     out_ += "<g transform=\"" + matrix(page) + R"(" style="isolation:isolate">)";
+    body(list);
+    out_ += "</g></svg>";
+    return std::move(out_);
+  }
+
+  // The commands of a list, balanced (every group opened is closed), appended to the output: a page's,
+  // or a pattern cell's.
+  void body(const DisplayList& list) {
+    list_ = &list;
     open_.assign(1, {});
     page_box_ = list.crop_box;
     std::size_t written = 0;
@@ -130,8 +140,6 @@ class Writer {
       close_groups();
       open_.pop_back();
     }
-    out_ += "</g></svg>";
-    return std::move(out_);
   }
 
  private:
@@ -176,7 +184,7 @@ class Writer {
   }
 
   void command(const ClipPath& c) {
-    const std::string id = std::format("c{}", next_id_++);
+    const std::string id = std::format("{}c{}", prefix_, next_id_++);
     out_ += "<clipPath id=\"" + id + "\"><path d=\"" + path_data(c.path) + "\" transform=\"" + matrix(c.ctm) + "\"" +
             (c.rule == FillRule::kEvenOdd ? " clip-rule=\"evenodd\"" : "") + "/></clipPath>";
     open_group(" clip-path=\"url(#" + id + ")\"");
@@ -196,7 +204,7 @@ class Writer {
   // The mask's group becomes an SVG <mask> (luminance over the backdrop colour, or alpha); what follows
   // at this level is drawn through it.
   void command(const BeginSoftMask& c) {
-    const std::string id = std::format("m{}", next_id_++);
+    const std::string id = std::format("{}m{}", prefix_, next_id_++);
     const Rect r = page_box_;
     out_ += std::format(R"(<mask id="{}" maskUnits="userSpaceOnUse" x="{}" y="{}" width="{}" height="{}" style="mask-type:{}">)", id, num(r.x0), num(r.y0),
                         num(r.width()), num(r.height()), c.kind == SoftMaskKind::kLuminosity ? "luminance" : "alpha");
@@ -288,13 +296,59 @@ class Writer {
             R"( stroke="#7d88b3" stroke-width="0.75" vector-effect="non-scaling-stroke" stroke-dasharray="3 2"/>)";
   }
 
-  void command(const PaintShading& /*unused*/) {}
+  // A shading: its pixels over the page (or its /BBox), 1.5 per point, embedded as PNG; the clip that
+  // holds it is the group around. A pattern fill paints its background first.
+  void command(const PaintShading& c) {
+    if (!c.shading) {
+      return;
+    }
+    const Rect page = page_box_.normalized();
+    const std::string paint = opacity("opacity", c.alpha) + blend_style(c.blend);
+    if (c.background && c.shading->background) {
+      out_ += std::format(R"(<rect x="{}" y="{}" width="{}" height="{}" fill="{}"{}/>)", num(page.x0), num(page.y0), num(page.width()), num(page.height()),
+                          color(*c.shading->background), paint);
+    }
+    constexpr double kPerPoint = 1.5;
+    const int w = static_cast<int>(std::ceil(page.width() * kPerPoint));
+    const int h = static_cast<int>(std::ceil(page.height() * kPerPoint));
+    const std::int64_t count = static_cast<std::int64_t>(w) * h;
+    if (w <= 0 || h <= 0 || embedded_ + count > options_.max_embedded_pixels) {
+      return;
+    }
+    const Matrix page_to_pixels{kPerPoint, 0, 0, -kPerPoint, -page.x0 * kPerPoint, page.y1 * kPerPoint};
+    const ImagePixels pixels = shade(*c.shading, c.ctm.then(page_to_pixels), w, h);
+    auto png = render::encode_png(render::Bitmap{.width = pixels.width, .height = pixels.height, .rgba = pixels.rgba});
+    if (!png) {
+      return;
+    }
+    embedded_ += count;
+    out_ += std::format(R"(<image width="{}" height="{}" preserveAspectRatio="none" transform="{}"{} href="data:image/png;base64,{}"/>)", w, h,
+                        matrix(Matrix{1 / kPerPoint, 0, 0, -1 / kPerPoint, page.x0, page.y1}), paint, base64(*png));
+  }
+
+  // A tiling pattern: an SVG <pattern> holding its cell's content, over the page.
+  void command(const PaintTiling& c) {
+    if (!c.cell || depth_ >= kMaxPatternDepth) {
+      return;
+    }
+    const std::string id = std::format("{}p{}", prefix_, next_id_++);
+    Writer cell(options_, id + "_");
+    cell.depth_ = depth_ + 1;
+    cell.body(*c.cell);
+    const std::string content = std::move(cell.out_);
+    out_ +=
+        std::format(R"(<defs><pattern id="{}" patternUnits="userSpaceOnUse" x="{}" y="{}" width="{}" height="{}" patternTransform="{}">{}</pattern></defs>)",
+                    id, num(c.bbox.x0), num(c.bbox.y0), num(c.xstep), num(c.ystep), matrix(c.matrix), content);
+    const Rect page = page_box_.normalized();
+    out_ += std::format(R"svg(<rect x="{}" y="{}" width="{}" height="{}" fill="url(#{})"{}/>)svg", num(page.x0), num(page.y0), num(page.width()),
+                        num(page.height()), id, opacity("opacity", c.alpha) + blend_style(c.blend));
+  }
 
   // The id of a glyph outline, defined (<defs>) the first time it is used.
   std::size_t glyph_id(const Path& outline) {
     const auto [at, added] = glyph_ids_.try_emplace(&outline, glyph_ids_.size());
     if (added) {
-      out_ += std::format(R"(<defs><path id="g{}" d="{}"/></defs>)", at->second, path_data(outline));
+      out_ += std::format(R"(<defs><path id="{}g{}" d="{}"/></defs>)", prefix_, at->second, path_data(outline));
     }
     return at->second;
   }
@@ -313,7 +367,7 @@ class Writer {
         for (const Glyph& glyph : c.glyphs) {
           if (glyph.outline) {
             const Matrix m = Matrix{c.font_size * h, 0, 0, c.font_size, glyph.origin.x, glyph.origin.y}.then(c.tm);
-            out_ += std::format(R"(<use href="#g{}" transform="{}"/>)", glyph_id(*glyph.outline), matrix(m));
+            out_ += std::format(R"(<use href="#{}g{}" transform="{}"/>)", prefix_, glyph_id(*glyph.outline), matrix(m));
           }
         }
         out_ += "</g>";
@@ -345,6 +399,9 @@ class Writer {
   std::vector<OpenMask> masks_;
   Rect page_box_;
   std::size_t next_id_ = 0;
+  std::string prefix_;  // of every id: a pattern cell's content lives in the same document as the page
+  int depth_ = 0;       // pattern cells inside pattern cells
+  static constexpr int kMaxPatternDepth = 8;
   std::map<const Path*, std::size_t> glyph_ids_;  // outlines are shared: one per glyph of a font
 };
 

@@ -52,6 +52,7 @@
     text: 'testi',
     image: 'immagini',
     shading: 'sfumature',
+    pattern: 'pattern a tessere',
     group: 'gruppi di trasparenza',
     soft_mask: 'soft mask',
   };

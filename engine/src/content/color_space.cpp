@@ -274,14 +274,14 @@ graphics::Color initial_color(const ColorSpace& space) {
   return make_color(space, components, {}, ignored);
 }
 
-graphics::Color make_color(const ColorSpace& space, std::span<const double> components, std::string pattern, Warnings& warnings) {
+graphics::Color make_color(const ColorSpace& space, std::span<const double> components, std::string pattern, Warnings& /*warnings*/) {
   graphics::Color color;
   color.family = space.family;
   color.components.assign(components.begin(), components.begin() + static_cast<std::ptrdiff_t>(std::min(components.size(), space.components)));
   color.components.resize(space.components, 0.0);
   color.pattern = std::move(pattern);
   if (space.family == ColorSpaceFamily::kPattern) {
-    warnings.add("patterns are not drawn yet: a gray placeholder is used");
+    // Painted by the pattern itself; this stands in where a pattern cannot be used (strokes).
     color.rgb = space.base ? to_rgb(*space.base, color.components) : Rgb{0.5, 0.5, 0.5};
   } else {
     color.rgb = to_rgb(space, color.components);

@@ -237,7 +237,8 @@ TEST(Interpreter, FormThatDrawsItselfIsCut) {
 TEST(Interpreter, ImagesAndShadings) {
   const auto list =
       interpret({.content = "q 100 0 0 50 10 20 cm /Im Do Q BI /W 2 /H 1 /IM true ID \x80 EI /Sh sh",
-                 .resources = "/XObject<</Im 12 0 R>>/Shading<</Sh<</ShadingType 2/ColorSpace/DeviceRGB/Coords[0 0 1 0]>>>>",
+                 .resources = "/XObject<</Im 12 0 R>>/Shading<</Sh<</ShadingType 2/ColorSpace/DeviceRGB/Coords[0 0 1 0]"
+                              "/Function<</FunctionType 2/Domain[0 1]/C0[1 0 0]/C1[0 0 1]/N 1>>>>>>",
                  .objects = {{12, "<</Subtype/Image/Width 4/Height 3/ColorSpace/DeviceGray/BitsPerComponent 8/Length 12>>\nstream\n012345678901\nendstream"}}});
   const auto images = all<graphics::DrawImage>(list);
   ASSERT_EQ(images.size(), 2U);

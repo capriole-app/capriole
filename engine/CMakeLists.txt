@@ -18,6 +18,7 @@ add_library(capriole_engine STATIC
   src/document/document.cpp
   src/graphics/dash.cpp
   src/graphics/display_list.cpp
+  src/graphics/shading.cpp
   src/graphics/svg.cpp
   src/render/blend.cpp
   src/render/png.cpp
@@ -56,6 +57,7 @@ add_library(capriole_engine STATIC
   src/content/interpreter.cpp
   src/content/operators.cpp
   src/content/page_content.cpp
+  src/content/shading.cpp
   src/writer/full_save.cpp
   src/writer/incremental_save.cpp
   src/writer/save_support.cpp

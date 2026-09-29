@@ -19,6 +19,7 @@
 #include "color_space.hpp"
 #include "font/font.hpp"
 #include "image.hpp"
+#include "shading.hpp"
 
 namespace capriole::content {
 
@@ -74,6 +75,9 @@ class Interpreter {
     ContentParser parser(content, limits_->parse, parser::ParseMode::kTolerant);
     const model::Dict* saved_resources = resources_;
     resources_ = resources;
+    // Pattern space is relative to the CTM at the start of the content stream that uses the pattern
+    // (§8.7.3.1): the page's, a form's (its /Matrix included), a glyph's.
+    const Matrix saved_base = std::exchange(base_ctm_, state_.ctm);
     const std::size_t base_depth = stack_.size();
     for (;;) {
       if (stopped_) {
@@ -101,6 +105,7 @@ class Interpreter {
     while (stack_.size() > base_depth) {
       restore();
     }
+    base_ctm_ = saved_base;
     resources_ = saved_resources;
   }
 
@@ -224,6 +229,10 @@ class Interpreter {
   }
 
   void fill(graphics::FillRule rule) {
+    if (!path_.empty() && state_.fill.family == graphics::ColorSpaceFamily::kPattern) {
+      fill_with_pattern(path_, state_.ctm, rule, state_.fill, state_.fill_space, state_.fill_alpha);
+      return;
+    }
     if (!path_.empty()) {
       emit(graphics::FillPath{
           .path = path_, .ctm = state_.ctm, .rule = rule, .blend = state_.blend, .color = intern(state_.fill, last_fill_), .alpha = state_.fill_alpha});
@@ -231,6 +240,9 @@ class Interpreter {
   }
 
   void stroke() {
+    if (!path_.empty() && state_.stroke.family == graphics::ColorSpaceFamily::kPattern) {
+      warnings_.add("strokes with a pattern are drawn in a plain colour");
+    }
     if (!path_.empty()) {
       emit(graphics::StrokePath{.path = path_,
                                 .ctm = state_.ctm,
@@ -551,6 +563,15 @@ class Interpreter {
     if (run.glyphs.empty()) {
       return;
     }
+    // Filled with a pattern: the glyphs are the area the pattern paints; the run keeps only its stroke.
+    const bool fills = state_.render_mode == 0 || state_.render_mode == 2 || state_.render_mode == 4 || state_.render_mode == 6;
+    if (fills && !run.glyph_procedures && state_.fill.family == graphics::ColorSpaceFamily::kPattern) {
+      if (const graphics::Path area = graphics::glyph_run_path(run); !area.empty()) {
+        fill_with_pattern(area, state_.ctm, graphics::FillRule::kNonZero, state_.fill, state_.fill_space, state_.fill_alpha);
+      }
+      constexpr std::array<std::int32_t, 8> kWithoutFill = {3, 1, 1, 3, 7, 5, 5, 7};
+      run.render_mode = kWithoutFill.at(static_cast<std::size_t>(state_.render_mode));
+    }
     // Modes 4–7 add the glyphs to the clip that ET sets (§9.3.6).
     if (state_.render_mode >= 4) {
       append_transformed(text_clip_, graphics::glyph_run_path(run), state_.ctm);
@@ -628,7 +649,7 @@ class Interpreter {
       const Matrix saved_text = text_matrix_;
       const Matrix saved_line = line_matrix_;
       graphics::Path saved_clip = std::exchange(text_clip_, {});
-      const bool saved_uncolored = std::exchange(uncolored_glyph_, false);
+      const bool saved_uncolored = std::exchange(uncolored_glyph_, cell_uncoloured_);
       ++type3_depth_;
       run(*content, resources, form_depth + 1);
       --type3_depth_;
@@ -883,19 +904,190 @@ class Interpreter {
     return *pixels;
   }
 
+  // The shading of a resource or pattern, prepared once per page (per object).
+  std::shared_ptr<const graphics::Shading> shading_of(const Object& entry, const Matrix& ctm) {
+    const auto ref = entry.as_ref();
+    if (ref) {
+      if (const auto found = shadings_.find(ref->number); found != shadings_.end()) {
+        return found->second;
+      }
+    }
+    auto shading = detail::load_shading(*document_, entry, resources_, std::sqrt(std::abs(ctm.determinant())), warnings_);
+    if (ref) {
+      shadings_.emplace(ref->number, shading);
+    }
+    return shading;
+  }
+
+  // sh (§8.7.4.2): the shading over the current clip, in the current user space.
   void paint_shading(const Operation& op) {
     const model::Name* name = last_name(op);
     if (name == nullptr) {
       return;
     }
     const auto entry = resource("Shading", name->bytes);
-    auto shading = entry ? document_->resolve(*entry) : Result<Object>(Object());
-    if (!shading || shading->is_null()) {
+    if (!entry) {
       warnings_.add("shading /" + name->bytes + " not found");
       return;
     }
-    warnings_.add("shadings are placed but not drawn yet");
-    emit(graphics::Boxed<graphics::PaintShading>(graphics::PaintShading{.ctm = state_.ctm, .shading = std::move(*shading)}));
+    if (auto shading = shading_of(*entry, state_.ctm)) {
+      emit(graphics::Boxed<graphics::PaintShading>(
+          graphics::PaintShading{.ctm = state_.ctm, .shading = std::move(shading), .alpha = state_.fill_alpha, .blend = state_.blend, .background = false}));
+    }
+  }
+
+  // An area filled with a pattern colour (§8.7.3): the area becomes the clip, the pattern is painted
+  // over it — a shading pattern's shading (with its background), or a tiling pattern's repeated cell.
+  void fill_with_pattern(const graphics::Path& area, const Matrix& ctm, graphics::FillRule rule, const Color& color, const ColorSpace& space, double alpha) {
+    const auto entry = resource("Pattern", color.pattern);
+    auto pattern = entry ? document_->resolve(*entry) : Result<Object>(Object());
+    const model::Dict* dict = nullptr;
+    if (pattern) {
+      dict = pattern->as_stream() != nullptr ? &pattern->as_stream()->dict : pattern->as_dict();
+    }
+    if (dict == nullptr) {
+      warnings_.add("pattern /" + color.pattern + " not found: not painted");
+      return;
+    }
+    Matrix matrix;
+    if (const Object* m = dict->find("Matrix")) {
+      if (auto values = document_->resolve(*m); values && values->as_array() != nullptr && values->as_array()->size() == 6) {
+        std::array<double, 6> v{};
+        for (std::size_t i = 0; i < v.size(); ++i) {
+          v.at(i) = number((*values->as_array())[i]).value_or(0);
+        }
+        matrix = {v[0], v[1], v[2], v[3], v[4], v[5]};
+      }
+    }
+    matrix = matrix.then(base_ctm_);  // pattern space → user space
+    const Object* type = dict->find("PatternType");
+    const std::int64_t pattern_type = type != nullptr ? type->as_integer().value_or(0) : 0;
+    if (pattern_type == 2) {
+      const Object* shading_entry = dict->find("Shading");
+      auto shading = shading_entry != nullptr ? shading_of(*shading_entry, matrix) : nullptr;
+      if (!shading) {
+        return;
+      }
+      if (dict->contains("ExtGState")) {
+        warnings_.add("the graphics state of shading patterns is not applied");
+      }
+      emit(graphics::Save{});
+      emit(graphics::ClipPath{.path = area, .ctm = ctm, .rule = rule});
+      emit(graphics::Boxed<graphics::PaintShading>(
+          graphics::PaintShading{.ctm = matrix, .shading = std::move(shading), .alpha = alpha, .blend = state_.blend, .background = true}));
+      emit(graphics::Restore{});
+      return;
+    }
+    if (pattern_type == 1 && pattern->as_stream() != nullptr) {
+      auto tiling = tiling_cell(entry ? entry->as_ref() : std::nullopt, *pattern->as_stream(), color, space);
+      if (!tiling) {
+        return;
+      }
+      tiling->matrix = matrix;
+      tiling->alpha = alpha;
+      tiling->blend = state_.blend;
+      emit(graphics::Save{});
+      emit(graphics::ClipPath{.path = area, .ctm = ctm, .rule = rule});
+      emit(graphics::Boxed<graphics::PaintTiling>(std::move(*tiling)));
+      emit(graphics::Restore{});
+      return;
+    }
+    warnings_.add("pattern /" + color.pattern + " of an unknown type: not painted");
+  }
+
+  // A tiling pattern's cell (§8.7.3.2): its content run on its own, in pattern space, into a display list
+  // of its own. Coloured cells are made once per page; an uncoloured one (PaintType 2) is painted in the
+  // colour given with the pattern, its own colour operators ignored.
+  std::optional<graphics::PaintTiling> tiling_cell(std::optional<model::ObjectRef> ref, const model::Stream& stream, const Color& color,
+                                                   const ColorSpace& space) {
+    const model::Dict& dict = stream.dict;
+    const Object* paint_type = dict.find("PaintType");
+    const bool uncoloured = paint_type != nullptr && paint_type->as_integer().value_or(1) == 2;
+    std::vector<double> box;
+    if (const Object* b = dict.find("BBox")) {
+      if (auto values = document_->resolve(*b); values && values->as_array() != nullptr) {
+        for (const Object& v : *values->as_array()) {
+          box.push_back(number(v).value_or(0));
+        }
+      }
+    }
+    const auto step = [&](std::string_view key) {
+      const Object* v = dict.find(key);
+      auto resolved = v != nullptr ? document_->resolve(*v) : Result<Object>(Object());
+      return resolved ? number(*resolved).value_or(0) : 0.0;
+    };
+    const double xstep = std::abs(step("XStep"));
+    const double ystep = std::abs(step("YStep"));
+    if (box.size() != 4 || xstep == 0 || ystep == 0 || !std::isfinite(xstep) || !std::isfinite(ystep)) {
+      warnings_.add("tiling pattern without a valid /BBox, /XStep and /YStep: not painted");
+      return std::nullopt;
+    }
+    const graphics::Rect bbox = graphics::Rect{box[0], box[1], box[2], box[3]}.normalized();
+    graphics::PaintTiling tiling{
+        .matrix = {}, .cell = nullptr, .bbox = bbox, .xstep = xstep, .ystep = ystep, .alpha = 1, .blend = graphics::BlendMode::kNormal};
+
+    const bool cacheable = ref.has_value() && !uncoloured;
+    if (cacheable) {
+      if (const auto found = tiles_.find(ref->number); found != tiles_.end()) {
+        tiling.cell = found->second;
+        return tiling;
+      }
+    }
+    if (tile_depth_ + 1 >= limits_->max_form_depth || (ref && active_forms_.contains(ref->number))) {
+      warnings_.add("tiling patterns nested too deeply: not painted");
+      return std::nullopt;
+    }
+    auto content = document_->decode_stream(stream);
+    if (!content) {
+      warnings_.add("tiling pattern content unreadable: " + content.error().message);
+      return std::nullopt;
+    }
+    std::optional<Object> own;
+    const model::Dict* resources = resources_;
+    if (const Object* r = dict.find("Resources")) {
+      if (auto resolved = document_->resolve(*r); resolved && resolved->as_dict() != nullptr) {
+        own = std::move(*resolved);
+        resources = own->as_dict();
+      }
+    }
+    auto cell = std::make_shared<graphics::DisplayList>();
+    cell->media_box = bbox;
+    cell->crop_box = bbox;
+    // The cell is clipped to its bounding box (§8.7.3.2).
+    graphics::Path clip;
+    clip.move_to({bbox.x0, bbox.y0});
+    clip.line_to({bbox.x1, bbox.y0});
+    clip.line_to({bbox.x1, bbox.y1});
+    clip.line_to({bbox.x0, bbox.y1});
+    clip.close();
+    cell->commands.emplace_back(graphics::ClipPath{.path = std::move(clip), .ctm = {}, .rule = graphics::FillRule::kNonZero});
+    InterpreterLimits limits = *limits_;
+    limits.max_operations = limits_->max_operations > operations_ ? limits_->max_operations - operations_ : 0;
+    Interpreter inner(*document_, limits, fonts_.resources(), *cell);
+    inner.tile_depth_ = tile_depth_ + 1;
+    inner.active_forms_ = active_forms_;
+    if (ref) {
+      inner.active_forms_.insert(ref->number);
+    }
+    if (uncoloured) {
+      // The colour comes with the pattern, in its underlying space (§8.7.3.3).
+      const Color paint = space.base ? detail::make_color(*space.base, color.components, {}, warnings_)
+                                     : Color{.family = graphics::ColorSpaceFamily::kGray, .components = {0}, .pattern = {}, .rgb = {}};
+      inner.state_.fill = paint;
+      inner.state_.stroke = paint;
+      inner.uncolored_glyph_ = true;
+      inner.cell_uncoloured_ = true;
+    }
+    inner.run(*content, resources, 0);
+    operations_ += inner.operations_;
+    for (std::string& warning : inner.take_warnings()) {
+      warnings_.add(std::move(warning));
+    }
+    tiling.cell = cell;
+    if (cacheable) {
+      tiles_.emplace(ref->number, cell);
+    }
+    return tiling;
   }
 
   // ── Dispatch ───────────────────────────────────────────────────────────────────────────────
@@ -1225,6 +1417,11 @@ class Interpreter {
   std::map<std::uint32_t, std::shared_ptr<Font>> font_cache_;
   std::size_t type3_depth_ = 0;
   bool uncolored_glyph_ = false;
+  bool cell_uncoloured_ = false;  // an uncoloured tiling pattern's cell: colour operators stay ignored
+  Matrix base_ctm_;               // the CTM at the start of the content stream being run (pattern space)
+  std::map<std::uint32_t, std::shared_ptr<const graphics::Shading>> shadings_;
+  std::map<std::uint32_t, std::shared_ptr<const graphics::DisplayList>> tiles_;
+  std::size_t tile_depth_ = 0;
   std::size_t compatibility_ = 0;
   std::set<std::uint32_t> active_forms_;
   std::map<std::uint32_t, std::shared_ptr<const graphics::ImagePixels>> images_;

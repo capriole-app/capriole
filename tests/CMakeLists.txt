@@ -14,6 +14,7 @@ add_executable(capriole_unit_tests
   unit/capi_test.cpp
   unit/content_parser_test.cpp
   unit/font_test.cpp
+  unit/shading_test.cpp
   unit/interpreter_test.cpp
   unit/blend_test.cpp
   unit/ccitt_test.cpp

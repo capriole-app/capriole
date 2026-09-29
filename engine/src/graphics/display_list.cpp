@@ -46,6 +46,7 @@ std::string_view command_kind(const Command& command) {
                         [](const StrokePath&) -> std::string_view { return "stroke"; },
                         [](const Boxed<DrawImage>&) -> std::string_view { return "image"; },
                         [](const Boxed<PaintShading>&) -> std::string_view { return "shading"; },
+                        [](const Boxed<PaintTiling>&) -> std::string_view { return "pattern"; },
                         [](const Boxed<ShowText>&) -> std::string_view { return "text"; },
                         [](const BeginGroup&) -> std::string_view { return "group"; },
                         [](const EndGroup&) -> std::string_view { return "group_end"; },
