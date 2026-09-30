@@ -385,7 +385,22 @@ Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
 di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
 immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · **6h** gli altri codec (CCITT, JBIG2, JPX) ✅ ·
-**6i** font ✅ · **6j** sfumature e pattern ✅ · **6k** annotazioni ✅ · **6l** gestione del colore ✅ · poi profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+**6i** font ✅ · **6j** sfumature e pattern ✅ · **6k** annotazioni ✅ · **6l** gestione del colore ✅ · **6m** linee sottili ✅ · poi profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+
+**6m (2026-10-01):** il ritocco delle linee sottili, la *stroke adjustment* di §10.7.5 come la fanno
+pdftoppm e Acrobat ("migliora linee sottili"). Prima un tratto sottile, portato a un pixel, cadeva a
+cavallo di due pixel a metà intensità: tabelle e disegni tecnici uscivano sbiaditi. Ora, in spazio
+dispositivo: i **tratti** su una pagina che conserva gli assi (penna fino a 4 pixel, o rotonda) hanno una
+penna di pixel interi e i vertici dei segmenti orizzontali e verticali spostati perché il bordo vicino,
+alla larghezza vera, cada su un confine di pixel; i **riempimenti fatti di un solo rettangolo** allineato
+agli assi hanno i bordi arrotondati ai pixel, almeno un pixel di distanza (la regola di arrotondamento di
+pdftoppm, verificata riga per riga su 0000527). Non si toccano glifi, diagonali, curve, né i riempimenti di
+più rettangoli (la griglia di una tabella in un'unica `f`: pdftoppm la lascia com'è — 0000740). Due
+errori trovati sul corpus e corretti prima del commit: rettangoli ricostruiti sempre nello stesso verso
+(una cornice con il buco per la regola nonzero copriva tutta la pagina: 0000273, ora test di
+regressione), e la larghezza minima usata al posto di quella vera per il bordo dei tratti. Test in
+`render_test.cpp` (3). **Corpus:** 182 pagine migliorate, le peggiorate di al massimo 0,023;
+**97,3% delle pagine sopra il 95%** (92,9% prima).
 
 **6l (2026-09-30):** la gestione del colore ([ADR 0006](adr/0006-colore.md)), partita
 dall'osservazione che i colori erano più accesi di quelli di Acrobat. **Little CMS 2.19.1** (MIT), un

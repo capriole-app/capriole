@@ -84,6 +84,86 @@ TEST(Raster, FillsWithThePageUpsideUp) {
   EXPECT_EQ(at(b, 5, 5), kWhite);
 }
 
+// Stroke adjustment (§10.7.5): thin axis-aligned lines and rectangles land on whole pixels, as pdftoppm
+// draws them — one full pixel, not two faint ones.
+TEST(Raster, ThinRectanglesAndLinesAreOnePixelWide) {
+  DisplayList list = page(40, 40);
+  // A rectangle 0.1 high at y 20.3–20.4 (rows grow downwards: 19.6–19.7): one full row.
+  list.commands.emplace_back(FillPath{.path = rect(5, 20.3, 30, 0.1), .ctm = {}, .rule = FillRule::kNonZero, .color = kBlack, .alpha = 1});
+  // A 0.3-wide horizontal line at y 10.35, a 2-wide vertical one at x 30.4.
+  list.styles = {StrokeStyle{.width = 0.3, .cap = LineCap::kButt, .join = LineJoin::kMiter, .miter_limit = 10, .dash = {}, .dash_phase = 0},
+                 StrokeStyle{.width = 2, .cap = LineCap::kButt, .join = LineJoin::kMiter, .miter_limit = 10, .dash = {}, .dash_phase = 0}};
+  Path h;
+  h.move_to({5, 10.35});
+  h.line_to({25, 10.35});
+  list.commands.emplace_back(StrokePath{.path = h, .ctm = {}, .style = 0, .color = kBlack, .alpha = 1});
+  Path v;
+  v.move_to({30.4, 2});
+  v.line_to({30.4, 8});
+  list.commands.emplace_back(StrokePath{.path = v, .ctm = {}, .style = 1, .color = kBlack, .alpha = 1});
+  const Bitmap b = render(list);
+  const auto row = [&](int r) { return b.rgba[((static_cast<std::size_t>(r) * 40) + 20) * 4]; };
+  // The rectangle: row 20 (edges 19.6, 19.7 round to 20; one pixel), fully black, nothing either side.
+  EXPECT_EQ(row(20), 0);
+  EXPECT_EQ(row(19), 255);
+  EXPECT_EQ(row(21), 255);
+  // The line: centre 29.65 from the top, near edge 29.5 → 30: row 30 alone.
+  EXPECT_EQ(row(30), 0);
+  EXPECT_EQ(row(29), 255);
+  EXPECT_EQ(row(31), 255);
+  // The 2-wide line: columns 29 and 30 exactly (edges 29.4 → 29 and 31).
+  const auto column = [&](int c) { return b.rgba[((static_cast<std::size_t>(35) * 40) + static_cast<std::size_t>(c)) * 4]; };
+  EXPECT_EQ(column(29), 0);
+  EXPECT_EQ(column(30), 0);
+  EXPECT_EQ(column(28), 255);
+  EXPECT_EQ(column(31), 255);
+}
+
+TEST(Raster, PathsOfSeveralRectanglesAreNotAdjusted) {
+  // A frame: an outer rectangle and an inner one drawn the other way round, a hole under nonzero. Paths of
+  // several rectangles are not snapped, and the hole stays (a regression: 0000273 of the corpus came out
+  // all white).
+  DisplayList list = page(40, 40);
+  Path frame = rect(0, 0, 40, 40);
+  frame.move_to({10.3, 10.3});
+  frame.line_to({10.3, 30.3});
+  frame.line_to({30.3, 30.3});
+  frame.line_to({30.3, 10.3});
+  frame.close();
+  list.commands.emplace_back(FillPath{.path = frame, .ctm = {}, .rule = FillRule::kNonZero, .color = kRed, .alpha = 1});
+  const Bitmap b = render(list);
+  EXPECT_EQ(at(b, 20, 20), kWhite);
+  EXPECT_EQ(at(b, 5, 5), kRedPixel);
+}
+
+TEST(Raster, DiagonalsAndGlyphsAreNotAdjusted) {
+  // A diagonal line: its coverage stays partial along the way (no pixel grid imposed).
+  DisplayList list = page(40, 40);
+  list.styles = {StrokeStyle{.width = 1, .cap = LineCap::kButt, .join = LineJoin::kMiter, .miter_limit = 10, .dash = {}, .dash_phase = 0}};
+  Path d;
+  d.move_to({0, 0});
+  d.line_to({40, 40});
+  list.commands.emplace_back(StrokePath{.path = d, .ctm = {}, .style = 0, .color = kBlack, .alpha = 1});
+  const Bitmap b = render(list);
+  bool partial = false;
+  for (int i = 0; i < 40 && !partial; ++i) {
+    const std::uint8_t v = b.rgba[((static_cast<std::size_t>(20) * 40) + static_cast<std::size_t>(i)) * 4];
+    partial = v > 0 && v < 255;
+  }
+  EXPECT_TRUE(partial);
+  // A glyph that is a thin bar (0.3 high at y 20.3): drawn as it is, faint, not one snapped row.
+  DisplayList text = page(40, 40);
+  ShowText run;
+  run.font_size = 1;
+  run.fill = kBlack;
+  run.glyphs.push_back(Glyph{.code = 1, .cid = 1, .origin = {0, 0}, .advance = 0, .outline = std::make_shared<const Path>(rect(5, 20.3, 30, 0.3))});
+  text.commands.emplace_back(Boxed<ShowText>(std::move(run)));
+  const Bitmap t = render(text);
+  const std::uint8_t row = t.rgba[((static_cast<std::size_t>(19) * 40) + 20) * 4];
+  EXPECT_GT(row, 100);  // 30% coverage: far from black
+  EXPECT_LT(row, 255);
+}
+
 TEST(Raster, EvenOddLeavesTheHole) {
   DisplayList list = page(100, 100);
   Path ring = rect(0, 0, 100, 100);

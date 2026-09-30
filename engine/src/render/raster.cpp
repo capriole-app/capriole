@@ -80,6 +80,173 @@ BLStrokeJoin join_of(LineJoin join) {
 
 double length_scale(const Matrix& m) { return std::sqrt(std::abs(m.determinant())); }
 
+// ── Stroke adjustment (§10.7.5) ─────────────────────────────────────────────────────────────────
+// As the reference readers draw on screen (pdftoppm, Acrobat's "enhance thin lines"): the edges of
+// horizontal and vertical lines, and of axis-aligned filled rectangles, go to pixel boundaries, so that a
+// thin line is one crisp pixel rather than two faint ones. Everything is in device space.
+
+constexpr double kAxisTolerance = 1e-6;
+
+// Filled rectangles: a path that is one axis-aligned rectangle, in device space, its edges rounded to
+// pixels and at least one pixel apart; nullopt for any other path (drawn as it is). Only a lone rectangle:
+// a path of many — a table's grid in one fill — is drawn as it is, as pdftoppm does.
+std::optional<Path> adjusted_rectangles(const Path& path, const Matrix& m) {
+  Path out;
+  bool found = false;
+  std::size_t subpaths = 0;
+  std::vector<Point> points;
+  std::vector<SegmentKind> kinds;
+  const auto flush = [&]() {
+    ++subpaths;
+    // move, three lines (and possibly a fourth back to the start), close: a rectangle when every side is
+    // horizontal or vertical.
+    std::size_t n = points.size();
+    if (n == 5 && std::abs(points[4].x - points[0].x) < kAxisTolerance && std::abs(points[4].y - points[0].y) < kAxisTolerance) {
+      n = 4;
+    }
+    bool rectangle = n == 4 && !kinds.empty() && kinds.front() == SegmentKind::kMove &&
+                     std::all_of(kinds.begin() + 1, kinds.end(), [](SegmentKind k) { return k == SegmentKind::kLine || k == SegmentKind::kClose; });
+    for (std::size_t i = 0; rectangle && i < 4; ++i) {
+      const Point& a = points[i];
+      const Point& b = points[(i + 1) % 4];
+      rectangle = std::abs(a.x - b.x) < kAxisTolerance || std::abs(a.y - b.y) < kAxisTolerance;
+    }
+    if (rectangle) {
+      const auto [left, right] = std::minmax({points[0].x, points[1].x, points[2].x, points[3].x});
+      const auto [top, bottom] = std::minmax({points[0].y, points[1].y, points[2].y, points[3].y});
+      // Each edge to the nearest pixel boundary; edges that meet, one pixel apart (as pdftoppm does).
+      const auto snap = [](double low, double high) {
+        const double a = std::round(low);
+        const double b = std::max(std::round(high), a + 1);
+        return std::pair{a, b};
+      };
+      const auto [x0, x1] = snap(left, right);
+      const auto [y0, y1] = snap(top, bottom);
+      // Each corner moved to its snapped place, in the path's own order: the direction of the rectangle
+      // (which makes holes under the nonzero rule) is kept.
+      const auto corner = [&](const Point& p) { return Point{p.x - left < right - p.x ? x0 : x1, p.y - top < bottom - p.y ? y0 : y1}; };
+      out.move_to(corner(points[0]));
+      out.line_to(corner(points[1]));
+      out.line_to(corner(points[2]));
+      out.line_to(corner(points[3]));
+      out.close();
+      found = true;
+    } else {
+      std::size_t at = 0;
+      for (const SegmentKind k : kinds) {
+        switch (k) {
+          case SegmentKind::kMove:
+            out.move_to(points[at++]);
+            break;
+          case SegmentKind::kLine:
+            out.line_to(points[at++]);
+            break;
+          case SegmentKind::kCubic:
+            out.cubic_to(points[at], points[at + 1], points[at + 2]);
+            at += 3;
+            break;
+          case SegmentKind::kClose:
+            out.close();
+            break;
+        }
+      }
+    }
+    points.clear();
+    kinds.clear();
+  };
+  path.for_each([&](SegmentKind kind, const Point* p) {
+    if (kind == SegmentKind::kMove && !kinds.empty()) {
+      flush();
+    }
+    kinds.push_back(kind);
+    for (std::size_t i = 0; i < Path::points_of(kind); ++i) {
+      points.push_back(m.apply(p[i]));
+    }
+  });
+  flush();
+  return found && subpaths == 1 ? std::optional<Path>(std::move(out)) : std::nullopt;
+}
+
+// Strokes: the path in device space with the vertices of its horizontal and vertical segments moved so
+// that a pen `width` pixels wide (an integer) covers whole pixels: the line's near edge (at its true width,
+// `true_width`) rounded to a pixel boundary, as for rectangles.
+Path adjusted_stroke(const Path& path, const Matrix& m, int width, double true_width) {
+  const auto snap = [width, true_width](double v) { return std::round(v - (true_width / 2)) + (width / 2.0); };
+  Path out;
+  std::vector<Point> points;
+  std::vector<SegmentKind> kinds;
+  const auto flush = [&]() {
+    if (points.empty()) {
+      return;
+    }
+    // Each point's line segments: which coordinate to snap.
+    std::vector<bool> snap_x(points.size(), false);
+    std::vector<bool> snap_y(points.size(), false);
+    const bool closed = kinds.back() == SegmentKind::kClose;
+    std::size_t at = 0;
+    std::size_t previous = 0;
+    const auto mark = [&](std::size_t a, std::size_t b) {
+      if (std::abs(points[a].y - points[b].y) < kAxisTolerance && std::abs(points[a].x - points[b].x) >= kAxisTolerance) {
+        snap_y[a] = snap_y[b] = true;
+      } else if (std::abs(points[a].x - points[b].x) < kAxisTolerance && std::abs(points[a].y - points[b].y) >= kAxisTolerance) {
+        snap_x[a] = snap_x[b] = true;
+      }
+    };
+    for (const SegmentKind k : kinds) {
+      if (k == SegmentKind::kLine) {
+        mark(previous, at);
+      }
+      const std::size_t count = Path::points_of(k);
+      if (count > 0) {
+        previous = at + count - 1;
+        at += count;
+      }
+    }
+    if (closed && points.size() > 1) {
+      mark(points.size() - 1, 0);
+    }
+    for (std::size_t i = 0; i < points.size(); ++i) {
+      if (snap_x[i]) {
+        points[i].x = snap(points[i].x);
+      }
+      if (snap_y[i]) {
+        points[i].y = snap(points[i].y);
+      }
+    }
+    at = 0;
+    for (const SegmentKind k : kinds) {
+      switch (k) {
+        case SegmentKind::kMove:
+          out.move_to(points[at++]);
+          break;
+        case SegmentKind::kLine:
+          out.line_to(points[at++]);
+          break;
+        case SegmentKind::kCubic:
+          out.cubic_to(points[at], points[at + 1], points[at + 2]);
+          at += 3;
+          break;
+        case SegmentKind::kClose:
+          out.close();
+          break;
+      }
+    }
+    points.clear();
+    kinds.clear();
+  };
+  path.for_each([&](SegmentKind kind, const Point* p) {
+    if (kind == SegmentKind::kMove && !kinds.empty()) {
+      flush();
+    }
+    kinds.push_back(kind);
+    for (std::size_t i = 0; i < Path::points_of(kind); ++i) {
+      points.push_back(m.apply(p[i]));
+    }
+  });
+  flush();
+  return out;
+}
+
 BLCompOp comp_op_of(BlendMode mode) {
   switch (mode) {
     case BlendMode::kMultiply:
@@ -631,9 +798,24 @@ class Rasterizer {
     return {.x0 = b.x0 - margin, .y0 = b.y0 - margin, .x1 = b.x1 + margin, .y1 = b.y1 + margin};
   }
 
-  void draw(const FillPath& fill) {
+  void draw(const FillPath& fill) { fill_path(fill, true); }
+
+  // adjust: axis-aligned rectangles snapped to pixels (not for glyphs: text is drawn as it is).
+  void fill_path(const FillPath& fill, bool adjust) {
     const Matrix m = fill.ctm.then(page_);
     const bool safe = within_safe_range(fill.path, m);
+    if (safe && adjust) {
+      if (std::optional<Path> snapped = adjusted_rectangles(fill.path, m)) {
+        const PixelBox box = bounds_of(*snapped, kIdentity, 1);
+        const BLPath geometry = to_blend2d(*snapped);
+        paint(fill.blend, fill.alpha, box, [&](Surface& s) {
+          s.context.set_transform(to_blend2d(Matrix::translate(-s.x, -s.y)));
+          s.context.set_fill_rule(fill.rule == FillRule::kEvenOdd ? BL_FILL_RULE_EVEN_ODD : BL_FILL_RULE_NON_ZERO);
+          s.context.fill_path(geometry, color(fill.color, fill.alpha));
+        });
+        return;
+      }
+    }
     // Out of range: clipped here, drawn in device space (to_device is the identity on the page).
     const BLPath geometry = safe ? to_blend2d(fill.path) : clipped_fill(fill.path, m, page_box(64));
     const Matrix& to_device = safe ? fill.ctm : kIdentity;
@@ -669,10 +851,33 @@ class Rasterizer {
     const double pen_limit = 4.0 * ((page.x1 - page.x0) + (page.y1 - page.y0));
     const bool safe = within_safe_range(*path, on_page) && std::isfinite(reach) && reach <= kSafeCoordinate;
     const double pen = safe ? width : std::min(std::abs(width) * scale, pen_limit);
-    const BLPath geometry = safe ? to_blend2d(*path) : clipped_stroke(*path, on_page, page_box(std::min(reach, pen_limit) + 64));
     if (!std::isfinite(pen)) {
       return;
     }
+    // Stroke adjustment: when the page keeps the axes (no rotation but by quarter turns, no skew) and the
+    // pen is round on it or thin, a pen of whole pixels on a path whose straight edges sit on the pixels.
+    const bool axes_kept = (std::abs(on_page.b) < kAxisTolerance && std::abs(on_page.c) < kAxisTolerance) ||
+                           (std::abs(on_page.a) < kAxisTolerance && std::abs(on_page.d) < kAxisTolerance);
+    const double across = std::hypot(on_page.a, on_page.b);
+    const double down = std::hypot(on_page.c, on_page.d);
+    const double device_width = std::abs(width) * scale;      // at least one pixel
+    const double true_width = std::abs(style.width) * scale;  // as the file gives it
+    constexpr double kThin = 4;
+    if (safe && axes_kept && (device_width <= kThin || std::abs(across - down) < 1e-6 * std::max(across, down))) {
+      const int pixels = std::max(1, static_cast<int>(std::lround(device_width)));
+      const Path snapped = adjusted_stroke(*path, on_page, pixels, std::min(true_width, device_width));
+      const BLPath geometry = to_blend2d(snapped);
+      paint(stroke.blend, stroke.alpha, bounds_of(snapped, kIdentity, std::min(reach, 1e7)), [&](Surface& s) {
+        s.context.set_transform(to_blend2d(Matrix::translate(-s.x, -s.y)));
+        s.context.set_stroke_width(pixels);
+        s.context.set_stroke_caps(cap_of(style.cap));
+        s.context.set_stroke_join(join_of(style.join));
+        s.context.set_stroke_miter_limit(std::max(style.miter_limit, 1.0));
+        s.context.stroke_path(geometry, color(stroke.color, stroke.alpha));
+      });
+      return;
+    }
+    const BLPath geometry = safe ? to_blend2d(*path) : clipped_stroke(*path, on_page, page_box(std::min(reach, pen_limit) + 64));
     paint(stroke.blend, stroke.alpha, safe ? bounds_of(*path, on_page, std::min(reach, 1e7)) : page, [&](Surface& s) {
       s.context.set_transform(to_blend2d(safe ? device(ctm, s) : Matrix::translate(-s.x, -s.y)));
       s.context.set_stroke_width(pen);
@@ -930,7 +1135,7 @@ class Rasterizer {
     }
     const int mode = run.render_mode % 4;
     if (mode == 0 || mode == 2) {
-      draw(FillPath{.path = path, .ctm = run.ctm, .rule = FillRule::kNonZero, .blend = run.blend, .color = run.fill, .alpha = run.alpha});
+      fill_path(FillPath{.path = path, .ctm = run.ctm, .rule = FillRule::kNonZero, .blend = run.blend, .color = run.fill, .alpha = run.alpha}, false);
     }
     if (mode == 1 || mode == 2) {
       draw(StrokePath{.path = std::move(path), .ctm = run.ctm, .style = run.stroke_style, .color = run.stroke, .alpha = run.stroke_alpha, .blend = run.blend});
