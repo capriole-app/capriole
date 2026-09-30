@@ -70,7 +70,7 @@ struct GraphicsState {
 class Interpreter {
  public:
   Interpreter(Document& document, const InterpreterLimits& limits, const font::Resources* resources, graphics::DisplayList& out)
-      : document_(&document), limits_(&limits), out_(&out), fonts_(resources) {}
+      : document_(&document), limits_(&limits), out_(&out), fonts_(resources), colors_(document, resources) {}
 
   void run(std::span<const std::byte> content, const model::Dict* resources, std::size_t form_depth) {
     ContentParser parser(content, limits_->parse, parser::ParseMode::kTolerant);
@@ -111,7 +111,16 @@ class Interpreter {
   }
 
   std::vector<std::string> take_warnings() { return warnings_.take(); }
-  [[nodiscard]] std::vector<std::string> missing_resources() const { return fonts_.missing(); }
+  [[nodiscard]] std::vector<std::string> missing_resources() const {
+    std::set<std::string> all;
+    for (std::string& name : fonts_.missing()) {
+      all.insert(std::move(name));
+    }
+    for (std::string& name : colors_.missing()) {
+      all.insert(std::move(name));
+    }
+    return {all.begin(), all.end()};
+  }
 
   // The page's annotations (§12.5), over its content: each one's normal appearance (/AP /N, the one /AS
   // names when there are several), placed on its /Rect as §12.5.5 says and with its opacity /CA; for the
@@ -139,7 +148,9 @@ class Interpreter {
  private:
   // Colours and stroke styles go into the list's tables once; a command refers to them by index. The
   // last index of each kind is remembered: consecutive commands almost always repeat it.
-  static bool same(const Color& a, const Color& b) { return a.family == b.family && a.components == b.components && a.pattern == b.pattern; }
+  // Two spaces of a family (two spot colours, two ICC profiles) can give the same components different
+  // colours: the colour itself is compared too.
+  static bool same(const Color& a, const Color& b) { return a.family == b.family && a.components == b.components && a.pattern == b.pattern && a.rgb == b.rgb; }
   static bool same(const graphics::StrokeStyle& a, const graphics::StrokeStyle& b) {
     return a.width == b.width && a.cap == b.cap && a.join == b.join && a.miter_limit == b.miter_limit && a.dash == b.dash && a.dash_phase == b.dash_phase;
   }
@@ -312,6 +323,9 @@ class Interpreter {
     ColorSpace space;
     space.family = family;
     space.components = count;
+    if (family == graphics::ColorSpaceFamily::kCMYK) {
+      space = detail::device_cmyk(&colors_);  // k and K: DeviceCMYK, through the default CMYK profile
+    }
     (for_fill ? state_.fill_space : state_.stroke_space) = space;
     (for_fill ? state_.fill : state_.stroke) = detail::make_color(space, *values, {}, warnings_);
   }
@@ -324,7 +338,7 @@ class Interpreter {
     if (name == nullptr) {
       return;
     }
-    ColorSpace space = detail::resolve_color_space(*document_, op.operands.back(), resources_, warnings_);
+    ColorSpace space = detail::resolve_color_space(*document_, op.operands.back(), resources_, warnings_, &colors_);
     (for_fill ? state_.fill : state_.stroke) = detail::initial_color(space);
     (for_fill ? state_.fill_space : state_.stroke_space) = std::move(space);
   }
@@ -416,7 +430,7 @@ class Interpreter {
       ColorSpace space;
       if (auto attributes = stream->dict.find("Group") != nullptr ? document_->resolve(*stream->dict.find("Group")) : Result<Object>(Object());
           attributes && attributes->as_dict() != nullptr && attributes->as_dict()->find("CS") != nullptr) {
-        space = detail::resolve_color_space(*document_, *attributes->as_dict()->find("CS"), resources_, warnings_);
+        space = detail::resolve_color_space(*document_, *attributes->as_dict()->find("CS"), resources_, warnings_, &colors_);
       }
       std::vector<double> values;
       if (components && components->as_array() != nullptr) {
@@ -900,7 +914,7 @@ class Interpreter {
       warnings_.add("image not decoded: " + data.error().message);
       return nullptr;
     }
-    auto pixels = detail::decode_jpx_image(*document_, stream.dict, *data, resources_, warnings_, limits);
+    auto pixels = detail::decode_jpx_image(*document_, stream.dict, *data, resources_, warnings_, limits, &colors_);
     if (!pixels) {
       warnings_.add("image not decoded: " + pixels.error().message);
       return nullptr;
@@ -919,7 +933,7 @@ class Interpreter {
       warnings_.add("too many image pixels on the page: the rest are placeholders");
       return nullptr;
     }
-    auto pixels = detail::decode_image(*document_, dict, data, resources_, state_.fill.rgb, warnings_, limits);
+    auto pixels = detail::decode_image(*document_, dict, data, resources_, state_.fill.rgb, warnings_, limits, &colors_);
     if (!pixels) {
       warnings_.add("image not decoded: " + pixels.error().message);
       return nullptr;
@@ -936,7 +950,7 @@ class Interpreter {
         return found->second;
       }
     }
-    auto shading = detail::load_shading(*document_, entry, resources_, std::sqrt(std::abs(ctm.determinant())), warnings_);
+    auto shading = detail::load_shading(*document_, entry, resources_, std::sqrt(std::abs(ctm.determinant())), warnings_, {}, &colors_);
     if (ref) {
       shadings_.emplace(ref->number, shading);
     }
@@ -1729,6 +1743,7 @@ class Interpreter {
   Matrix line_matrix_;
   graphics::Path text_clip_;  // glyphs shown in modes 4–7 since BT, in default user space
   font::detail::FontContext fonts_;
+  detail::ColorContext colors_;
   std::map<std::uint32_t, std::shared_ptr<Font>> font_cache_;
   std::size_t type3_depth_ = 0;
   bool uncolored_glyph_ = false;

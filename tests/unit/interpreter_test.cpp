@@ -144,14 +144,22 @@ TEST(Interpreter, ColourSpaces) {
   ASSERT_EQ(fills.size(), 3U);
   EXPECT_EQ(list.colors[fills[0].color].family, graphics::ColorSpaceFamily::kIndexed);
   EXPECT_EQ(list.colors[fills[0].color].rgb, (graphics::Rgb{1, 128 / 255.0, 0}));  // entry 1 of the table
-  EXPECT_EQ(list.colors[fills[1].color].rgb, (graphics::Rgb{0, 0, 0}));            // CMYK 0 0 0 1
+  // CMYK 0 0 0 1: the black of the press profile (SWOP, through the built-in table), as Acrobat shows it.
+  EXPECT_NEAR(list.colors[fills[1].color].rgb.r, 37 / 255.0, 1e-9);
   EXPECT_EQ(list.colors[fills[2].color].family, graphics::ColorSpaceFamily::kSeparation);
-  // The tint transform into the alternate space: full Gold is CMYK 0 0.2 1 0.
+  // The tint transform into the alternate space: full Gold is CMYK 0 0.2 1 0, a warm yellow on press.
   const graphics::Rgb gold = list.colors[fills[2].color].rgb;
-  EXPECT_NEAR(gold.r, 1, 1e-9);
-  EXPECT_NEAR(gold.g, 0.8, 1e-9);
-  EXPECT_NEAR(gold.b, 0, 1e-9);
+  EXPECT_NEAR(gold.r, 1, 0.01);
+  EXPECT_NEAR(gold.g, 0.8, 0.01);
+  EXPECT_NEAR(gold.b, 0, 0.02);
   EXPECT_FALSE(has_warning(list, "tint"));
+  // Two spot colours at the same tint are two colours (they were once taken for one).
+  const auto spots = interpret({.content = "/A cs 1 scn 0 0 1 1 re f /B cs 1 scn 0 0 1 1 re f",
+                                .resources = "/ColorSpace<</A[/Separation/Red/DeviceRGB<</FunctionType 2/Domain[0 1]/C0[1 1 1]/C1[1 0 0]/N 1>>]"
+                                             "/B[/Separation/Blue/DeviceRGB<</FunctionType 2/Domain[0 1]/C0[1 1 1]/C1[0 0 1]/N 1>>]>>"});
+  const auto spot_fills = all<graphics::FillPath>(spots);
+  ASSERT_EQ(spot_fills.size(), 2U);
+  EXPECT_EQ(spots.colors[spot_fills[1].color].rgb, (graphics::Rgb{0, 0, 1}));
   // An unusable tint transform falls back to the ink coverage, with a warning.
   const auto broken = interpret({.content = "/Spot cs 1 sc 0 0 1 1 re f", .resources = "/ColorSpace<</Spot[/Separation/Gold/DeviceCMYK 7]>>"});
   EXPECT_EQ(broken.colors[all<graphics::FillPath>(broken)[0].color].rgb, (graphics::Rgb{0, 0, 0}));

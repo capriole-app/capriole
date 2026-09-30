@@ -15,6 +15,7 @@ add_executable(capriole_unit_tests
   unit/content_parser_test.cpp
   unit/annotation_test.cpp
   unit/font_test.cpp
+  unit/icc_test.cpp
   unit/shading_test.cpp
   unit/interpreter_test.cpp
   unit/blend_test.cpp
@@ -35,7 +36,7 @@ add_executable(capriole_unit_tests
 # support/ holds test helpers (PdfBuilder); zlib is linked to build compressed test data.
 # engine/src too: white-box tests of internal pieces (the JBIG2 Huffman tables).
 target_include_directories(capriole_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/engine/src)
-target_link_libraries(capriole_unit_tests PRIVATE capriole::engine capriole::capi capriole::zlib GTest::gtest_main)
+target_link_libraries(capriole_unit_tests PRIVATE capriole::engine capriole::capi capriole::zlib capriole::lcms2 GTest::gtest_main)
 capriole_set_warnings(capriole_unit_tests)
 # Test data files (fixtures) are read from the source tree.
 target_compile_definitions(capriole_unit_tests PRIVATE CAPRIOLE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")

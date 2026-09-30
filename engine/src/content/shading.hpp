@@ -25,6 +25,6 @@ struct ShadingLimits {
 // The shading of `sh` or of a shading pattern. scale is the length of a unit of shading space in points
 // (the CTM's), for splitting patches finely enough; nullptr, with a warning, when the shading is unusable.
 [[nodiscard]] std::shared_ptr<const graphics::Shading> load_shading(Document& document, const model::Object& object, const model::Dict* resources, double scale,
-                                                                    Warnings& warnings, const ShadingLimits& limits = {});
+                                                                    Warnings& warnings, const ShadingLimits& limits = {}, ColorContext* colors = nullptr);
 
 }  // namespace capriole::content::detail

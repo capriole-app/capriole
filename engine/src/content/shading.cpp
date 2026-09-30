@@ -228,7 +228,7 @@ void subdivide(const Patch& patch, double scale, const Colours& colours, std::si
 }  // namespace
 
 std::shared_ptr<const graphics::Shading> load_shading(Document& document, const Object& object, const model::Dict* resources, double scale, Warnings& warnings,
-                                                      const ShadingLimits& limits) {
+                                                      const ShadingLimits& limits, ColorContext* colors) {
   auto resolved = document.resolve(object);
   if (!resolved) {
     warnings.add("shading unreadable: " + resolved.error().message);
@@ -248,7 +248,7 @@ std::shared_ptr<const graphics::Shading> load_shading(Document& document, const 
     warnings.add("shading without a valid /ShadingType and /ColorSpace: not drawn");
     return nullptr;
   }
-  const ColorSpace space = resolve_color_space(document, *space_entry, resources, warnings);
+  const ColorSpace space = resolve_color_space(document, *space_entry, resources, warnings, colors);
 
   // /Function: one, or an array of one per colour component.
   std::vector<Function> functions;

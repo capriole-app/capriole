@@ -31,7 +31,7 @@ struct ImageLimits {
 // stencil mask (/ImageMask true) paints with.
 [[nodiscard]] Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& document, const model::Dict& dict, const std::vector<std::byte>& data,
                                                                                 const model::Dict* resources, graphics::Rgb fill, Warnings& warnings,
-                                                                                const ImageLimits& limits = {});
+                                                                                const ImageLimits& limits = {}, ColorContext* colors = nullptr);
 
 // Whether the image's data is JPEG 2000 (/Filter JPXDecode, alone): such data describes itself, and is
 // decoded by decode_jpx_image from its bytes as stored.
@@ -42,7 +42,8 @@ struct ImageLimits {
 // Too large, it is decoded at a lower resolution.
 [[nodiscard]] Result<std::shared_ptr<const graphics::ImagePixels>> decode_jpx_image(Document& document, const model::Dict& dict,
                                                                                     std::span<const std::byte> data, const model::Dict* resources,
-                                                                                    Warnings& warnings, const ImageLimits& limits = {});
+                                                                                    Warnings& warnings, const ImageLimits& limits = {},
+                                                                                    ColorContext* colors = nullptr);
 
 // An inline image dictionary with its abbreviations expanded (§8.9.7, Tables 91 and 92), so that the
 // filter chain and decode_image read it like an XObject's.

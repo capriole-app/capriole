@@ -198,6 +198,31 @@ if(CAPRIOLE_SANITIZERS)
   target_compile_options(capriole_freetype PRIVATE -fno-sanitize=nonnull-attribute)
 endif()
 
+# Little CMS 2.19.1 — MIT (ADR 0006). ICC colour management: the profiles in PDFs (ICCBased, output
+# intents), CalRGB/CalGray, and DeviceCMYK through a press profile. Built from its sources like zlib;
+# its own mutexes stay on (pthreads; stubs in WebAssembly): hosts may render on several threads.
+FetchContent_Declare(lcms2
+  URL https://github.com/mm2/Little-CMS/releases/download/lcms2.19.1/lcms2-2.19.1.tar.gz
+  URL_HASH SHA256=bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_SUBDIR do-not-add-lcms2-build)
+FetchContent_MakeAvailable(lcms2)
+file(GLOB _lcms2_sources ${lcms2_SOURCE_DIR}/src/*.c)
+add_library(capriole_lcms2 STATIC ${_lcms2_sources})
+add_library(capriole::lcms2 ALIAS capriole_lcms2)
+target_include_directories(capriole_lcms2 SYSTEM PUBLIC ${lcms2_SOURCE_DIR}/include PRIVATE ${lcms2_SOURCE_DIR}/src)
+set_target_properties(capriole_lcms2 PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON)
+if(NOT EMSCRIPTEN)
+  find_package(Threads REQUIRED)
+  target_link_libraries(capriole_lcms2 PUBLIC Threads::Threads)
+endif()
+# Like OpenJPEG, Little CMS calls its interpolation routines through pointers cast to a common signature
+# (found by fuzz_icc): harmless on every real ABI, its design. Clang's -fsanitize=function is off for it
+# alone; every other sanitizer stays on.
+if(CAPRIOLE_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+  target_compile_options(capriole_lcms2 PRIVATE -fno-sanitize=function)
+endif()
+
 # The standard 14 fonts' substitutes (ADR 0005): the Foxit fonts — BSD-3-Clause (the PDFium authors),
 # CFF programs with the metrics of Adobe's core fonts — taken from the pdfjs-dist 2.16.105 package on
 # npm, the last one that carries all fourteen (with its LICENSE_FOXIT). Only data: built into the engine

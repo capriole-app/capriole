@@ -7,6 +7,8 @@
 #   <dir>/font/Liberation*.ttf  Liberation 2.1.5 (OFL 1.1): glyphs the built-in substitutes lack
 #   <dir>/font/NotoSans??-Regular.otf  Noto Sans CJK 2.004 (OFL 1.1): substitutes for CJK fonts that
 #                              are not embedded (JP, SC, TC, KR; 4.5 to 8.3 MB each)
+#   <dir>/icc/SWOP2006_Coated3v2.icc  the press profile for DeviceCMYK (ADR 0006; IDEAlliance: "may be
+#                              used, embedded, exchanged, and shared without restriction", not altered or sold)
 #   <dir>/LICENSES/            their licences
 #
 #   scripts/fetch_resources.sh [dir]     default: build/resources
@@ -17,7 +19,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT="${1:-build/resources}"
 CACHE="$OUT/.downloads"
-mkdir -p "$CACHE" "$OUT/cmap" "$OUT/font" "$OUT/LICENSES"
+mkdir -p "$CACHE" "$OUT/cmap" "$OUT/font" "$OUT/icc" "$OUT/LICENSES"
 
 fetch() {  # url sha256 file
   local url=$1 sum=$2 file="$CACHE/$3"
@@ -55,5 +57,13 @@ fetch "$noto/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf" 69975a0ac8472717870aefeab
 fetch "$noto/LICENSE" 6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2 noto-cjk-LICENSE
 cp "$CACHE"/NotoSans??-Regular.otf "$OUT/font/"
 cp "$CACHE/noto-cjk-LICENSE" "$OUT/LICENSES/noto-cjk.txt"
+
+# The SWOP 2006 press profile (ICC profile registry), unaltered.
+fetch https://registry.color.org/profile-registry/profiles/SWOP2006_Coated3v2.icc \
+  27dc90dbeb399b76c0f91a6b387fe30c38939f034d2500712f3c43094be15e3b SWOP2006_Coated3v2.icc
+cp "$CACHE/SWOP2006_Coated3v2.icc" "$OUT/icc/"
+printf '%s\n' "SWOP2006_Coated3v2.icc: made available by IDEAlliance, with permission of X-Rite, Inc.; may be used, embedded," \
+  "exchanged, and shared without restriction. It may not be altered, or sold without written permission of IDEAlliance." \
+  "Source: https://registry.color.org/profile-registry/SWOP2006_Coated3v2" > "$OUT/LICENSES/swop2006.txt"
 
 echo "resource pack in $OUT: $(find "$OUT/cmap" -type f | wc -l) CMaps, $(find "$OUT/font" -type f | wc -l) fonts, $(du -sh --exclude=.downloads "$OUT" | cut -f1)"

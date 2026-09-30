@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -243,7 +244,8 @@ model::Dict expand_inline_dict(const model::Dict& dict) {
 }
 
 Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& document, const model::Dict& dict, const std::vector<std::byte>& data,
-                                                                  const model::Dict* resources, Rgb fill, Warnings& warnings, const ImageLimits& limits) {
+                                                                  const model::Dict* resources, Rgb fill, Warnings& warnings, const ImageLimits& limits,
+                                                                  ColorContext* colors) {
   const std::int64_t width = integer(document, dict, "Width", 0);
   const std::int64_t height = integer(document, dict, "Height", 0);
   if (width < 1 || height < 1 || width > kMaxSide || height > kMaxSide) {
@@ -260,7 +262,7 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
     if (spec == nullptr) {
       return make_error(ErrorCode::kSyntax, "image without /ColorSpace");
     }
-    space = resolve_color_space(document, *spec, resources, warnings);
+    space = resolve_color_space(document, *spec, resources, warnings, colors);
     if (space.family == ColorSpaceFamily::kPattern || space.components == 0) {
       return make_error(ErrorCode::kSyntax, "image in a Pattern colour space");
     }
@@ -323,9 +325,40 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_image(Document& docu
       table[v] = to_rgb(space, std::span<const double>(&value, 1));
     }
   }
+  const auto sample_bits = n * static_cast<std::size_t>(bits);
+  // 8-bit samples through an ICC profile: whole rows at a time (Little CMS's optimised 8-bit transform).
+  const bool plain_decode =
+      std::ranges::all_of(std::views::iota(std::size_t{0}, n), [&](std::size_t i) { return decode[2 * i] == 0 && decode[(2 * i) + 1] == 1; });
+  if (!stencil && !tabled && space.icc && bits == 8 && plain_decode && space.icc->components() == n) {
+    std::vector<std::uint8_t> in(ow * n);
+    std::vector<std::uint8_t> out(ow * 3);
+    std::vector<bool> keyed(ow);
+    for (std::size_t oy = 0; oy < oh; ++oy) {
+      const std::size_t row = oy * step * row_bytes * 8;
+      for (std::size_t ox = 0; ox < ow; ++ox) {
+        const std::size_t first = row + (ox * step * sample_bits);
+        bool masked = !key.empty();
+        for (std::size_t i = 0; i < n; ++i) {
+          const std::uint32_t v = sample_at(data, first + (i * 8), 8);
+          in[(ox * n) + i] = static_cast<std::uint8_t>(v);
+          masked = masked && v >= key[2 * i] && v <= key[(2 * i) + 1];
+        }
+        keyed[ox] = masked;
+      }
+      space.icc->convert8(in.data(), out.data(), ow);
+      for (std::size_t ox = 0; ox < ow; ++ox) {
+        std::uint8_t* p = &pixels->rgba[((oy * ow) + ox) * 4];
+        p[0] = out[ox * 3];
+        p[1] = out[(ox * 3) + 1];
+        p[2] = out[(ox * 3) + 2];
+        p[3] = keyed[ox] ? 0 : 255;
+      }
+    }
+    apply_transparency(document, dict, space, n, *pixels, warnings);
+    return pixels;
+  }
   std::vector<double> components(n);
   std::vector<std::uint32_t> raw(n);
-  const auto sample_bits = n * static_cast<std::size_t>(bits);
   for (std::size_t oy = 0; oy < oh; ++oy) {
     const std::size_t row = oy * step * row_bytes * 8;
     for (std::size_t ox = 0; ox < ow; ++ox) {
@@ -383,7 +416,8 @@ bool is_jpx(Document& document, const model::Dict& dict) {
 }
 
 Result<std::shared_ptr<const graphics::ImagePixels>> decode_jpx_image(Document& document, const model::Dict& dict, std::span<const std::byte> data,
-                                                                      const model::Dict* resources, Warnings& warnings, const ImageLimits& limits) {
+                                                                      const model::Dict* resources, Warnings& warnings, const ImageLimits& limits,
+                                                                      ColorContext* colors) {
   auto jpx = filters::jpx_decode(data, limits.max_pixels);
   if (!jpx) {
     return std::unexpected(std::move(jpx.error()));
@@ -397,7 +431,7 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_jpx_image(Document& 
   ColorSpace space;
   bool from_dictionary = false;
   if (const Object* spec = dict.find("ColorSpace")) {
-    space = resolve_color_space(document, *spec, resources, warnings);
+    space = resolve_color_space(document, *spec, resources, warnings, colors);
     from_dictionary = space.components == colour && space.family != ColorSpaceFamily::kPattern;
     if (!from_dictionary) {
       warnings.add("JPEG 2000 image whose /ColorSpace does not match its components: the file's colour space used");
@@ -419,8 +453,7 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_jpx_image(Document& 
         space.components = 1;
         break;
       case S::kCmyk:
-        space.family = ColorSpaceFamily::kCMYK;
-        space.components = 4;
+        space = device_cmyk(colors);
         break;
       default:
         space.family = ColorSpaceFamily::kRGB;
@@ -441,6 +474,22 @@ Result<std::shared_ptr<const graphics::ImagePixels>> decode_jpx_image(Document& 
   const Object* in_data = dict.find("SMaskInData");
   const std::int64_t smask_in_data = in_data != nullptr ? in_data->as_integer().value_or(0) : 0;
   const bool use_alpha = jpx->has_alpha && smask_in_data != 0 && !dict.contains("SMask");
+  if (space.icc && space.icc->components() == colour && (!use_alpha || smask_in_data != 2)) {
+    // Through the profile, all at once.
+    std::vector<std::uint8_t> in(count * colour);
+    std::vector<std::uint8_t> out(count * 3);
+    for (std::size_t i = 0; i < count; ++i) {
+      std::copy_n(&jpx->samples[i * n], colour, &in[i * colour]);
+    }
+    space.icc->convert8(in.data(), out.data(), count);
+    for (std::size_t i = 0; i < count; ++i) {
+      std::uint8_t* p = &pixels->rgba[i * 4];
+      std::copy_n(&out[i * 3], 3, p);
+      p[3] = use_alpha ? jpx->samples[(i * n) + n - 1] : 255;
+    }
+    apply_transparency(document, dict, space, colour, *pixels, warnings);
+    return pixels;
+  }
   std::vector<double> components(colour);
   for (std::size_t i = 0; i < count; ++i) {
     const std::uint8_t* s = &jpx->samples[i * n];

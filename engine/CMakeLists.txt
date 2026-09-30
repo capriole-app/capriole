@@ -50,9 +50,11 @@ add_library(capriole_engine STATIC
   src/repair/reconstruct.cpp
   src/repair/repair.cpp
   src/writer/byte_sink.cpp
+  src/content/cmyk_table.cpp
   src/content/color_space.cpp
   src/content/content_parser.cpp
   src/content/function.cpp
+  src/content/icc.cpp
   src/content/image.cpp
   src/content/interpreter.cpp
   src/content/operators.cpp
@@ -77,7 +79,7 @@ if(NOT MSVC)
   target_compile_options(capriole_jpeg_shim PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow $<$<BOOL:${CAPRIOLE_WARNINGS_AS_ERRORS}>:-Werror>)
 endif()
 
-target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim capriole::openjpeg capriole::freetype)
+target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim capriole::openjpeg capriole::freetype capriole::lcms2)
 capriole_set_warnings(capriole_engine)
 
 configure_file(src/core/version_config.hpp.in include/capriole/core/version_config.hpp @ONLY)

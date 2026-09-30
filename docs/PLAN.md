@@ -385,7 +385,23 @@ Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
 di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
 immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · **6h** gli altri codec (CCITT, JBIG2, JPX) ✅ ·
-**6i** font ✅ · **6j** sfumature e pattern ✅ · **6k** annotazioni ✅ · poi profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+**6i** font ✅ · **6j** sfumature e pattern ✅ · **6k** annotazioni ✅ · **6l** gestione del colore ✅ · poi profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+
+**6l (2026-09-30):** la gestione del colore ([ADR 0006](adr/0006-colore.md)), partita
+dall'osservazione che i colori erano più accesi di quelli di Acrobat. **Little CMS 2.19.1** (MIT), un
+contesto con budget di memoria per trasformazione, verso sRGB in colorimetrico relativo con
+compensazione del punto nero: profili `ICCBased` (poi `/Alternate`), `CalRGB`/`CalGray` come profili
+costruiti dai loro parametri, e per il **DeviceCMYK** l'intento di output del documento, altrimenti il
+profilo di stampa **SWOP2006_Coated3v2** dal pacchetto di risorse, altrimenti una **tabella 9⁴**
+campionata da quel profilo (20 KB nel motore). Un ciano pieno esce (0, 170, 235) come in Acrobat, non
+più (0, 255, 255). Immagini a 8 bit con profilo convertite a righe intere. **Due correzioni trovate
+strada facendo:** l'interprete fondeva due tinte piatte diverse alla stessa percentuale in un solo
+colore (i cerchi blu di 0000861 uscivano nel colore dello sfondo); i nomi `/G`, `/RGB`, `/CMYK` valevano
+come abbreviazioni anche quando erano nomi di risorse. Test in `icc_test.cpp` (5, profili costruiti con
+Little CMS), fuzzer nuovo `fuzz_icc` (ha trovato la stessa conversione di puntatori a funzione di
+OpenJPEG: `-fsanitize=function` spento solo per Little CMS). **Corpus:** 59 pagine migliorate,
+nessuna peggiorata; **92,9% delle pagine sopra il 95%** (90,6% prima). Modulo WASM 3,57 MB, 1,43 MB gzip
+(+103 KB: Little CMS e la tabella).
 
 **6k (2026-09-30):** le annotazioni (§12.5), disegnate dopo il contenuto della pagina come fanno i
 visualizzatori. L'aspetto normale (`/AP /N`, quello che `/AS` sceglie fra gli stati) viene collocato sul
@@ -620,6 +636,7 @@ workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri)
 | Licenza di Capriole | pubblicazione, OSS-Fuzz, contributi | proposta da discutere: Apache-2.0 o MPL-2.0 |
 | ~~Skia vs Blend2D~~ | fase 6 | **deciso: Blend2D** (ADR 0002) |
 | ~~Decodificatore JPEG (DCT)~~ | fase 6 | **deciso: libjpeg-turbo** (ADR 0003), sostituibile |
+| ~~Gestione del colore (ICC)~~ | fase 6 | **decisa: Little CMS + profilo SWOP** (ADR 0006) |
 | ~~JPEG 2000 (JPX)~~ | fase 6 | **deciso: OpenJPEG 2.5.4** (ADR 0004), sostituibile |
 | ~~JBIG2 / CCITT con licenza compatibile~~ | fase 6 | **fatto: implementazione propria** |
 | Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |
