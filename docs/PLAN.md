@@ -385,7 +385,20 @@ Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
 di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
 immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · **6h** gli altri codec (CCITT, JBIG2, JPX) ✅ ·
-**6i** font ✅ · **6j** sfumature e pattern ✅ · poi annotazioni, profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+**6i** font ✅ · **6j** sfumature e pattern ✅ · **6k** annotazioni ✅ · poi profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+
+**6k (2026-09-30):** le annotazioni (§12.5), disegnate dopo il contenuto della pagina come fanno i
+visualizzatori. L'aspetto normale (`/AP /N`, quello che `/AS` sceglie fra gli stati) viene collocato sul
+`/Rect` con l'algoritmo di §12.5.5 (il `/BBox` passato per la `/Matrix` e mappato sul rettangolo), come
+una form con la sua trasparenza, e con l'opacità `/CA` in un gruppo isolato. Non si disegnano le
+annotazioni Hidden e NoView né i popup (sono finestre del visualizzatore). **Aspetti generati** per chi
+non ne ha: Square, Circle, Line, Ink, Polygon/PolyLine (bordo `/BS` o `/Border` con tratteggio, colore
+`/C`, interno `/IC`), Highlight (in Multiply), Underline, StrikeOut, Squiggly (`/QuadPoints`), e i bordi
+dei link come li disegna pdftoppm (anche senza `/C`, in nero; `/U` sottolinea). Campi modulo, FreeText
+e note senza aspetto: segnalati, non generati. Una pagina con il contenuto illeggibile mostra comunque
+le sue annotazioni. Test in `annotation_test.cpp` (5), seme `annotations.pdf` per `fuzz_render`.
+**Corpus:** sulle prime pagine 7 file migliorati (0000854: il testo dei campi modulo), nessuno
+peggiorato; **90,6% delle pagine sopra il 95%**.
 
 **6j (2026-09-29):** sfumature e pattern (§8.7). L'interprete prepara ogni sfumatura come
 `graphics::Shading` (`content/shading`): colori già in sRGB attraverso funzione e spazio colore, una

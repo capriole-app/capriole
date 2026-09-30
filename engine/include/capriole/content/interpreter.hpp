@@ -13,6 +13,8 @@
 // the seven types (content/shading) painted by sh or by shading patterns, tiling patterns (their cell a
 // display list of its own; uncoloured ones in the colour given); transparency (§11): blend modes, soft
 // masks (their group drawn as commands between BeginSoftMask and EndSoftMask) and transparency groups.
+// Then the page's annotations (§12.5): their appearances placed on their rectangles, with appearances
+// made for markup annotations and link borders that have none; hidden ones and popups are not drawn.
 //
 // Content is read tolerantly, as viewers do: a malformed operation is skipped with a warning, never a
 // failure of the page. Only a page that cannot be reached at all is an error.
