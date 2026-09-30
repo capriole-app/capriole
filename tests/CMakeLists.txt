@@ -18,6 +18,7 @@ add_executable(capriole_unit_tests
   unit/icc_test.cpp
   unit/shading_test.cpp
   unit/interpreter_test.cpp
+  unit/text_test.cpp
   unit/blend_test.cpp
   unit/ccitt_test.cpp
   unit/dct_test.cpp

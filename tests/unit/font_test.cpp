@@ -309,7 +309,7 @@ std::string stream_object(const std::string& dict, const std::string& data) {
   return "<<" + dict + "/Length " + std::to_string(data.size()) + ">>\nstream\n" + data + "\nendstream";
 }
 
-DisplayList interpret(const Page& page, const Resources* resources = nullptr) {
+DisplayList interpret(const Page& page, const Resources* resources = nullptr, content::Purpose purpose = content::Purpose::kDraw) {
   test::PdfBuilder b;
   b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
   b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1/MediaBox[0 0 200 100]>>");
@@ -321,7 +321,7 @@ DisplayList interpret(const Page& page, const Resources* resources = nullptr) {
   b.finish_table("/Size 40/Root 1 0 R");
   auto document = Document::open(std::make_unique<MemoryByteSource>(bytes(b.str())));
   EXPECT_TRUE(document.has_value());
-  auto list = content::interpret_page(*document, model::ObjectRef{.number = 3, .generation = 0}, {}, resources);
+  auto list = content::interpret_page(*document, model::ObjectRef{.number = 3, .generation = 0}, {}, resources, purpose);
   EXPECT_TRUE(list.has_value()) << list.error().message;
   return std::move(*list);
 }
@@ -532,10 +532,41 @@ TEST(PdfFonts, CjkSubstitutesComeFromTheResources) {
   ASSERT_EQ(runs.size(), 1U);
   EXPECT_EQ(runs[0].glyphs[0].cid, 34U);
   EXPECT_TRUE(is_triangle(runs[0].glyphs[0]));  // CID 34 is U+0042, the fixture's B
-  // Without them: nothing drawn, and what was missing is listed.
+  // Without them: nothing drawn, and what was missing is listed. The text needs no more: with a UCS-2
+  // CMap the codes are the characters.
   const auto without = interpret(page);
   EXPECT_EQ(without.missing_resources, (std::vector<std::string>{"cmap/UniJIS-UCS2-H", "font/NotoSansJP-Regular.otf"}));
+  EXPECT_EQ(interpret(page, nullptr, content::Purpose::kText).missing_resources, without.missing_resources);
   EXPECT_EQ(all<graphics::ShowText>(without)[0].glyphs[0].outline, nullptr);
+}
+
+TEST(PdfFonts, CollectionTextPrefersIdeographsToRadicals) {
+  // Both the Kangxi radical ⾺ (U+2FBA) and the ideograph 馬 (U+99AC) name CID 40 in the collection's
+  // UTF-16 CMap, the radical first: the text of the glyph is the ideograph.
+  Resources resources;
+  resources.add("cmap/UniJIS-UTF16-H", bytes("1 begincodespacerange <0000> <FFFF> endcodespacerange 2 begincidchar <2FBA> 40 <99AC> 40 endcidchar"));
+  const auto list = interpret({.content = "BT /F1 10 Tf <0028> Tj ET",
+                               .resources = "/Font<</F1<</Type/Font/Subtype/Type0/BaseFont/X/Encoding/Identity-H/DescendantFonts[<</Type/Font"
+                                            "/Subtype/CIDFontType0/BaseFont/X/CIDSystemInfo<</Registry(Adobe)/Ordering(Japan1)/Supplement 4>>>>]>>>>"},
+                              &resources, content::Purpose::kText);
+  const auto runs = all<graphics::ShowText>(list);
+  ASSERT_EQ(runs.size(), 1U);
+  EXPECT_EQ(runs[0].glyphs[0].text, std::u32string(1, 0x99AC));
+}
+
+TEST(PdfFonts, UnicodeCMapCodesAreTheirCharacters) {
+  // UniJIS-UCS2-H: the code is the character (“ U+201C), whatever CID it selects; ToUnicode still wins.
+  Resources resources;
+  resources.add("cmap/UniJIS-UCS2-H", bytes("1 begincodespacerange <0000> <FFFF> endcodespacerange 1 begincidrange <0000> <FFFF> 1 endcidrange"));
+  const std::string font =
+      "<</Type/Font/Subtype/Type0/BaseFont/X/Encoding/UniJIS-UCS2-H/DescendantFonts[<</Type/Font/Subtype/CIDFontType0"
+      "/BaseFont/X/CIDSystemInfo<</Registry(Adobe)/Ordering(Japan1)/Supplement 4>>>>]";
+  const auto list = interpret({.content = "BT /F1 10 Tf <201C0041> Tj ET", .resources = "/Font<</F1" + font + ">>>>"}, &resources, content::Purpose::kText);
+  const auto runs = all<graphics::ShowText>(list);
+  ASSERT_EQ(runs.size(), 1U);
+  ASSERT_EQ(runs[0].glyphs.size(), 2U);
+  EXPECT_EQ(runs[0].glyphs[0].text, std::u32string(1, 0x201C));
+  EXPECT_EQ(runs[0].glyphs[1].text, U"A");
 }
 
 TEST(PdfFonts, BrokenFontsFallBack) {

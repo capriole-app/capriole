@@ -156,7 +156,8 @@ TEST(Raster, DiagonalsAndGlyphsAreNotAdjusted) {
   ShowText run;
   run.font_size = 1;
   run.fill = kBlack;
-  run.glyphs.push_back(Glyph{.code = 1, .cid = 1, .origin = {0, 0}, .advance = 0, .outline = std::make_shared<const Path>(rect(5, 20.3, 30, 0.3))});
+  run.glyphs.push_back(Glyph{
+      .code = 1, .cid = 1, .origin = {0, 0}, .advance = 0, .width = 0, .byte = 0, .text = {}, .outline = std::make_shared<const Path>(rect(5, 20.3, 30, 0.3))});
   text.commands.emplace_back(Boxed<ShowText>(std::move(run)));
   const Bitmap t = render(text);
   const std::uint8_t row = t.rgba[((static_cast<std::size_t>(19) * 40) + 20) * 4];

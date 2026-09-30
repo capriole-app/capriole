@@ -117,6 +117,15 @@ class Font {
   // or null when there is none (Type 3 fonts, missing glyphs, missing programs).
   [[nodiscard]] std::shared_ptr<const graphics::Path> outline(const Code& code);
 
+  // What a code stands for (§9.10.2): /ToUnicode first; for simple fonts the glyph's name (from the
+  // encoding, else from the program) through the Adobe Glyph List; for composite fonts the character
+  // collection's Unicode mapping (CJK) or the embedded program's cmap; else the code itself when it is a
+  // printable character. Empty when nothing says.
+  [[nodiscard]] std::u32string text(const Code& code);
+  // Ascent and descent in text space for a font size of 1 (for the boxes of glyphs).
+  [[nodiscard]] double ascent() const noexcept { return ascent_; }
+  [[nodiscard]] double descent() const noexcept { return descent_; }
+
   // Type 3 fonts (§9.6.4).
   [[nodiscard]] const graphics::Matrix& font_matrix() const noexcept { return font_matrix_; }
   // The glyph procedure of a code (possibly a reference); nullptr when the font has none for it.
@@ -145,12 +154,21 @@ class Font {
   void load_simple(Document& document, const model::Dict& dict, FontContext& context, std::vector<std::string>& warnings);
   void load_composite(Document& document, const model::Dict& dict, FontContext& context, std::vector<std::string>& warnings);
   void load_type3(Document& document, const model::Dict& dict, std::vector<std::string>& warnings);
+  void load_to_unicode(Document& document, const model::Dict& dict, FontContext& context);
+  [[nodiscard]] std::u32string lookup_text(const Code& code);
+  [[nodiscard]] char32_t unicode_of_code(const Code& code) const;  // unicode_codes_: the character, or 0
+  void set_extent(Document& document, const model::Dict* descriptor);
   [[nodiscard]] Slot slot(const Code& code, FontContext& context);
   [[nodiscard]] std::uint32_t simple_glyph(const FontProgram& program, std::uint32_t code) const;
   [[nodiscard]] std::uint32_t cid_glyph(std::uint32_t cid) const;
 
   double scale_ = 0.001;
   double default_width_ = 500;
+  double ascent_ = 0.8;
+  double descent_ = -0.2;
+  // A predefined Unicode CMap (UniJIS-UCS2-H, UniGB-UTF16-V, ...): the codes are the characters.
+  enum class UnicodeCodes : std::uint8_t { kNone, kUcs2, kUtf16, kUtf32, kUtf8 };
+  UnicodeCodes unicode_codes_ = UnicodeCodes::kNone;
 
   // The programs: the embedded one, or substitutes (the standard one, and a fallback for glyphs it lacks).
   std::unique_ptr<FontProgram> embedded_;
@@ -178,6 +196,8 @@ class Font {
   std::optional<model::Object> type3_resources_;
 
   std::unordered_map<std::uint32_t, std::shared_ptr<const graphics::Path>> outlines_;
+  std::optional<std::unordered_map<std::uint32_t, char32_t>> glyph_unicode_;  // the program's cmap, reversed (made when first needed)
+  std::unordered_map<std::uint64_t, std::u32string> texts_;                   // text() by code and length
 
   // The small fields together (no padding between them).
   std::uint32_t first_char_ = 0;

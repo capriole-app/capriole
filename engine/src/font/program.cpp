@@ -1,5 +1,6 @@
 #include "program.hpp"
 
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <utility>
@@ -247,6 +248,40 @@ std::optional<double> FontProgram::advance(std::uint32_t glyph) const {
     return std::nullopt;
   }
   return static_cast<double>(impl_->face->glyph->linearHoriAdvance) / 65536;  // 16.16 pixels of the 1000-pixel em
+}
+
+std::optional<std::string> FontProgram::glyph_name(std::uint32_t glyph) const {
+  if ((impl_->face->face_flags & FT_FACE_FLAG_GLYPH_NAMES) == 0) {
+    return std::nullopt;
+  }
+  std::array<char, 128> name{};
+  if (FT_Get_Glyph_Name(impl_->face, glyph, name.data(), static_cast<FT_UInt>(name.size())) != 0 || name[0] == '\0') {
+    return std::nullopt;
+  }
+  return std::string(name.data());
+}
+
+std::unordered_map<std::uint32_t, char32_t> FontProgram::unicode_of_glyphs() const {
+  std::unordered_map<std::uint32_t, char32_t> map;
+  FT_CharMap unicode = impl_->charmap(Charmap::kUnicode);
+  if (unicode == nullptr || FT_Set_Charmap(impl_->face, unicode) != 0) {
+    return map;
+  }
+  constexpr std::size_t kMaxEntries = 1'000'000;
+  FT_UInt glyph = 0;
+  for (FT_ULong c = FT_Get_First_Char(impl_->face, &glyph); glyph != 0 && map.size() < kMaxEntries; c = FT_Get_Next_Char(impl_->face, c, &glyph)) {
+    map.emplace(glyph, static_cast<char32_t>(c));
+  }
+  return map;
+}
+
+std::pair<double, double> FontProgram::ascent_descent() const {
+  const FT_FaceRec* face = impl_->face;
+  if (face->units_per_EM == 0) {
+    return {0, 0};
+  }
+  const double scale = 1000.0 / face->units_per_EM;
+  return {face->ascender * scale, face->descender * scale};
 }
 
 }  // namespace capriole::font::detail

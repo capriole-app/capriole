@@ -23,6 +23,7 @@ add_library(capriole_engine STATIC
   src/render/blend.cpp
   src/render/png.cpp
   src/render/raster.cpp
+  src/text/extract.cpp
   src/filters/basic.cpp
   src/filters/ccitt.cpp
   src/filters/dct.cpp
@@ -41,6 +42,7 @@ add_library(capriole_engine STATIC
   src/font/standard_fonts.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/generated/standard_fonts_data.cpp
   src/model/object.cpp
+  src/model/text_string.cpp
   src/parser/header.cpp
   src/parser/lexer.cpp
   src/parser/object_loader.cpp

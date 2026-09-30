@@ -29,12 +29,14 @@
 #include "capriole/document/document.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
+#include "capriole/model/text_string.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/parser/lexer.hpp"
 #include "capriole/parser/object_parser.hpp"
 #include "capriole/parser/xref.hpp"
 #include "capriole/render/png.hpp"
 #include "capriole/render/raster.hpp"
+#include "capriole/text/text.hpp"
 #include "capriole/writer/byte_sink.hpp"
 #include "capriole/writer/save.hpp"
 #include "capriole/writer/serializer.hpp"
@@ -66,6 +68,11 @@ void print_usage() {
                "                  at N dpi, default 150); DIR: the resource pack (CMaps, CJK fonts,\n"
                "                  scripts/fetch_resources.sh); prints what was drawn, the warnings and\n"
                "                  the resources the page wanted and did not find\n"
+               "  text [--words] [--order content|layout] [--resources DIR] <file> <page>\n"
+               "                  extract the text of a page in reading order (blocks separated by an empty\n"
+               "                  line): the content's order (default) or by columns; --words: one word per\n"
+               "                  line with its box (points, top-left origin) and where its first character\n"
+               "                  comes from\n"
                "  content <file> <page>\n"
                "                  print the operations of a page's content stream (page from 1)\n"
                "  save [--incremental] [--moddate D:...] <file> <output>\n"
@@ -437,6 +444,47 @@ int cmd_render(std::string_view path, std::uint64_t page_number, std::string_vie
   return kExitOk;
 }
 
+int cmd_text(std::string_view path, std::uint64_t page_number, bool words, capriole::text::Order order, std::string_view resources_dir) {
+  capriole::font::Resources resources;
+  if (!resources_dir.empty()) {
+    auto loaded = capriole::font::Resources::load_directory(std::filesystem::path(std::string(resources_dir)));
+    if (!loaded) {
+      return fail(resources_dir, loaded.error());
+    }
+    resources = std::move(*loaded);
+  }
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  auto pages = document->page_refs();
+  if (!pages) {
+    return fail(path, pages.error());
+  }
+  if (page_number == 0 || page_number > pages->size()) {
+    std::cerr << std::format("cpdf: {}: page {} out of 1..{}\n", path, page_number, pages->size());
+    return kExitUsage;
+  }
+  auto list = capriole::content::interpret_page(*document, (*pages)[page_number - 1], {}, &resources, capriole::content::Purpose::kText);
+  if (!list) {
+    return fail(path, list.error());
+  }
+  const capriole::text::PageText text = capriole::text::extract(*list, order);
+  if (!words) {
+    std::cout << text.plain();
+    return kExitOk;
+  }
+  // word, box, provenance of its first character: stream (page = the page's /Contents), operator offset
+  // and ordinal, byte of the code.
+  for (const auto& word : text.words) {
+    const auto& p = text.chars.at(word.first).provenance;
+    const std::string stream = p.stream ? std::format("{} {} R", p.stream->number, p.stream->generation) : std::string("page");
+    std::cout << std::format("{}\t{:.2f} {:.2f} {:.2f} {:.2f}\t{} @{} #{} +{}\n", capriole::model::to_utf8(word.text), word.box.x0, word.box.y0, word.box.x1,
+                             word.box.y1, stream, p.offset, p.operation, p.byte);
+  }
+  return kExitOk;
+}
+
 int cmd_pages(std::string_view path) {
   auto document = open_document(path);
   if (!document) {
@@ -560,6 +608,32 @@ int run(std::span<char*> args) {
     if (i + 3 == args.size()) {
       if (const auto page = parse_uint(args[i + 1]); page && dpi && *dpi > 0 && *dpi <= 4800) {
         return cmd_render(args[i], *page, args[i + 2], static_cast<double>(*dpi), resources_dir);
+      }
+    }
+  }
+  if (command == "text") {
+    bool words = false;
+    auto order = capriole::text::Order::kContent;
+    std::string_view resources_dir;
+    std::size_t i = 2;
+    while (i < args.size()) {
+      if (std::string_view(args[i]) == "--words") {
+        words = true;
+        ++i;
+      } else if (std::string_view(args[i]) == "--order" && i + 1 < args.size()) {
+        const std::string_view name = args[i + 1];
+        order = name == "layout" ? capriole::text::Order::kLayout : capriole::text::Order::kContent;
+        i += 2;
+      } else if (std::string_view(args[i]) == "--resources" && i + 1 < args.size()) {
+        resources_dir = args[i + 1];
+        i += 2;
+      } else {
+        break;
+      }
+    }
+    if (i + 2 == args.size()) {
+      if (const auto page = parse_uint(args[i + 1])) {
+        return cmd_text(args[i], *page, words, order, resources_dir);
       }
     }
   }

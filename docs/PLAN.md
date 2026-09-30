@@ -376,7 +376,7 @@ riparazione 8.
 gestore di sicurezza esista); dati attaccati alla parola `stream` (`streamDATA`) non riconosciuti; i 6 file
 x002 restanti sono troncati in modo grave.
 
-## Fase 6 — Interprete dei content stream e renderer (~4–6 mesi, il grosso) — ✅ completata (2026-10-01)
+## Fase 6 — Interprete dei content stream e renderer (~4–6 mesi, il grosso) — ✅ completata (2026-09-30)
 
 Passi: **6a** parser dei content stream ✅ · **6b** interprete (stato grafico, CTM, tracciati,
 clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore) ✅ · **6c** prototipo
@@ -387,7 +387,7 @@ di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isol
 immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · **6h** gli altri codec (CCITT, JBIG2, JPX) ✅ ·
 **6i** font ✅ · **6j** sfumature e pattern ✅ · **6k** annotazioni ✅ · **6l** gestione del colore ✅ · **6m** linee sottili ✅ · **6n** confronto su 1.000 pagine ✅ (criterio di uscita).
 
-**6n (2026-10-01) — criterio di uscita della fase 6: raggiunto.** `corpus-tools/compare_render.py`
+**6n (2026-09-30) — criterio di uscita della fase 6: raggiunto.** `corpus-tools/compare_render.py`
 (versionato, documentato in `corpus-tools/README.md`): una pagina per file, scelta da un hash del seme e
 del nome (lo stesso campione a ogni giro, non solo prime pagine), disegnata da Capriole (build release,
 pacchetto di risorse), `pdftoppm` e `mutool draw` a 72 dpi dalla CropBox. Somiglianza: quota di pixel
@@ -412,7 +412,7 @@ Restano, fuori dal criterio, per le fasi successive: il contenuto opzionale (`/O
 0000337 prima pagina), gli aspetti generati per campi modulo e FreeText senza `/AP`, i contorni riempiti
 con un pattern (oggi in tinta unita).
 
-**6m (2026-10-01):** il ritocco delle linee sottili, la *stroke adjustment* di §10.7.5 come la fanno
+**6m (2026-09-30):** il ritocco delle linee sottili, la *stroke adjustment* di §10.7.5 come la fanno
 pdftoppm e Acrobat ("migliora linee sottili"). Prima un tratto sottile, portato a un pixel, cadeva a
 cavallo di due pixel a metà intensità: tabelle e disegni tecnici uscivano sbiaditi. Ora, in spazio
 dispositivo: i **tratti** su una pagina che conserva gli assi (penna fino a 4 pixel, o rotonda) hanno una
@@ -654,11 +654,58 @@ monte (oggetti illeggibili, filtri immagine della fase 6, nomi di filtro con mai
 **Uscita:** su un campione di 1.000 pagine, differenza di pixel sotto soglia rispetto alla maggioranza
 dei riferimenti ≥ 95% (il "95% raggiungibile" della spec).
 
-## Fase 7 — Estrazione del testo con provenienza (~1–2 mesi)
+## Fase 7 — Estrazione del testo con provenienza (~1–2 mesi) — 🔜 in corso
 
 Glifi → parole → righe → blocchi/colonne; ogni elemento conserva la provenienza (content stream,
 indice dell'operatore, oggetto). Base del modello alto, della ricerca, della redaction e della
 selezione. Uscita: confronto con `pdftotext`/`mutool draw -F txt` su campione.
+
+**Criterio di uscita fissato (2026-09-30, il più severo dei tre proposti):** su 1.000 pagine, ≥ 95%
+delle pagine devono superare **entrambe** le misure **rispetto allo stesso riferimento** — **contenuto**:
+le parole come multinsieme, F1 ≥ 0,98; **ordine di lettura**: somiglianza della sequenza di parole
+(difflib, 2·corrispondenze / totale) ≥ 0,90. Testo normalizzato NFKC, parole separate dagli spazi.
+
+Passi: **7a** da glifo a testo (ToUnicode, nomi dei glifi, collezioni CJK, cmap del font; `/ActualText`;
+provenienza e riquadro di ogni glifo) ✅ · **7b** layout (parole, righe, blocchi, ordine di lettura) ✅ ·
+**7c** interfacce (API C, WASM, Inspector con provenienza) · **7d** confronto ufficiale su 1.000 pagine.
+
+**7a + 7b (2026-09-30).** Modulo nuovo `text/` (`capriole/text/text.hpp`, ADR 0007).
+- *Da glifo a testo* (`Font::text`, §9.10.2): `/ToUnicode` per tutti i font (anche Type 3); per i font
+  semplici il nome del glifo (encoding, `/Differences`, altrimenti il nome nel programma) attraverso
+  l'Adobe Glyph List, poi il codice stesso se stampabile; per i compositi con CMap Unicode predefinita
+  (`Uni…-UCS2/UTF16/UTF32/UTF8`) il codice è il carattere; poi la collezione (Japan1, GB1, CNS1, Korea1:
+  la CMap UTF-16 della collezione invertita, preferendo l'ideogramma al radicale Kangxi), poi la cmap
+  del programma incorporato. Niente di tutto questo: U+FFFD (come MuPDF). Legature latine espanse.
+  Costa solo quando serve: `interpret_page(…, Purpose::kText)` calcola il testo dei glifi (e non
+  decodifica le immagini); il disegno non chiede risorse che servono solo al testo.
+- *`/ActualText`* (§14.9.4) delle sequenze marcate (in linea o in `/Properties`, stringhe di testo
+  UTF-16/UTF-8/PDFDocEncoding — `model/text_string.hpp`): sostituisce i glifi della sequenza; vuoto li
+  nasconde.
+- *Provenienza* di ogni carattere: lo stream (la pagina, o il form XObject / la procedura di glifo), offset
+  e ordinale dell'operatore, byte del codice, font. *Riquadro* dalla larghezza del glifo e da
+  ascendente/discendente del font, nelle coordinate della pagina come la si vede (CropBox, /Rotate).
+  Testo invisibile (modo 3/7) estratto e marcato; fuori dalla CropBox scartato (come pdftotext).
+- *Layout*: parole dagli spazi e dalle distanze (0,15 em misurati dalla larghezza del glifo, senza `Tc`,
+  come MuPDF; indietro fino a 1 em resta la stessa parola), doppioni sovrapposti (grassetto simulato)
+  tolti; righe e blocchi **nell'ordine del contenuto**, uniti dove la geometria continua (la riga a
+  destra sulla stessa linea di base, la riga sotto nello stesso blocco). L'ordine a colonne (regole di
+  Breuel) resta come opzione (`--order layout`): misurato, perde (70% contro 95%).
+- `cpdf text [--words] [--order content|layout] <file> <pagina>`; `corpus-tools/compare_text.py` (la
+  misura del criterio); fuzz target `fuzz_text` (5 minuti, 200.000 esecuzioni, pulito).
+
+Misura sul campione di SafeDocs 0000 (una pagina per file scelta per hash, poi una seconda pagina dai
+file con più pagine fino a 1.000 pagine con testo; seme `capriole-phase-7`):
+
+| | Passano | Strette (entrambi) | I riferimenti concordano fra loro |
+|---|---|---|---|
+| Ordine del contenuto (default) | **953 (95,3%)** | 519 (51,9%) | 521 (52,1%) |
+| Ordine a colonne (`--order layout`, 150 pagine) | 105/150 (70,0%) | | |
+
+Il criterio è severo per costruzione: i due riferimenti concordano fra loro solo su metà delle pagine
+(pdftotext riordina per colonne e toglie i doppioni; mutool segue il contenuto e li tiene). Le pagine
+che non passano: font senza informazioni sul testo (i riferimenti emettono codici grezzi), scritture
+complesse (devanagari, arabo in ordine visivo), testo verticale CJK (mutool lo spezza per carattere,
+noi teniamo le parole), moduli disegnati fuori ordine (pdftotext li riordina meglio).
 
 ## Fase 8 — Prime funzioni utente e app
 
@@ -679,6 +726,7 @@ workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri)
 | ~~Gestione del colore (ICC)~~ | fase 6 | **decisa: Little CMS + profilo SWOP** (ADR 0006) |
 | ~~JPEG 2000 (JPX)~~ | fase 6 | **deciso: OpenJPEG 2.5.4** (ADR 0004), sostituibile |
 | ~~JBIG2 / CCITT con licenza compatibile~~ | fase 6 | **fatto: implementazione propria** |
+| ~~Ordine di lettura del testo~~ | fase 7 | **deciso: ordine del contenuto** (ADR 0007), misurato |
 | Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |
 | Firma qualificata nel browser | fase 8 | smart card non accessibili dal web → desktop o firma remota |
 | Framework UI / shell desktop | fase 8 | Svelte 5 + Tauri proposto |

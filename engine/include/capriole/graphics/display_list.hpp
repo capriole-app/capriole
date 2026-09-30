@@ -270,6 +270,9 @@ struct Glyph {
   std::uint32_t cid = 0;   // composite fonts: the CID the code selects; the code itself otherwise
   Point origin;            // in text space, from the start of the run (the text rise included in y)
   double advance = 0;      // in text space units, after spacing and scaling (vertical fonts: downwards)
+  double width = 0;        // the glyph's own width in text space (w0 · Tfs · Th, no spacing)
+  std::uint32_t byte = 0;  // where its code starts in the run's bytes
+  std::u32string text;     // what it stands for (§9.10): empty when the font does not say
   // The glyph in text space for a font size of 1 (font/font.hpp); null when there is nothing to draw — a
   // missing glyph, or a Type 3 font, whose glyphs are the commands that follow the run.
   std::shared_ptr<const Path> outline;
@@ -295,6 +298,19 @@ struct ShowText {
   double alpha = 1;         // of the fill
   double stroke_alpha = 1;  // of the stroke
   BlendMode blend = BlendMode::kNormal;
+  // The font's ascent and descent in text space for a font size of 1 (a glyph's box: from the baseline
+  // plus descent to the baseline plus ascent), and whether it writes vertically.
+  double ascent = 0.8;
+  double descent = -0.2;
+  bool vertical = false;
+  // Provenance: the content stream the operator is in (the page's content: none; a form XObject's or a
+  // Type 3 glyph's: its reference), its place there (the operator's offset, and its ordinal among the
+  // stream's operators).
+  std::optional<model::ObjectRef> stream;
+  std::uint64_t offset = 0;
+  std::uint32_t operation = 0;
+  // Inside a marked-content sequence with /ActualText (§14.9.4): its index in DisplayList::actual_texts.
+  std::int32_t actual_text = -1;
   bool widths_known = false;      // false: the font gives no widths, advances are estimated
   bool latin_codes = false;       // the codes read as Latin text (a standard encoding); otherwise unknown until ToUnicode
   bool glyph_procedures = false;  // a Type 3 font: the glyphs are drawn by the commands after the run
@@ -388,6 +404,8 @@ struct DisplayList {
   std::vector<std::string> warnings;
   // Resources the page needed that the host did not supply (font/resources.hpp), sorted.
   std::vector<std::string> missing_resources;
+  // The /ActualText of marked-content sequences with text shown inside (ShowText::actual_text).
+  std::vector<std::u32string> actual_texts;
 };
 
 // Where a page goes on an output (an SVG, a bitmap): the crop box, y flipped (outputs grow downwards),

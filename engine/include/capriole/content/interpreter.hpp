@@ -47,10 +47,14 @@ struct InterpreterLimits {
   std::int64_t max_page_image_pixels = 64'000'000;
 };
 
+// What the display list is for. kText records what each glyph stands for (Glyph::text, which may need
+// resources drawing does not: a character collection's Unicode CMap) and leaves images undecoded.
+enum class Purpose : std::uint8_t { kDraw, kText };
+
 // The display list of page (a page object of the document). Errors only when the page itself cannot
 // be read; everything inside is best effort, with warnings. resources: the fonts and CMaps the host can
 // supply (font/resources.hpp); what the page wanted of them and did not find is listed in the result.
 [[nodiscard]] Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRef page, const InterpreterLimits& limits = {},
-                                                           const font::Resources* resources = nullptr);
+                                                           const font::Resources* resources = nullptr, Purpose purpose = Purpose::kDraw);
 
 }  // namespace capriole::content

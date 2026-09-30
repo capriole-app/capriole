@@ -46,3 +46,23 @@ the majority is one agreeing reference); **strict** when close to both. The summ
 often the two references agree with each other — the ceiling of what "close to both" can reach —,
 failures by category (from Capriole's warnings), the 30 worst pages side by side in `worst/`, and
 regressions against the previous run of the same `--name`. Exit criterion of phase 6: pass rate ≥ 95%.
+
+## Text comparison (PLAN.md phase 7, exit criterion)
+
+```sh
+cmake --preset release && cmake --build --preset release     # cpdf, optimised
+nice -n 10 corpus-tools/compare_text.py ../CORPORA/safedocs/0000 --cpdf build/release/tools/cpdf/cpdf \
+    --pages 1000 --jobs 3 --report-dir ../CORPORA/reports --name text-safedocs-0000
+```
+
+One page per file, chosen by a hash of `--seed`, the file name and the page number; when the files are
+fewer than `--pages`, further rounds (`--rounds`, default 3) take another page from the files that have
+one. Each page is extracted by Capriole (`cpdf text`), `pdftotext` and `mutool draw -F txt`; the texts are
+normalized (NFKC, soft hyphens dropped) and split into words at white space. **Content**: the F1 of the
+words as multisets; **order**: the similarity of the word sequences (difflib's ratio). A page **passes**
+when, against the same reference, content ≥ 0.98 and order ≥ 0.90; **strict** when against both.
+Pages where no reference finds a word are left out. The summary gives the rates, how often the two
+references agree with each other, failures by kind (content, order, nothing extracted), the 30 worst
+pages with their three texts in `worst/`, and regressions against the previous run of the same `--name`.
+`--reading-order layout` measures Capriole's column order instead of the content's. Exit criterion of
+phase 7: pass rate ≥ 95%.

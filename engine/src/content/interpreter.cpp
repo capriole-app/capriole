@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <span>
 #include <string>
@@ -17,6 +18,7 @@
 #include "capriole/content/function.hpp"
 #include "capriole/content/page_content.hpp"
 #include "capriole/filters/decode.hpp"
+#include "capriole/model/text_string.hpp"
 #include "color_space.hpp"
 #include "font/font.hpp"
 #include "image.hpp"
@@ -69,13 +71,19 @@ struct GraphicsState {
 
 class Interpreter {
  public:
-  Interpreter(Document& document, const InterpreterLimits& limits, const font::Resources* resources, graphics::DisplayList& out)
-      : document_(&document), limits_(&limits), out_(&out), fonts_(resources), colors_(document, resources) {}
+  Interpreter(Document& document, const InterpreterLimits& limits, const font::Resources* resources, graphics::DisplayList& out, Purpose purpose)
+      : document_(&document), limits_(&limits), out_(&out), fonts_(resources), colors_(document, resources), text_(purpose == Purpose::kText) {}
 
-  void run(std::span<const std::byte> content, const model::Dict* resources, std::size_t form_depth) {
+  // stream: the object the content comes from, for the provenance of text (none for the page's).
+  void run(std::span<const std::byte> content, const model::Dict* resources, std::size_t form_depth, std::optional<model::ObjectRef> stream = std::nullopt) {
     ContentParser parser(content, limits_->parse, parser::ParseMode::kTolerant);
     const model::Dict* saved_resources = resources_;
     resources_ = resources;
+    const auto saved_stream = std::exchange(stream_, stream);
+    const std::uint64_t saved_offset = op_offset_;
+    const std::uint32_t saved_index = op_index_;
+    const std::size_t marked_depth = marked_.size();
+    std::uint32_t index = 0;
     // Pattern space is relative to the CTM at the start of the content stream that uses the pattern
     // (§8.7.3.1): the page's, a form's (its /Matrix included), a glyph's.
     const Matrix saved_base = std::exchange(base_ctm_, state_.ctm);
@@ -97,6 +105,8 @@ class Interpreter {
         stopped_ = true;
         break;
       }
+      op_offset_ = (*operation)->offset;
+      op_index_ = index++;
       execute(**operation, form_depth);
     }
     if (parser.recovered_errors() > 0) {
@@ -108,6 +118,11 @@ class Interpreter {
     }
     base_ctm_ = saved_base;
     resources_ = saved_resources;
+    // Marked content does not continue past the end of its stream (§14.6).
+    marked_.resize(std::min(marked_.size(), marked_depth));
+    stream_ = saved_stream;
+    op_offset_ = saved_offset;
+    op_index_ = saved_index;
   }
 
   std::vector<std::string> take_warnings() { return warnings_.take(); }
@@ -522,6 +537,37 @@ class Interpreter {
     text_matrix_ = line_matrix_;
   }
 
+  // BMC and BDC (§14.6): the properties (inline, or named in /Properties) may carry /ActualText, the
+  // text the sequence stands for (§14.9.4).
+  void begin_marked(const Object* properties) {
+    constexpr std::size_t kMaxMarkedDepth = 256;
+    if (marked_.size() >= kMaxMarkedDepth) {
+      return;  // unbalanced by design: EMC then pops an outer one, which only loses an /ActualText
+    }
+    std::int32_t index = -1;
+    std::optional<Object> named;
+    if (properties != nullptr && properties->as_name() != nullptr) {
+      named = resource("Properties", properties->as_name()->bytes);
+      properties = named ? &*named : nullptr;
+    }
+    if (properties != nullptr) {
+      auto dict = document_->resolve(*properties);
+      const model::Dict* d = dict ? dict->as_dict() : nullptr;
+      if (d != nullptr) {
+        if (const Object* actual = d->find("ActualText")) {
+          if (auto text = document_->resolve(*actual); text && text->as_string() != nullptr) {
+            constexpr std::size_t kMaxActualTexts = 100'000;
+            if (out_->actual_texts.size() < kMaxActualTexts) {
+              index = static_cast<std::int32_t>(out_->actual_texts.size());
+              out_->actual_texts.push_back(model::decode_text_string(text->as_string()->bytes));
+            }
+          }
+        }
+      }
+    }
+    marked_.push_back(index);
+  }
+
   // Tj, TJ, ' and ": a run of glyphs, advancing the text matrix (§9.4.4).
   void show(const Object& operand, std::size_t form_depth) {
     if (!in_text_) {
@@ -550,6 +596,18 @@ class Interpreter {
     run.widths_known = font.widths_known();
     run.latin_codes = font.latin_codes();
     run.glyph_procedures = font.kind() == Font::Kind::kType3;
+    run.ascent = font.ascent();
+    run.descent = font.descent();
+    run.vertical = font.vertical();
+    run.stream = stream_;
+    run.offset = op_offset_;
+    run.operation = op_index_;
+    for (const std::int32_t actual : std::views::reverse(marked_)) {
+      if (actual >= 0) {
+        run.actual_text = actual;  // the innermost /ActualText
+        break;
+      }
+    }
 
     // Horizontal: tx = ((w0 · Tfs) + Tc + Tw) · Th. Vertical: ty = (w1 · Tfs) + Tc + Tw (§9.4.4); Tw for
     // the single-byte code 32 only.
@@ -559,11 +617,23 @@ class Interpreter {
     double y = 0;
     std::vector<Font::Code> codes;
     const auto add_string = [&](const std::string& bytes) {
+      const auto start = static_cast<std::uint32_t>(run.bytes.size());
       run.bytes += bytes;
       codes.clear();
       font.codes(bytes, codes);
+      std::uint32_t at = start;
       for (const Font::Code& code : codes) {
-        graphics::Glyph glyph{.code = code.code, .cid = code.cid, .origin = {x, y + state_.rise}, .advance = 0, .outline = nullptr};
+        const double width =
+            vertical ? font.vertical_metrics(code).advance * 0.001 * state_.font_size : font.width(code) * font.scale() * state_.font_size * state_.scale;
+        graphics::Glyph glyph{.code = code.code,
+                              .cid = code.cid,
+                              .origin = {x, y + state_.rise},
+                              .advance = 0,
+                              .width = width,
+                              .byte = at,
+                              .text = text_ ? font.text(code) : std::u32string(),
+                              .outline = nullptr};
+        at += code.length;
         const double spacing = state_.char_spacing + (Font::is_word_space(code) ? state_.word_spacing : 0);
         if (vertical) {
           glyph.advance = (font.vertical_metrics(code).advance * 0.001 * state_.font_size) + spacing;
@@ -689,7 +759,7 @@ class Interpreter {
       graphics::Path saved_clip = std::exchange(text_clip_, {});
       const bool saved_uncolored = std::exchange(uncolored_glyph_, cell_uncoloured_);
       ++type3_depth_;
-      run(*content, resources, form_depth + 1);
+      run(*content, resources, form_depth + 1, ref);
       --type3_depth_;
       uncolored_glyph_ = saved_uncolored;
       text_clip_ = std::move(saved_clip);
@@ -827,7 +897,7 @@ class Interpreter {
     // The form's content runs with its own path and text state.
     const graphics::Path saved_path = std::exchange(path_, {});
     const bool saved_in_text = std::exchange(in_text_, false);
-    run(*content, resources, form_depth + 1);
+    run(*content, resources, form_depth + 1, ref);
     path_ = saved_path;
     in_text_ = saved_in_text;
     if (group) {
@@ -860,7 +930,9 @@ class Interpreter {
     image.blend = state_.blend;
     const model::Dict dict = detail::expand_inline_dict(op.image->dict);
     image.interpolate = interpolates(dict);
-    if (auto data = filters::decode(op.image->data, dict, limits_->parse); data) {
+    if (text_) {
+      // Extracting text: the image is not looked at.
+    } else if (auto data = filters::decode(op.image->data, dict, limits_->parse); data) {
       image.pixels = pixels_of(dict, *data);
     } else {
       warnings_.add("inline image not decoded: " + data.error().message);
@@ -877,6 +949,9 @@ class Interpreter {
   // The pixels of an image XObject, decoded once per page (stencil masks carry the fill colour, so
   // they are decoded each time).
   std::shared_ptr<const graphics::ImagePixels> xobject_pixels(std::optional<model::ObjectRef> ref, const model::Stream& stream, bool stencil) {
+    if (text_) {
+      return nullptr;  // extracting text: the image is not looked at
+    }
     const bool cached = ref.has_value() && !stencil;
     if (cached) {
       if (const auto found = images_.find(ref->number); found != images_.end()) {
@@ -1101,7 +1176,7 @@ class Interpreter {
     cell->commands.emplace_back(graphics::ClipPath{.path = std::move(clip), .ctm = {}, .rule = graphics::FillRule::kNonZero});
     InterpreterLimits limits = *limits_;
     limits.max_operations = limits_->max_operations > operations_ ? limits_->max_operations - operations_ : 0;
-    Interpreter inner(*document_, limits, fonts_.resources(), *cell);
+    Interpreter inner(*document_, limits, fonts_.resources(), *cell, text_ ? Purpose::kText : Purpose::kDraw);
     inner.tile_depth_ = tile_depth_ + 1;
     inner.active_forms_ = active_forms_;
     if (ref) {
@@ -1116,7 +1191,7 @@ class Interpreter {
       inner.uncolored_glyph_ = true;
       inner.cell_uncoloured_ = true;
     }
-    inner.run(*content, resources, 0);
+    inner.run(*content, resources, 0, ref);
     operations_ += inner.operations_;
     for (std::string& warning : inner.take_warnings()) {
       warnings_.add(std::move(warning));
@@ -1708,8 +1783,15 @@ class Interpreter {
       case kMarkPoint:
       case kMarkPointProperties:
       case kBeginMarkedContent:
+        begin_marked(nullptr);
+        break;
       case kBeginMarkedContentProperties:
+        begin_marked(op.operands.size() == 2 ? &op.operands[1] : nullptr);
+        break;
       case kEndMarkedContent:
+        if (!marked_.empty()) {
+          marked_.pop_back();
+        }
         break;
       case kBeginCompatibility:
         ++compatibility_;
@@ -1746,6 +1828,13 @@ class Interpreter {
   detail::ColorContext colors_;
   std::map<std::uint32_t, std::shared_ptr<Font>> font_cache_;
   std::size_t type3_depth_ = 0;
+  // Provenance of the operation being executed, and the marked-content sequences open (the /ActualText
+  // index of each, -1 without).
+  std::optional<model::ObjectRef> stream_;
+  std::uint64_t op_offset_ = 0;
+  std::uint32_t op_index_ = 0;
+  std::vector<std::int32_t> marked_;
+  bool text_ = false;  // Purpose::kText
   bool uncolored_glyph_ = false;
   bool cell_uncoloured_ = false;  // an uncoloured tiling pattern's cell: colour operators stay ignored
   Matrix base_ctm_;               // the CTM at the start of the content stream being run (pattern space)
@@ -1802,7 +1891,8 @@ std::optional<graphics::Rect> rect_of(const std::optional<Object>& object) {
 
 }  // namespace
 
-Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRef page, const InterpreterLimits& limits, const font::Resources* resources) {
+Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRef page, const InterpreterLimits& limits, const font::Resources* resources,
+                                             Purpose purpose) {
   auto node = document.get(page);
   if (!node) {
     return std::unexpected(std::move(node.error()));
@@ -1836,7 +1926,7 @@ Result<graphics::DisplayList> interpret_page(Document& document, model::ObjectRe
     content = std::vector<std::byte>{};  // the annotations are still drawn
   }
   const auto page_resources = inherited(document, page, "Resources");
-  Interpreter interpreter(document, limits, resources, list);
+  Interpreter interpreter(document, limits, resources, list, purpose);
   const model::Dict* resources_dict = page_resources && page_resources->as_dict() != nullptr ? page_resources->as_dict() : nullptr;
   interpreter.run(*content, resources_dict, 0);
   if (annots) {

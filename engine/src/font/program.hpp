@@ -14,6 +14,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "capriole/core/error.hpp"
@@ -62,6 +64,13 @@ class FontProgram {
   [[nodiscard]] std::optional<graphics::Path> outline(std::uint32_t glyph) const;
   // Its horizontal advance in the same units.
   [[nodiscard]] std::optional<double> advance(std::uint32_t glyph) const;
+
+  // For text extraction: a glyph's PostScript name, when the font has names; the Unicode character its
+  // cmap gives each glyph (the first one, when several share a glyph); the font's ascent and descent in
+  // glyph space (1000 units per em).
+  [[nodiscard]] std::optional<std::string> glyph_name(std::uint32_t glyph) const;
+  [[nodiscard]] std::unordered_map<std::uint32_t, char32_t> unicode_of_glyphs() const;
+  [[nodiscard]] std::pair<double, double> ascent_descent() const;
 
  private:
   struct Impl;

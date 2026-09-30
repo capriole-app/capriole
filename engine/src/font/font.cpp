@@ -1,9 +1,13 @@
 #include "font.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <iterator>
+#include <string>
+#include <string_view>
+#include <tuple>
 #include <utility>
 
 #include "glyph_tables.hpp"
@@ -260,7 +264,14 @@ const std::unordered_map<std::uint32_t, char32_t>* FontContext::cid_unicode(std:
         }
       }
       if (unicode != 0) {
-        map.emplace(cid, unicode);  // the first character of a CID is kept
+        // Several characters may share a CID: the ideograph and its compatibility forms (the Kangxi
+        // radical ⾺ U+2FBA and 馬 U+99AC; CJK compatibility ideographs). The first ordinary character is
+        // kept, a compatibility one only when there is nothing else.
+        const auto compatibility = [](char32_t u) { return (u >= 0x2E80 && u <= 0x2FDF) || (u >= 0xF900 && u <= 0xFAFF) || (u >= 0x2F800 && u <= 0x2FA1F); };
+        const auto [it, inserted] = map.emplace(cid, unicode);
+        if (!inserted && compatibility(it->second) && !compatibility(unicode)) {
+          it->second = unicode;
+        }
       }
       return map.size() < kMaxEntries;
     });
@@ -286,6 +297,7 @@ std::shared_ptr<Font> Font::load(Document& document, const Object& object, FontC
     font->load_composite(document, *dict, context, warnings);
   } else if (subtype != nullptr && subtype->is_name("Type3")) {
     font->load_type3(document, *dict, warnings);
+    font->load_to_unicode(document, *dict, context);
   } else {
     font->load_simple(document, *dict, context, warnings);
   }
@@ -365,6 +377,8 @@ void Font::load_simple(Document& document, const model::Dict& dict, FontContext&
       warnings.push_back("font /" + shown_name + " is not embedded: a substitute is used");
     }
   }
+  load_to_unicode(document, dict, context);
+  set_extent(document, descriptor.dict ? descriptor.dict->as_dict() : nullptr);
   // Symbolic (§9.8.2): the codes select glyphs directly rather than through Latin names. Without a
   // descriptor, the standard Symbol and Dingbats fonts are.
   symbolic_ = descriptor.dict ? (descriptor.flags & kSymbolicFlag) != 0 : standard && is_symbolic(*standard);
@@ -404,6 +418,17 @@ void Font::load_composite(Document& document, const model::Dict& dict, FontConte
 
   // The CMap (§9.7.5): predefined by name, or embedded.
   if (const auto encoding = resolved(document, dict, "Encoding"); encoding && encoding->as_name() != nullptr) {
+    const std::string_view name = encoding->as_name()->bytes;
+    if (name.starts_with("Uni")) {
+      constexpr std::array<std::pair<std::string_view, UnicodeCodes>, 4> kForms = {
+          {{"-UCS2-", UnicodeCodes::kUcs2}, {"-UTF16-", UnicodeCodes::kUtf16}, {"-UTF32-", UnicodeCodes::kUtf32}, {"-UTF8-", UnicodeCodes::kUtf8}}};
+      for (const auto& [form, codes] : kForms) {
+        if (name.contains(form)) {
+          unicode_codes_ = codes;
+          break;
+        }
+      }
+    }
     cmap_ = context.predefined_cmap(encoding->as_name()->bytes);
     if (!cmap_) {
       warnings.push_back("font /" + shown_name + ": CMap /" + encoding->as_name()->bytes + " not available, its glyphs are not drawn");
@@ -435,13 +460,7 @@ void Font::load_composite(Document& document, const model::Dict& dict, FontConte
   }
   vertical_ = cmap_->vertical();
 
-  if (const auto to_unicode = resolved(document, dict, "ToUnicode"); to_unicode && to_unicode->as_stream() != nullptr) {
-    if (auto data = document.decode_stream(*to_unicode->as_stream())) {
-      if (auto parsed = CMap::parse(text_of(*data), resolver, context.limits().cmap)) {
-        to_unicode_ = std::make_shared<const CMap>(std::move(*parsed));
-      }
-    }
-  }
+  load_to_unicode(document, dict, context);
 
   // The CIDFont (§9.7.4).
   const auto descendants = resolved(document, dict, "DescendantFonts");
@@ -547,6 +566,7 @@ void Font::load_composite(Document& document, const model::Dict& dict, FontConte
   const Descriptor descriptor = read_descriptor(document, *cid);
   const std::string cid_name = name_value(*cid, "BaseFont");
   embedded_ = open_embedded(document, descriptor.dict ? descriptor.dict->as_dict() : nullptr, shown_name, context.limits(), warnings);
+  set_extent(document, descriptor.dict ? descriptor.dict->as_dict() : nullptr);
   if (embedded_) {
     primary_ = embedded_.get();
     return;
@@ -610,6 +630,164 @@ void Font::load_type3(Document& document, const model::Dict& dict, std::vector<s
   if (auto resources = resolved(document, dict, "Resources"); resources && resources->as_dict() != nullptr) {
     type3_resources_ = std::move(*resources);
   }
+  // The glyphs' extent: /FontBBox through the font matrix.
+  if (const auto box = resolved(document, dict, "FontBBox"); box && box->as_array() != nullptr && box->as_array()->size() == 4) {
+    const double y0 = number((*box->as_array())[1]).value_or(0) * font_matrix_.d;
+    const double y1 = number((*box->as_array())[3]).value_or(0) * font_matrix_.d;
+    if (y1 > y0 && std::isfinite(y1 - y0)) {
+      ascent_ = std::clamp(std::max(y0, y1), 0.1, 1.5);
+      descent_ = std::clamp(std::min(y0, y1), -1.0, 0.0);
+    }
+  }
+}
+
+void Font::load_to_unicode(Document& document, const model::Dict& dict, FontContext& context) {
+  const auto to_unicode = resolved(document, dict, "ToUnicode");
+  if (!to_unicode || to_unicode->as_stream() == nullptr) {
+    return;
+  }
+  const auto resolver = [&context](std::string_view name, std::size_t depth) { return context.predefined_cmap(name, depth); };
+  if (auto data = document.decode_stream(*to_unicode->as_stream())) {
+    if (auto parsed = CMap::parse(text_of(*data), resolver, context.limits().cmap)) {
+      to_unicode_ = std::make_shared<const CMap>(std::move(*parsed));
+    }
+  }
+}
+
+void Font::set_extent(Document& document, const model::Dict* descriptor) {
+  // /Ascent and /Descent of the descriptor, else its /FontBBox, else the program's; within sane bounds
+  // (writers put anything there).
+  double ascent = 0;
+  double descent = 0;
+  if (descriptor != nullptr) {
+    if (const auto a = resolved(document, *descriptor, "Ascent")) {
+      ascent = number(*a).value_or(0);
+    }
+    if (const auto d = resolved(document, *descriptor, "Descent")) {
+      descent = number(*d).value_or(0);
+    }
+    if (ascent <= 0) {
+      if (const auto box = resolved(document, *descriptor, "FontBBox"); box && box->as_array() != nullptr && box->as_array()->size() == 4) {
+        ascent = number((*box->as_array())[3]).value_or(0);
+        descent = std::min(descent, number((*box->as_array())[1]).value_or(0));
+      }
+    }
+  }
+  if (ascent <= 0 && primary_ != nullptr) {
+    std::tie(ascent, descent) = primary_->ascent_descent();
+  }
+  if (ascent > 0) {
+    ascent_ = std::clamp(ascent / 1000, 0.1, 1.5);
+    descent_ = std::clamp(descent / 1000, -1.0, 0.0);
+  }
+}
+
+std::u32string Font::text(const Code& code) {
+  const std::uint64_t key = (std::uint64_t{code.code} << 8U) | code.length;
+  if (const auto found = texts_.find(key); found != texts_.end()) {
+    return found->second;
+  }
+  std::u32string text = lookup_text(code);
+  constexpr std::size_t kMaxCached = 1U << 16U;
+  if (texts_.size() < kMaxCached) {
+    texts_.emplace(key, text);
+  }
+  return text;
+}
+
+char32_t Font::unicode_of_code(const Code& code) const {
+  const std::uint32_t v = code.code;
+  char32_t c = 0;
+  switch (unicode_codes_) {
+    case UnicodeCodes::kUcs2:
+      c = code.length == 2 ? v : 0;
+      break;
+    case UnicodeCodes::kUtf16:
+      if (code.length == 2) {
+        c = v;
+      } else if (code.length == 4 && (v >> 16U) >= 0xD800 && (v >> 16U) <= 0xDBFF && (v & 0xFFFFU) >= 0xDC00 && (v & 0xFFFFU) <= 0xDFFF) {
+        c = 0x10000 + (((v >> 16U) - 0xD800) << 10U) + ((v & 0xFFFFU) - 0xDC00);
+      }
+      break;
+    case UnicodeCodes::kUtf32:
+      c = v;
+      break;
+    case UnicodeCodes::kUtf8: {
+      // The code's bytes, big-endian: one to four bytes of UTF-8.
+      const auto length = static_cast<std::uint32_t>(code.length);
+      const std::uint32_t lead = v >> (8 * (length - 1));
+      if (length == 1) {
+        c = lead < 0x80 ? v : 0;
+      } else {
+        c = lead & (0x7FU >> length);
+        for (std::uint32_t k = length - 1; k-- > 0;) {
+          c = (c << 6U) | ((v >> (8 * k)) & 0x3FU);
+        }
+      }
+      break;
+    }
+    case UnicodeCodes::kNone:
+      break;
+  }
+  return (c >= 0x20 && c <= 0x10FFFF && (c < 0xD800 || c > 0xDFFF)) ? c : 0;
+}
+
+std::u32string Font::lookup_text(const Code& code) {
+  if (to_unicode_) {
+    if (std::u32string t = to_unicode_->text(code.code, code.length); !t.empty()) {
+      return t;
+    }
+  }
+  const auto from_name = [](std::string_view name) -> std::u32string {
+    const auto unicode = name.empty() ? std::nullopt : glyph_unicode(name);
+    return unicode ? std::u32string(1, *unicode) : std::u32string();
+  };
+  if (kind_ != Kind::kComposite) {
+    const std::size_t c = code.code & 0xFFU;
+    if (std::u32string t = from_name(names_.at(c)); !t.empty()) {
+      return t;
+    }
+    // No name in the PDF: the glyph's own, when the program has names; the standard encoding's for a
+    // Latin font without an encoding.
+    if (kind_ == Kind::kSimple && context_ != nullptr) {
+      const Slot s = slot(code, *context_);
+      if (s.program != nullptr && s.glyph != 0) {
+        if (const auto name = s.program->glyph_name(s.glyph)) {
+          if (std::u32string t = from_name(*name); !t.empty()) {
+            return t;
+          }
+        }
+      }
+      if (!symbolic_ && !has_encoding_) {
+        if (std::u32string t = from_name(encoding_table(BaseEncoding::kStandard)[c]); !t.empty()) {
+          return t;
+        }
+      }
+    }
+    // The code itself, when it is a printable character (as readers fall back).
+    return c >= 0x20 && c != 0x7F ? std::u32string(1, static_cast<char32_t>(c)) : std::u32string();
+  }
+  // Composite fonts with a Unicode CMap: the code is the character (as the CMap's name says).
+  if (const char32_t c = unicode_of_code(code); c != 0) {
+    return {c};
+  }
+  // Else the collection's characters (Adobe-Japan1, ...), else the embedded program's cmap.
+  if (collection(ordering_) != nullptr && context_ != nullptr) {
+    if (const auto* map = context_->cid_unicode(ordering_)) {
+      if (const auto found = map->find(code.cid); found != map->end()) {
+        return {found->second};
+      }
+    }
+  }
+  if (embedded_) {
+    if (!glyph_unicode_) {
+      glyph_unicode_ = embedded_->unicode_of_glyphs();
+    }
+    if (const auto found = glyph_unicode_->find(cid_glyph(code.cid)); found != glyph_unicode_->end()) {
+      return {found->second};
+    }
+  }
+  return {};
 }
 
 void Font::codes(std::string_view bytes, std::vector<Code>& out) const {
