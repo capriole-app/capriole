@@ -242,6 +242,24 @@ TEST(Interpreter, FormThatDrawsItselfIsCut) {
   EXPECT_TRUE(has_warning(list, "draws itself"));
 }
 
+TEST(Interpreter, AFinerSoftMaskSetsTheImageResolution) {
+  // A 1 × 1 black image under an 8 × 2 soft mask (left half opaque): the pixels come at the mask's
+  // resolution — text put in as pictures this way (SafeDocs 0000079) otherwise became solid bars.
+  const std::string mask = std::string("\xF0\xF0", 2);  // 1 bit per pixel: 11110000 on both rows
+  const auto list = interpret(
+      {.content = "100 0 0 50 0 0 cm /Im Do",
+       .resources = "/XObject<</Im 12 0 R>>",
+       .objects = {{12, "<</Subtype/Image/Width 1/Height 1/ColorSpace/DeviceGray/BitsPerComponent 8/SMask 13 0 R/Length 1>>\nstream\n\x00\nendstream"},
+                   {13, "<</Subtype/Image/Width 8/Height 2/ColorSpace/DeviceGray/BitsPerComponent 1/Length 2>>\nstream\n" + mask + "\nendstream"}}});
+  const auto images = all<graphics::DrawImage>(list);
+  ASSERT_EQ(images.size(), 1U);
+  ASSERT_NE(images[0].pixels, nullptr);
+  EXPECT_EQ(images[0].pixels->width, 8);
+  EXPECT_EQ(images[0].pixels->height, 2);
+  EXPECT_EQ(images[0].pixels->rgba[3], 255);          // left: opaque
+  EXPECT_EQ(images[0].pixels->rgba[(7 * 4) + 3], 0);  // right: transparent
+}
+
 TEST(Interpreter, ImagesAndShadings) {
   const auto list =
       interpret({.content = "q 100 0 0 50 10 20 cm /Im Do Q BI /W 2 /H 1 /IM true ID \x80 EI /Sh sh",

@@ -48,6 +48,16 @@ TEST(Decode, FilterChainRunsInOrder) {
   EXPECT_EQ(*out, bytes("layers"));
 }
 
+TEST(Decode, DecodeParmsEntriesThatAreNotDictionariesMeanNone) {
+  // Some writers put the string (null) where null belongs (SafeDocs 0000337): no parameters, as readers take it.
+  const std::string twice = test::zlib_compress(test::zlib_compress("layers"));
+  Dict dict = with_filter(Array{Name{"FlateDecode"}, Name{"FlateDecode"}});
+  dict.set("DecodeParms", Array{model::String{.bytes = "null", .form = model::StringForm::kLiteral}, model::Object()});
+  const auto out = decode(bytes(twice), dict, kDefaultParseLimits);
+  ASSERT_TRUE(out.has_value()) << out.error().message;
+  EXPECT_EQ(*out, bytes("layers"));
+}
+
 TEST(Decode, DecodeParmsApplyThePredictor) {
   Dict dict = with_filter(Name{"FlateDecode"});
   Dict parms;

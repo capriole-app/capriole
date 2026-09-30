@@ -376,7 +376,7 @@ riparazione 8.
 gestore di sicurezza esista); dati attaccati alla parola `stream` (`streamDATA`) non riconosciuti; i 6 file
 x002 restanti sono troncati in modo grave.
 
-## Fase 6 — Interprete dei content stream e renderer (~4–6 mesi, il grosso) — 🟡 in corso
+## Fase 6 — Interprete dei content stream e renderer (~4–6 mesi, il grosso) — ✅ completata (2026-10-01)
 
 Passi: **6a** parser dei content stream ✅ · **6b** interprete (stato grafico, CTM, tracciati,
 clipping, colori → lista di comandi di disegno indipendente dal rasterizzatore) ✅ · **6c** prototipo
@@ -385,7 +385,32 @@ Skia vs Blend2D dietro la stessa interfaccia, benchmark e dimensione WASM → **
 pixel con pdftoppm, anteprima raster nell'Inspector ✅ · **6e** trasparenza: modi di fusione, gruppi
 di trasparenza, soft mask ✅ · **6f** funzioni PDF, knockout e gruppi non isolati esatti, `/TR`,
 immagini senza codec ✅ · **6g** JPEG con libjpeg-turbo ✅ · **6h** gli altri codec (CCITT, JBIG2, JPX) ✅ ·
-**6i** font ✅ · **6j** sfumature e pattern ✅ · **6k** annotazioni ✅ · **6l** gestione del colore ✅ · **6m** linee sottili ✅ · poi profili ICC, ritocco delle linee sottili, confronto su 1.000 pagine.
+**6i** font ✅ · **6j** sfumature e pattern ✅ · **6k** annotazioni ✅ · **6l** gestione del colore ✅ · **6m** linee sottili ✅ · **6n** confronto su 1.000 pagine ✅ (criterio di uscita).
+
+**6n (2026-10-01) — criterio di uscita della fase 6: raggiunto.** `corpus-tools/compare_render.py`
+(versionato, documentato in `corpus-tools/README.md`): una pagina per file, scelta da un hash del seme e
+del nome (lo stesso campione a ogni giro, non solo prime pagine), disegnata da Capriole (build release,
+pacchetto di risorse), `pdftoppm` e `mutool draw` a 72 dpi dalla CropBox. Somiglianza: quota di pixel
+che differiscono al massimo di 32/255 per canale dopo una sfocatura di 1 pixel; una pagina passa se è
+≥ 0,95 rispetto ad almeno un riferimento (con due riferimenti la maggioranza è uno che concorda),
+«stretta» se rispetto a entrambi. Rapporto in `CORPORA/reports/render-safedocs-0000-20260930-210831/`.
+
+| Campione | Pagine | Passano | Strette | I riferimenti concordano fra loro |
+|---|---|---|---|---|
+| SafeDocs 0000 (+ 4 da x008) | 1.000 | **992 (99,2%)** | 912 (91,2%) | 894/999 (89,5%) |
+
+Capriole è vicino a entrambi i riferimenti **più spesso di quanto essi concordino fra loro**; nessuna
+pagina non disegnata, nessun timeout; 5 file esclusi perché nessun riferimento li disegna. Le 8 pagine
+che non passano sono differenze di resa senza avvisi (tinte di una cornice, una griglia di tabella in
+un'unica `f`, testo CJK). Il giro ha trovato e fatto correggere due difetti: **una `/SMask` (o `/Mask`)
+più fine della sua immagine** — testo messo come immagini di un colore con la forma nella maschera
+(0000079, 0000395, 0000504): la maschera veniva ridotta alla misura dell'immagine e il testo diventava
+barre nere; ora l'immagine sale alla risoluzione della maschera — e **`/DecodeParms` con la stringa
+`(null)`** al posto di null (0000337): la maschera non si leggeva più. Entrambi con test.
+
+Restano, fuori dal criterio, per le fasi successive: il contenuto opzionale (`/OC`: livelli nascosti,
+0000337 prima pagina), gli aspetti generati per campi modulo e FreeText senza `/AP`, i contorni riempiti
+con un pattern (oggi in tinta unita).
 
 **6m (2026-10-01):** il ritocco delle linee sottili, la *stroke adjustment* di §10.7.5 come la fanno
 pdftoppm e Acrobat ("migliora linee sottili"). Prima un tratto sottile, portato a un pixel, cadeva a

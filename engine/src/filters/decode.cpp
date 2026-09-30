@@ -109,14 +109,9 @@ Result<const Dict*> parms_at(const Object* decode_parms, std::size_t index, std:
   if (array == nullptr || array->size() != filter_count) {
     return make_error(ErrorCode::kSyntax, "/DecodeParms must be a dictionary or an array matching /Filter");
   }
-  const Object& entry = (*array)[index];
-  if (entry.is_null()) {
-    return nullptr;
-  }
-  if (const Dict* dict = entry.as_dict()) {
-    return dict;
-  }
-  return make_error(ErrorCode::kSyntax, "/DecodeParms entries must be dictionaries or null");
+  // An entry that is not a dictionary — null, or what some writers put for it (the string "(null)", seen
+  // in the SafeDocs corpus) — means no parameters, as every reader takes it.
+  return (*array)[index].as_dict();
 }
 
 }  // namespace

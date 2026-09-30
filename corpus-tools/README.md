@@ -28,3 +28,21 @@ ASan's own RSS limit for Capriole). No network namespace (not available unprivil
 do not use the network, and corpus files must never be opened with anything else.
 
 Requirements: python3, qpdf, mupdf-tools, poppler-utils, prlimit (util-linux), unzip, curl.
+
+## Pixel comparison of the rendering (PLAN.md phase 6, exit criterion)
+
+```sh
+cmake --preset release && cmake --build --preset release     # cpdf, optimised
+scripts/fetch_resources.sh                                     # the resource pack (CMaps, CJK fonts, SWOP)
+nice -n 10 corpus-tools/compare_render.py ../CORPORA/safedocs/0000 --cpdf build/release/tools/cpdf/cpdf \
+    --pages 1000 --jobs 3 --report-dir ../CORPORA/reports --name render-safedocs-0000
+```
+
+One page per file, chosen by a hash of `--seed` and the file name (the same sample at every run, not only
+first pages), drawn by Capriole, `pdftoppm` and `mutool draw` at 72 dpi from the CropBox. Similarity: the
+share of pixels differing by at most 32/255 per channel after a 1-pixel blur (anti-aliasing is not a
+difference). A page **passes** when it is at least 0.95 similar to one reference (with two references,
+the majority is one agreeing reference); **strict** when close to both. The summary also gives how
+often the two references agree with each other — the ceiling of what "close to both" can reach —,
+failures by category (from Capriole's warnings), the 30 worst pages side by side in `worst/`, and
+regressions against the previous run of the same `--name`. Exit criterion of phase 6: pass rate ≥ 95%.

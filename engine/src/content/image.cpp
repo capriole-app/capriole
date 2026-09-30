@@ -144,8 +144,43 @@ std::uint8_t byte_of(double v) { return static_cast<std::uint8_t>(std::lround(st
 
 // The image's own transparency: a soft mask image (§11.6.5.3) wins over /Mask (§8.9.6, the stencil
 // form here: colour keys are applied while the samples are read). n: colour components of space.
+// A mask finer than its image — a one-colour image under a detailed mask is how some writers put text in
+// as pictures — sets the resolution: the image is enlarged to the mask's size (nearest sample), within
+// the per-image limit, instead of the mask being reduced to the image's (which loses its shape).
+void enlarge_to_mask(Document& document, const Object& mask, graphics::ImagePixels& image) {
+  auto resolved = document.resolve(mask);
+  const model::Stream* stream = resolved ? resolved->as_stream() : nullptr;
+  if (stream == nullptr) {
+    return;
+  }
+  const std::int64_t mw = integer(document, stream->dict, "Width", 0);
+  const std::int64_t mh = integer(document, stream->dict, "Height", 0);
+  const std::int64_t w = std::max<std::int64_t>(image.width, mw);
+  const std::int64_t h = std::max<std::int64_t>(image.height, mh);
+  constexpr std::int64_t kMaxPixels = ImageLimits{}.max_pixels;
+  if ((w == image.width && h == image.height) || w > kMaxSide || h > kMaxSide || w * h > kMaxPixels || image.width < 1 || image.height < 1) {
+    return;
+  }
+  std::vector<std::uint8_t> rgba(static_cast<std::size_t>(w * h) * 4);
+  for (std::int64_t y = 0; y < h; ++y) {
+    const std::int64_t sy = y * image.height / h;
+    for (std::int64_t x = 0; x < w; ++x) {
+      const std::int64_t sx = x * image.width / w;
+      std::copy_n(&image.rgba[static_cast<std::size_t>((sy * image.width) + sx) * 4], 4, &rgba[static_cast<std::size_t>((y * w) + x) * 4]);
+    }
+  }
+  image.width = static_cast<std::int32_t>(w);
+  image.height = static_cast<std::int32_t>(h);
+  image.rgba = std::move(rgba);
+}
+
 void apply_transparency(Document& document, const model::Dict& dict, const ColorSpace& space, std::size_t n, graphics::ImagePixels& image, Warnings& warnings) {
   graphics::ImagePixels* pixels = &image;
+  if (const Object* smask = dict.find("SMask")) {
+    enlarge_to_mask(document, *smask, image);
+  } else if (const Object* mask = dict.find("Mask")) {
+    enlarge_to_mask(document, *mask, image);
+  }
   const std::size_t count = static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height);
   if (const Object* smask = dict.find("SMask")) {
     auto alpha = single_channel(document, *smask, pixels->width, pixels->height, false, warnings);
