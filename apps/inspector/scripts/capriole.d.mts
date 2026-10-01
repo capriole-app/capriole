@@ -36,6 +36,10 @@ export interface CaprioleModule {
   ): number;
   _capriole_resource_add(name: number, data: number, size: number): number;
   _capriole_last_missing_resources_json(out: number): number;
+  _capriole_document_pages_rotate(document: number, pages: number, count: number, degrees: number): number;
+  _capriole_document_pages_arrange(document: number, order: number, count: number): number;
+  _capriole_document_pages_import(document: number, source: number, pages: number, count: number, at: number): number;
+  _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,
     incremental: number,

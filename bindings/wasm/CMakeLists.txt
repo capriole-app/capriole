@@ -25,6 +25,10 @@ set(_capriole_exports
   _capriole_document_page_text_json
   _capriole_document_stream_data
   _capriole_document_save
+  _capriole_document_save_compact
+  _capriole_document_pages_rotate
+  _capriole_document_pages_arrange
+  _capriole_document_pages_import
   _capriole_resource_add
   _capriole_last_missing_resources_json
   _malloc

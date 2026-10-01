@@ -148,9 +148,13 @@ Result<Document> Document::build(std::unique_ptr<ByteSource>& source, const Open
     document.trailer_.erase(key);
   }
 
-  // Next number: past both /Size and the highest number the xref actually uses.
+  // Next number: past both /Size and the highest number the xref actually uses — unless /Size is far
+  // beyond what the file has (a hostile value): new objects would then get numbers a full save has to
+  // list one by one in its cross-reference table (gigabytes for /Size 100000000).
   std::uint64_t next = xref->entries.empty() ? 1 : static_cast<std::uint64_t>(xref->entries.rbegin()->first) + 1;
-  if (const auto size = document.trailer_.find("Size") != nullptr ? document.trailer_.find("Size")->as_integer() : std::nullopt; size && *size > 0) {
+  constexpr std::uint64_t kMaxSizeSlack = 100'000;
+  if (const auto size = document.trailer_.find("Size") != nullptr ? document.trailer_.find("Size")->as_integer() : std::nullopt;
+      size && *size > 0 && static_cast<std::uint64_t>(*size) <= next + kMaxSizeSlack) {
     next = std::max(next, static_cast<std::uint64_t>(*size));
   }
   document.next_number_ = static_cast<std::uint32_t>(std::min<std::uint64_t>(next, std::numeric_limits<std::uint32_t>::max()));
@@ -221,6 +225,10 @@ Result<Document::Slot*> Document::slot(std::uint32_t number) {
 
 void Document::note(repair::RepairKind kind, std::string description) {
   constexpr std::size_t kMaxNotes = 1000;
+  // The same repair found again (the page tree is walked anew after every edit) is listed once.
+  if (std::ranges::any_of(repairs_, [&](const repair::RepairNote& note) { return note.kind == kind && note.description == description; })) {
+    return;
+  }
   if (repairs_.size() < kMaxNotes) {
     repairs_.push_back(repair::RepairNote{.kind = kind, .description = std::move(description)});
   } else if (repairs_.size() == kMaxNotes) {

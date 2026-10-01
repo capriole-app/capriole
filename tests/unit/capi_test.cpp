@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -213,6 +214,43 @@ TEST(CApiDocument, PageText) {
   EXPECT_EQ(capriole_document_page_text_json(document, 1, CAPRIOLE_TEXT_ORDER_CONTENT, &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
   EXPECT_EQ(capriole_document_page_text_json(nullptr, 0, CAPRIOLE_TEXT_ORDER_CONTENT, &json), CAPRIOLE_ERROR_INVALID_ARGUMENT);
   capriole_document_close(document);
+}
+
+TEST(CApiDocument, PageOperations) {
+  // Two documents of one page each (the sample has a content stream): import, duplicate, rotate,
+  // delete, then a compact save that reads back with the expected pages.
+  capriole_document* document = open_document(sample_pdf());
+  capriole_document* source = open_document(sample_pdf());
+  const std::uint32_t first = 0;
+  ASSERT_EQ(capriole_document_pages_import(document, source, &first, 1, 1), CAPRIOLE_OK) << capriole_last_error_message();
+  capriole_document_close(source);
+  const std::array<std::uint32_t, 3> order = {1, 0, 0};
+  ASSERT_EQ(capriole_document_pages_arrange(document, order.data(), order.size()), CAPRIOLE_OK);
+  const std::uint32_t last = 2;
+  ASSERT_EQ(capriole_document_pages_rotate(document, &last, 1, 270), CAPRIOLE_OK);
+  EXPECT_EQ(capriole_document_pages_rotate(document, &last, 1, 30), CAPRIOLE_ERROR_UNSUPPORTED);
+  const std::uint32_t past = 3;
+  EXPECT_EQ(capriole_document_pages_rotate(document, &past, 1, 90), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(capriole_document_pages_arrange(document, order.data(), 0), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(capriole_document_pages_import(document, nullptr, &first, 1, 0), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  const std::array<std::uint32_t, 2> two = {0, 2};
+  ASSERT_EQ(capriole_document_pages_arrange(document, two.data(), two.size()), CAPRIOLE_OK);
+
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  ASSERT_EQ(capriole_document_save_compact(document, nullptr, &data, &size), CAPRIOLE_OK);
+  const std::string saved(reinterpret_cast<const char*>(data), size);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  capriole_free(data);
+  capriole_document_close(document);
+  capriole_document* reopened = open_document(saved);
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_summary_json(reopened, &json), CAPRIOLE_OK);
+  const std::string summary = take_json(json);
+  EXPECT_NE(summary.find(R"("repairs":[])"), std::string::npos) << summary;
+  ASSERT_EQ(capriole_document_page_content_json(reopened, 1, 10, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find("Hi"), std::string::npos);
+  EXPECT_EQ(capriole_document_page_content_json(reopened, 2, 10, &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  capriole_document_close(reopened);
 }
 
 TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {

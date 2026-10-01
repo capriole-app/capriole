@@ -66,3 +66,17 @@ references agree with each other, failures by kind (content, order, nothing extr
 pages with their three texts in `worst/`, and regressions against the previous run of the same `--name`.
 `--reading-order layout` measures Capriole's column order instead of the content's. Exit criterion of
 phase 7: pass rate ≥ 95%.
+
+## Page operations (PLAN.md phase 8a, exit criterion)
+
+```sh
+nice -n 10 corpus-tools/check_pages.py ../CORPORA/safedocs/0000 --cpdf build/release/tools/cpdf/cpdf \
+    --files 200 --jobs 3 --report-dir ../CORPORA/reports --name pages-safedocs-0000
+```
+
+For each file (hash order of `--seed`), saved fully first, `cpdf` rotates a page (plainly and
+incrementally), arranges three pages, extracts one and merges it with the whole file. Each output must
+pass `qpdf --check` no worse than the original, and its pages must match the pages they come from as
+pdftoppm draws them (similarity ≥ 0.99 with the metric of compare_render.py); a rotated page is checked
+by its rotation (`pdfinfo`) and by rotating it back, which must give the original pixels. Exit criterion
+of phase 8a: every file passes.

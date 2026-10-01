@@ -22,6 +22,7 @@ add_library(capriole_engine STATIC
   src/graphics/svg.cpp
   src/render/blend.cpp
   src/render/png.cpp
+  src/edit/pages.cpp
   src/render/raster.cpp
   src/text/extract.cpp
   src/filters/basic.cpp

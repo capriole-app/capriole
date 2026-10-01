@@ -199,13 +199,21 @@ TEST(Document, InMemoryStreamsDecodeThroughTheirFilters) {
   EXPECT_EQ(data->size(), 18U);
 }
 
-TEST(Document, HostileSizeCannotWrapObjectNumbers) {
+TEST(Document, AHostileSizeDoesNotSetTheNextObjectNumber) {
+  // /Size far beyond the objects the file has (it could also wrap the numbers): new objects continue
+  // from the highest number in use — a full save lists every number up to the last in its table. A
+  // /Size a little larger than that is honoured.
   PdfBuilder b;
   b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
   b.add_object(2, "<</Type/Pages/Kids[]/Count 0>>");
   b.finish_table("/Size 99999999999/Root 1 0 R");
   Document document = open_ok(b.str());
-  EXPECT_EQ(document.add(Object(1)).error().code, ErrorCode::kLimitExceeded);
+  EXPECT_EQ(document.add(Object(1))->number, 3U);
+  PdfBuilder slack;
+  slack.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  slack.add_object(2, "<</Type/Pages/Kids[]/Count 0>>");
+  slack.finish_table("/Size 10/Root 1 0 R");
+  EXPECT_EQ(open_ok(slack.str()).next_object_number(), 10U);
 }
 
 }  // namespace

@@ -733,12 +733,47 @@ che non passano: font senza informazioni sul testo (i riferimenti emettono codic
 complesse (devanagari, arabo in ordine visivo), testo verticale CJK (mutool lo spezza per carattere,
 noi teniamo le parole), moduli disegnati fuori ordine (pdftotext li riordina meglio).
 
-## Fase 8 — Prime funzioni utente e app
+## Fase 8 — Prime funzioni utente e app — 🔜 in corso
 
 In ordine di valore/rischio: operazioni sulle pagine (unisci, dividi, riordina, ruota) → annotazioni
 → moduli AcroForm → allegati/Factur-X → redaction reale → firma PAdES → PDF/A → **editing del testo**.
-In parallelo nasce la **UI web** (❓ framework: proposta Svelte 5, coerente con gli altri progetti del
-workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri).
+In parallelo nasce la **UI web** (Svelte 5, ADR 0008) che usa il modulo WASM in un Worker; poi la shell
+desktop (Tauri, ADR 0008).
+
+Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
+app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
+motore in `packages/engine-client`) · **8c** shell desktop Tauri `apps/desktop` · 8d annotazioni · 8e
+moduli AcroForm · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
+testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
+
+**8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
+`rotate_pages` (multipli di 90°, sopra la rotazione ereditata; tocca solo le pagine),
+`arrange_pages` (nuovo ordine: omesse = eliminate, ripetute = duplicate, con le annotazioni copiate
+tranne widget e popup), `import_pages` (copia profonda da un altro documento, rinumerata, ogni oggetto
+una volta; gli stream lasciano il file sorgente — decifrati, ancora codificati —; i riferimenti a pagine
+non importate diventano null, le destinazioni per nome cadono, struttura dei tag e articoli no; i campi
+modulo entrano nell'`/AcroForm` rinominati `nome_2`… se il nome è preso, con le risorse predefinite
+della sorgente). Riordino e import riscrivono l'albero piatto sotto la radice esistente, cancellano i
+nodi intermedi e portano sulle pagine spostate gli attributi ereditati; le pagine già sotto la radice
+non si toccano (salvataggio incrementale minimo). Le modifiche si rifiutano su un documento che ha avuto
+bisogno di riparazioni: prima un salvataggio completo (l'app lo farà all'apertura).
+Writer: `SaveOptions::drop_unreachable` (salvataggio completo dei soli oggetti raggiungibili: estrarre una
+pagina da 394 scrive 30 oggetti invece di 5.000), e quattro difetti del salvataggio completo di file
+danneggiati trovati dal fuzzer delle pagine e corretti, con test: radice dell'albero mancante (ora un
+nuovo oggetto, e il catalogo vi punta), catalogo che è anche l'unica pagina (la pagina prende un numero
+nuovo), riferimenti a oggetti assenti (scritti null: nessun oggetto aggiunto dopo può prenderne il
+numero), numeri d'oggetto lontanissimi (la tabella xref elencava ogni numero fino al più alto — gigabyte
+per un file di 341 byte: ora sottosezioni; `/Size` uno oltre l'ultimo definito). E un `/Size` ostile non
+fissa più il prossimo numero d'oggetto; le note di riparazione ripetute si elencano una volta.
+`cpdf rotate|arrange|delete-pages [--incremental]`, `extract`, `split`, `merge`; API C
+`capriole_document_pages_rotate|arrange|import`, `capriole_document_save_compact` (anche nel modulo WASM);
+fuzz target `fuzz_pages` (operazioni scelte dai byte, salvataggio completo e incrementale, rilettura:
+dopo le correzioni 368.000 esecuzioni in 15 minuti, pulito).
+Criterio: `corpus-tools/check_pages.py` su 200 file di SafeDocs 0000 (seme `capriole-phase-8a`): ruota
+una pagina (anche incrementale) — rotazione letta da Poppler, e ruotandola indietro i pixel tornano gli
+stessi —, riordina tre pagine, estrae una pagina, unisce: `qpdf --check` mai peggiore dell'originale e
+pagine identiche a quelle di partenza (pdftoppm, somiglianza ≥ 0,99). **200 / 200 file**; rapporto in
+`CORPORA/reports/pages-safedocs-0000-20261001-161458/`.
 
 ---
 
@@ -755,6 +790,6 @@ workspace) che usa il modulo WASM in un Worker; poi la shell desktop (❓ Tauri)
 | ~~Ordine di lettura del testo~~ | fase 7 | **deciso: ordine del contenuto** (ADR 0007), misurato |
 | Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |
 | Firma qualificata nel browser | fase 8 | smart card non accessibili dal web → desktop o firma remota |
-| Framework UI / shell desktop | fase 8 | Svelte 5 + Tauri proposto |
+| ~~Framework UI / shell desktop~~ | fase 8 | **decisi: Svelte 5 + Tauri** (ADR 0008) |
 | Package manager (vcpkg?) | fase 6 | quando le dipendenze native diventano 5+ |
 | Marchio/dominio/GitHub org | pubblicazione | non tecnico |

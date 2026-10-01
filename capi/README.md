@@ -103,3 +103,19 @@ columns). Unlike the other functions, the text here is Unicode: the JSON is ASCI
 ADR 0002) at the requested dpi: `width` × `height` pixels of straight RGBA, rows top to bottom, on an
 opaque white page, released with `capriole_free`. Bitmaps above 50 million pixels are refused with
 `CAPRIOLE_ERROR_LIMIT_EXCEEDED` (A4 at 600 dpi is 35 million).
+
+## Page operations
+
+`capriole_document_pages_rotate`, `capriole_document_pages_arrange` and `capriole_document_pages_import`
+change the open document in memory (engine: `edit/pages.hpp`, PLAN.md 8a); a save keeps the result.
+Rotation adds a multiple of 90° to each page's rotation and touches only those pages. Arranging lists
+the pages to keep, in order, by their current index: left out means deleted, listed twice means
+duplicated. Importing copies pages of another open document, with what they use (contents, resources,
+annotations; form fields join the form, renamed when their name is taken), before page `at`.
+Merging is an import of every page at the end; extracting is an arrangement followed by
+`capriole_document_save_compact`, a full save that leaves out the objects nothing reaches any more;
+splitting is extracting from fresh copies of the document.
+
+Arranging and importing write the page tree anew, flat (the root lists every page); pages that move
+from under an intermediate node take the attributes they inherited from it. References to deleted
+pages (outline items, links) read as null afterwards.

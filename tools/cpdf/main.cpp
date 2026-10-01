@@ -3,6 +3,7 @@
 // It grows with the engine: every capability gets a subcommand here first, so it can be exercised
 // on real files and by the corpus runner before any UI exists.
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cstdint>
@@ -14,10 +15,12 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "capriole/content/content_parser.hpp"
@@ -27,6 +30,7 @@
 #include "capriole/core/source_reader.hpp"
 #include "capriole/core/version.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/edit/pages.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
 #include "capriole/model/text_string.hpp"
@@ -73,6 +77,16 @@ void print_usage() {
                "                  line): the content's order (default) or by columns; --words: one word per\n"
                "                  line with its box (points, top-left origin) and where its first character\n"
                "                  comes from\n"
+               "  rotate [--incremental] <file> <pages> <degrees> <output>\n"
+               "                  rotate pages by a multiple of 90 degrees (clockwise; negative: counter)\n"
+               "  arrange [--incremental] <file> <pages> <output>\n"
+               "                  keep these pages in this order (left out: deleted; listed twice: duplicated)\n"
+               "  delete-pages [--incremental] <file> <pages> <output>\n"
+               "  extract <file> <pages> <output>\n"
+               "                  a new file with these pages only (what they do not use is left out)\n"
+               "  split <file> <n> <prefix>  every n pages into prefix-1.pdf, prefix-2.pdf, ...\n"
+               "  merge <output> <file> <file>...  the first file with the pages of the others appended\n"
+               "                  pages: 1-based, comma-separated: 3 · 1-4 · 6- · -2 · 5-1 (backwards)\n"
                "  content <file> <page>\n"
                "                  print the operations of a page's content stream (page from 1)\n"
                "  save [--incremental] [--moddate D:...] <file> <output>\n"
@@ -501,16 +515,14 @@ int cmd_pages(std::string_view path) {
   return kExitOk;
 }
 
-int cmd_save(std::string_view path, std::string_view output, bool incremental, const capriole::writer::SaveOptions& options) {
-  auto document = open_document(path);
-  if (!document) {
-    return fail(path, document.error());
-  }
+// Saves document to output and says what was written.
+int write_document(capriole::Document& document, std::string_view path, std::string_view output, bool incremental,
+                   const capriole::writer::SaveOptions& options) {
   auto sink = capriole::writer::FileSink::create(output);
   if (!sink) {
     return fail(output, sink.error());
   }
-  auto report = incremental ? capriole::writer::save_incremental(*document, **sink, options) : capriole::writer::save_full(*document, **sink, options);
+  auto report = incremental ? capriole::writer::save_incremental(document, **sink, options) : capriole::writer::save_full(document, **sink, options);
   if (!report) {
     return fail(path, report.error());
   }
@@ -524,9 +536,145 @@ int cmd_save(std::string_view path, std::string_view output, bool incremental, c
   if (report->page_tree_rewritten) {
     std::cout << ", page tree rewritten";
   }
+  if (report->objects_dropped > 0) {
+    std::cout << std::format(", {} unused objects left out", report->objects_dropped);
+  }
   std::cout << '\n';
-  for (const auto& note : document->repairs()) {
+  for (const auto& note : document.repairs()) {
     std::cout << std::format("  repaired ({}): {}\n", capriole::repair::to_string(note.kind), note.description);
+  }
+  return kExitOk;
+}
+
+int cmd_save(std::string_view path, std::string_view output, bool incremental, const capriole::writer::SaveOptions& options) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  return write_document(*document, path, output, incremental, options);
+}
+
+// A page list for count pages, from 1: "3", "1-4", "6-" (to the end), "-2" (from the first), "5-1"
+// (backwards), comma-separated; as indices from 0, in the order written.
+std::optional<std::vector<std::uint32_t>> parse_pages(std::string_view text, std::size_t count) {
+  std::vector<std::uint32_t> pages;
+  constexpr std::size_t kMaxListed = 1'000'000;
+  while (!text.empty()) {
+    const std::size_t comma = text.find(',');
+    const std::string_view item = text.substr(0, comma);
+    text = comma == std::string_view::npos ? std::string_view() : text.substr(comma + 1);
+    const std::size_t dash = item.find('-');
+    std::optional<std::uint64_t> from;
+    std::optional<std::uint64_t> to;
+    if (dash == std::string_view::npos) {
+      from = to = parse_uint(item);
+    } else {
+      from = dash == 0 ? std::optional<std::uint64_t>(1) : parse_uint(item.substr(0, dash));
+      to = dash + 1 == item.size() ? std::optional<std::uint64_t>(count) : parse_uint(item.substr(dash + 1));
+    }
+    if (!from || !to || *from == 0 || *to == 0 || *from > count || *to > count) {
+      return std::nullopt;
+    }
+    const std::int64_t step = *from <= *to ? 1 : -1;
+    for (auto page = static_cast<std::int64_t>(*from);; page += step) {
+      if (pages.size() >= kMaxListed) {
+        return std::nullopt;
+      }
+      pages.push_back(static_cast<std::uint32_t>(page - 1));
+      if (std::cmp_equal(page, *to)) {
+        break;
+      }
+    }
+  }
+  if (pages.empty()) {
+    return std::nullopt;
+  }
+  return pages;
+}
+
+std::size_t page_count(capriole::Document& document) {
+  auto pages = document.page_refs();
+  return pages ? pages->size() : 0;
+}
+
+// rotate, arrange, delete-pages, extract: an operation on the pages of one file, written to output.
+int cmd_pages_edit(std::string_view command, std::string_view path, std::string_view list, std::int32_t degrees, std::string_view output, bool incremental) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  const std::size_t count = page_count(*document);
+  const auto pages = parse_pages(list, count);
+  if (!pages) {
+    std::cerr << std::format("cpdf: {}: not a page list for pages 1..{}: {}\n", path, count, list);
+    return kExitUsage;
+  }
+  capriole::writer::SaveOptions options;
+  capriole::Result<void> done;
+  if (command == "rotate") {
+    done = capriole::edit::rotate_pages(*document, *pages, degrees);
+  } else if (command == "delete-pages") {
+    std::vector<std::uint32_t> kept;
+    for (std::uint32_t page = 0; page < count; ++page) {
+      if (std::ranges::find(*pages, page) == pages->end()) {
+        kept.push_back(page);
+      }
+    }
+    done = capriole::edit::arrange_pages(*document, kept);
+  } else {
+    done = capriole::edit::arrange_pages(*document, *pages);
+    options.drop_unreachable = command == "extract";
+  }
+  if (!done) {
+    return fail(path, done.error());
+  }
+  return write_document(*document, path, output, incremental, options);
+}
+
+// merge: the first file, with the pages of the others appended.
+int cmd_merge(std::string_view output, std::span<char* const> inputs) {
+  auto document = open_document(inputs[0]);
+  if (!document) {
+    return fail(inputs[0], document.error());
+  }
+  for (const char* input : inputs.subspan(1)) {
+    auto source = open_document(input);
+    if (!source) {
+      return fail(input, source.error());
+    }
+    std::vector<std::uint32_t> all(page_count(*source));
+    std::ranges::iota(all, 0U);
+    if (auto added = capriole::edit::import_pages(*document, *source, all, static_cast<std::uint32_t>(page_count(*document))); !added) {
+      return fail(input, added.error());
+    }
+  }
+  return write_document(*document, inputs[0], output, false, {});
+}
+
+// split: every n pages into its own file, prefix-1.pdf, prefix-2.pdf, ...
+int cmd_split(std::string_view path, std::uint64_t every, std::string_view prefix) {
+  auto probe = open_document(path);
+  if (!probe) {
+    return fail(path, probe.error());
+  }
+  const std::size_t count = page_count(*probe);
+  for (std::size_t first = 0, part = 1; first < count; first += every, ++part) {
+    auto document = open_document(path);
+    if (!document) {
+      return fail(path, document.error());
+    }
+    std::vector<std::uint32_t> pages;
+    for (std::size_t page = first; page < count && page < first + every; ++page) {
+      pages.push_back(static_cast<std::uint32_t>(page));
+    }
+    if (auto done = capriole::edit::arrange_pages(*document, pages); !done) {
+      return fail(path, done.error());
+    }
+    capriole::writer::SaveOptions options;
+    options.drop_unreachable = true;
+    if (const int status = write_document(*document, path, std::format("{}-{}.pdf", prefix, part), false, options); status != kExitOk) {
+      return status;
+    }
   }
   return kExitOk;
 }
@@ -635,6 +783,33 @@ int run(std::span<char*> args) {
       if (const auto page = parse_uint(args[i + 1])) {
         return cmd_text(args[i], *page, words, order, resources_dir);
       }
+    }
+  }
+  if (command == "rotate" || command == "arrange" || command == "delete-pages" || command == "extract") {
+    const bool incremental = args.size() > 2 && std::string_view(args[2]) == "--incremental" && command != "extract";
+    const std::size_t i = incremental ? 3 : 2;
+    const std::size_t expected = command == "rotate" ? 4 : 3;  // file, pages, [degrees,] output
+    if (args.size() == i + expected) {
+      std::int32_t degrees = 0;
+      if (command == "rotate") {
+        const std::string_view angle = args[i + 2];
+        const bool negative = angle.starts_with('-');
+        const auto value = parse_uint(negative ? angle.substr(1) : angle);
+        if (!value || *value > 3600) {
+          print_usage();
+          return kExitUsage;
+        }
+        degrees = static_cast<std::int32_t>(*value) * (negative ? -1 : 1);
+      }
+      return cmd_pages_edit(command, args[i], args[i + 1], degrees, args[i + expected - 1], incremental);
+    }
+  }
+  if (command == "merge" && args.size() >= 4) {
+    return cmd_merge(args[2], args.subspan(3));
+  }
+  if (command == "split" && args.size() == 5) {
+    if (const auto every = parse_uint(args[3]); every && *every > 0) {
+      return cmd_split(args[2], *every, args[4]);
     }
   }
   if (command == "content" && args.size() == 4) {

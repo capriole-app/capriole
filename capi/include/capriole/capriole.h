@@ -149,6 +149,34 @@ capriole_status capriole_document_stream_data(capriole_document* document, uint3
  */
 capriole_status capriole_document_save(capriole_document* document, int incremental, const char* modification_date, uint8_t** data, size_t* size);
 
+/* ── Page operations (edit/pages.hpp) ───────────────────────────────────────────────────── */
+
+/*
+ * Rotates pages (count indices from 0) by degrees clockwise, a multiple of 90 (negative allowed), on top
+ * of their current rotation. CAPRIOLE_ERROR_UNSUPPORTED for another angle, CAPRIOLE_ERROR_OUT_OF_RANGE
+ * for an index past the last page. The document changes in memory; save it to keep the result.
+ */
+capriole_status capriole_document_pages_rotate(capriole_document* document, const uint32_t* pages, size_t count, int degrees);
+
+/*
+ * Makes the document's pages, in this order, its current pages with these indices (from 0): pages left
+ * out are deleted, a page listed again is duplicated. count must be at least 1.
+ */
+capriole_status capriole_document_pages_arrange(capriole_document* document, const uint32_t* order, size_t count);
+
+/*
+ * Copies pages of source (count indices from 0, each at most once) into document, before its page at
+ * (= its page count: appended). Contents, resources and annotations come along; form fields join the
+ * document's form. source stays as it is and may be closed afterwards.
+ */
+capriole_status capriole_document_pages_import(capriole_document* document, capriole_document* source, const uint32_t* pages, size_t count, uint32_t at);
+
+/*
+ * A full save that leaves out the objects nothing references any more (after deleting or extracting
+ * pages); otherwise as capriole_document_save with incremental = 0.
+ */
+capriole_status capriole_document_save_compact(capriole_document* document, const char* modification_date, uint8_t** data, size_t* size);
+
 #ifdef __cplusplus
 }
 #endif

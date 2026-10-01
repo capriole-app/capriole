@@ -22,6 +22,7 @@
 #include "capriole/core/version_config.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/edit/pages.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
 #include "capriole/parser/header.hpp"
@@ -606,6 +607,67 @@ capriole_status capriole_document_stream_data(capriole_document* document, uint3
       return fail(bytes.error());
     }
     return hand_over(*bytes, data, size);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_pages_rotate(capriole_document* document, const uint32_t* pages, size_t count, int degrees) {
+  g_last_error.clear();
+  if (document == nullptr || (pages == nullptr && count > 0)) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto done = capriole::edit::rotate_pages(document->document, std::span(pages, count), degrees);
+    return done ? CAPRIOLE_OK : fail(done.error());
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_pages_arrange(capriole_document* document, const uint32_t* order, size_t count) {
+  g_last_error.clear();
+  if (document == nullptr || (order == nullptr && count > 0)) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto done = capriole::edit::arrange_pages(document->document, std::span(order, count));
+    return done ? CAPRIOLE_OK : fail(done.error());
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_pages_import(capriole_document* document, capriole_document* source, const uint32_t* pages, size_t count, uint32_t at) {
+  g_last_error.clear();
+  if (document == nullptr || source == nullptr || (pages == nullptr && count > 0)) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto added = capriole::edit::import_pages(document->document, source->document, std::span(pages, count), at);
+    return added ? CAPRIOLE_OK : fail(added.error());
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_save_compact(capriole_document* document, const char* modification_date, uint8_t** data, size_t* size) {
+  g_last_error.clear();
+  if (document == nullptr || data == nullptr || size == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    capriole::writer::SaveOptions options;
+    options.drop_unreachable = true;
+    if (modification_date != nullptr) {
+      options.modification_date = modification_date;
+    }
+    capriole::writer::MemorySink sink;
+    auto report = capriole::writer::save_full(document->document, sink, options);
+    if (!report) {
+      return fail(report.error());
+    }
+    return hand_over(sink.data(), data, size);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

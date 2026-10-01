@@ -9,7 +9,10 @@
 // set to its real size — which also fixes the wrong lengths the repair layer read around.
 //
 // Repairs exist only in memory, so what the output must carry is written explicitly: a page tree that
-// needed repairs is written anew, flat, with the pages the repairs found (see page_tree_conforms()).
+// needed repairs is written anew, flat, with the pages the repairs found (see page_tree_conforms()) —
+// under a new root object when the catalog's is missing —, and references to objects the output does
+// not have are written as null, which is what they read as (§7.3.10): no object added to the output
+// later can take their number.
 //
 // Output is deterministic: the same document with the same edits gives the same bytes. The second
 // /ID string is a hash of the bytes written (§14.4); the first is kept from the file when present.
@@ -34,6 +37,9 @@ namespace capriole::writer {
 struct SaveOptions {
   // When set, written as /Info /ModDate (a PDF date string, e.g. "D:20260926213000Z", §7.9.4).
   std::optional<std::string> modification_date;
+  // Full save only: write just the objects reachable from the trailer (/Root, /Info, /Encrypt), as
+  // after deleting or extracting pages, whose objects would otherwise stay in the file unused.
+  bool drop_unreachable = false;
 };
 
 struct SaveReport {
@@ -42,6 +48,8 @@ struct SaveReport {
   std::vector<std::uint32_t> unreadable_objects;
   // The page tree was written anew (flat), because the document's pages were found by repairs.
   bool page_tree_rewritten = false;
+  // Objects left out by SaveOptions::drop_unreachable.
+  std::size_t objects_dropped = 0;
 };
 
 [[nodiscard]] Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOptions& options = {});
