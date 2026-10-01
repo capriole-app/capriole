@@ -27,6 +27,7 @@
 #include "capriole/parser/header.hpp"
 #include "capriole/render/raster.hpp"
 #include "capriole/repair/repair.hpp"
+#include "capriole/text/text.hpp"
 #include "capriole/writer/byte_sink.hpp"
 #include "capriole/writer/save.hpp"
 #include "json.hpp"
@@ -49,10 +50,11 @@ SharedResources& shared_resources() {
 thread_local std::vector<std::string> g_missing_resources;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
 // A page interpreted with the registered resources; what it missed is remembered for this thread.
-capriole::Result<capriole::graphics::DisplayList> interpret(capriole::Document& document, capriole::model::ObjectRef page) {
+capriole::Result<capriole::graphics::DisplayList> interpret(capriole::Document& document, capriole::model::ObjectRef page,
+                                                            capriole::content::Purpose purpose = capriole::content::Purpose::kDraw) {
   SharedResources& shared = shared_resources();
   const std::shared_lock lock(shared.mutex);
-  auto list = capriole::content::interpret_page(document, page, {}, &shared.resources);
+  auto list = capriole::content::interpret_page(document, page, {}, &shared.resources, purpose);
   g_missing_resources = list ? list->missing_resources : std::vector<std::string>{};
   return list;
 }
@@ -432,6 +434,72 @@ capriole_status capriole_document_page_preview_json(capriole_document* document,
     out += R"(],"svg":)";
     capriole::capi::append_json_string(out, capriole::graphics::to_svg(*list));
     out += '}';
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_text_json(capriole_document* document, uint32_t page_index, int order, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  if (order != CAPRIOLE_TEXT_ORDER_CONTENT && order != CAPRIOLE_TEXT_ORDER_LAYOUT) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "unknown reading order");
+  }
+  try {
+    auto& doc = document->document;
+    auto pages = doc.page_refs();
+    if (!pages) {
+      return fail(pages.error());
+    }
+    if (page_index >= pages->size()) {
+      return fail(CAPRIOLE_ERROR_OUT_OF_RANGE, std::format("page index {} out of 0..{}", page_index, pages->size()));
+    }
+    auto list = interpret(doc, (*pages)[page_index], capriole::content::Purpose::kText);
+    if (!list) {
+      return fail(list.error());
+    }
+    const bool layout = order == CAPRIOLE_TEXT_ORDER_LAYOUT;
+    const capriole::text::PageText text = capriole::text::extract(*list, layout ? capriole::text::Order::kLayout : capriole::text::Order::kContent);
+    const auto ref = [](const std::optional<capriole::model::ObjectRef>& r) {
+      return r ? std::format("[{},{}]", r->number, r->generation) : std::string("null");
+    };
+    const auto box = [](const capriole::graphics::Rect& b) { return std::format("{:.2f},{:.2f},{:.2f},{:.2f}", b.x0, b.y0, b.x1, b.y1); };
+    std::string out =
+        std::format(R"({{"page":{},"width":{:.2f},"height":{:.2f},"order":"{}","text":)", page_index, text.width, text.height, layout ? "layout" : "content");
+    capriole::capi::append_json_text(out, text.plain_text());
+    const auto ranges = [&](std::string_view name, const auto& items) {
+      out += std::format(R"(,"{}":[)", name);
+      for (std::size_t i = 0; i < items.size(); ++i) {
+        out += std::format("{}[{},{},{}]", i == 0 ? "" : ",", box(items[i].box), items[i].first, items[i].count);
+      }
+      out += ']';
+    };
+    ranges("blocks", text.blocks);
+    ranges("lines", text.lines);
+    ranges("words", text.words);
+    out += R"(,"chars":[)";
+    for (std::size_t i = 0; i < text.chars.size(); ++i) {
+      const capriole::text::Char& c = text.chars[i];
+      const capriole::text::Provenance& p = c.provenance;
+      out += i == 0 ? "[" : ",[";
+      capriole::capi::append_json_text(out, c.text);
+      out += std::format(",{},{:.2f},{},{},{},{},{},{},{}]", box(c.box), c.size, c.angle, c.invisible ? 1 : 0, ref(p.stream), p.offset, p.operation, p.byte,
+                         ref(p.font));
+    }
+    out += R"(],"warnings":[)";
+    for (std::size_t i = 0; i < list->warnings.size(); ++i) {
+      out += i == 0 ? "" : ",";
+      capriole::capi::append_json_string(out, list->warnings[i]);
+    }
+    out += R"(],"missing_resources":[)";
+    for (std::size_t i = 0; i < list->missing_resources.size(); ++i) {
+      out += i == 0 ? "" : ",";
+      capriole::capi::append_json_string(out, list->missing_resources[i]);
+    }
+    out += "]}";
     return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");

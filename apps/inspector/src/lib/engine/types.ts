@@ -90,6 +90,46 @@ export interface PagePreview {
   svg: string;
 }
 
+/** [x0, y0, x1, y1, first, count]: a box in points (top-left origin), and a range of the next level. */
+export type TextRange = [number, number, number, number, number, number];
+
+/**
+ * A character: text, box (x0, y0, x1, y1), size, angle, invisible (0/1), stream ([number, generation],
+ * null for the page's content), operator offset, operator ordinal, byte of its code, font.
+ */
+export type TextChar = [
+  string,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  0 | 1,
+  [number, number] | null,
+  number,
+  number,
+  number,
+  [number, number] | null,
+];
+
+export type TextOrder = 'content' | 'layout';
+
+export interface PageText {
+  page: number;
+  /** In points, /Rotate applied. */
+  width: number;
+  height: number;
+  order: TextOrder;
+  text: string;
+  blocks: TextRange[];
+  lines: TextRange[];
+  words: TextRange[];
+  chars: TextChar[];
+  warnings: string[];
+  missing_resources: string[];
+}
+
 /** capriole_status values (capriole.h). */
 export const Status = {
   ok: 0,
@@ -120,6 +160,7 @@ export type Request =
   | { kind: 'resourceBase'; base: string }
   | { kind: 'pagePreview'; index: number }
   | { kind: 'pageRender'; index: number; dpi: number }
+  | { kind: 'pageText'; index: number; order: TextOrder }
   | { kind: 'stream'; number: number; decoded: boolean }
   | { kind: 'save'; incremental: boolean; modificationDate: string | null }
   | { kind: 'close' };

@@ -626,7 +626,9 @@ PageText extract(const graphics::DisplayList& list, Order order, const TextLimit
   return page;
 }
 
-std::string PageText::plain() const {
+std::string PageText::plain() const { return model::to_utf8(plain_text()); }
+
+std::u32string PageText::plain_text() const {
   std::u32string out;
   for (std::size_t b = 0; b < blocks.size(); ++b) {
     if (b > 0) {
@@ -642,7 +644,7 @@ std::string PageText::plain() const {
       out += U'\n';
     }
   }
-  return model::to_utf8(out);
+  return out;
 }
 
 }  // namespace capriole::text

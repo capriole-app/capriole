@@ -23,6 +23,8 @@ export class Inspector {
   /** The object on screen, and the ones visited before it (for "back"). */
   current = $state.raw<ObjectInfo | null>(null);
   history = $state.raw<number[]>([]);
+  /** The operation a selected word of a page's text comes from, shown in that page's content. */
+  highlighted = $state.raw<{ page: number; offset: number } | null>(null);
 
   #password = '';
 
@@ -67,6 +69,7 @@ export class Inspector {
       this.passwordRejected = false;
       this.current = null;
       this.history = [];
+      this.highlighted = null;
       this.tab = 'overview';
     } catch (error) {
       if (error instanceof EngineError && error.status === Status.passwordRequired) {

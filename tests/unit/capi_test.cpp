@@ -184,6 +184,37 @@ TEST(CApiDocument, PageRender) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, PageText) {
+  // "Café" and "€1" in Helvetica (WinAnsi: é = 0xE9, € = 0x80) at size 10 on a 100 × 50 page.
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 50]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>");
+  b.add_stream(4, "BT /F1 10 Tf 10 20 Td (Caf\xE9 \x80\x31) Tj ET");
+  b.add_object(5, "<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>");
+  b.finish_table("/Size 6/Root 1 0 R");
+  capriole_document* document = open_document(b.str());
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_page_text_json(document, 0, CAPRIOLE_TEXT_ORDER_CONTENT, &json), CAPRIOLE_OK);
+  const std::string text = take_json(json);
+  EXPECT_NE(text.find(R"({"page":0,"width":100.00,"height":50.00,"order":"content","text":"Caf\u00e9 \u20ac1\n")"), std::string::npos) << text;
+  EXPECT_NE(text.find(R"("blocks":[[)"), std::string::npos);
+  EXPECT_NE(text.find(R"("words":[[)"), std::string::npos);
+  // A character: its text, box, size, angle, invisible, stream (null: the page), operator offset and
+  // ordinal, byte of its code, font.
+  EXPECT_NE(text.find(R"(["\u00e9",)"), std::string::npos);
+  EXPECT_NE(text.find(R"(,10.00,0,0,null,32,3,3,[5,0]])"), std::string::npos) << text;
+  for (const char c : text) {
+    EXPECT_LT(static_cast<unsigned char>(c), 0x80);
+  }
+  ASSERT_EQ(capriole_document_page_text_json(document, 0, CAPRIOLE_TEXT_ORDER_LAYOUT, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("order":"layout")"), std::string::npos);
+  EXPECT_EQ(capriole_document_page_text_json(document, 0, 7, &json), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_page_text_json(document, 1, CAPRIOLE_TEXT_ORDER_CONTENT, &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(capriole_document_page_text_json(nullptr, 0, CAPRIOLE_TEXT_ORDER_CONTENT, &json), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {
   // A Japanese font that is not embedded, with a predefined CMap: both come from the resource pack.
   capriole::test::PdfBuilder b;

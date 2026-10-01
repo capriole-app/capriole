@@ -4,13 +4,13 @@ import { fileURLToPath } from 'node:url';
 
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
 
-/** A one-page PDF with a Flate-free content stream and an /Info title. */
+/** A one-page PDF with a Flate-free content stream (Helvetica text) and an /Info title. */
 function samplePdf(): Buffer {
   const bodies = [
     '<</Type/Catalog/Pages 2 0 R>>',
     '<</Type/Pages/Kids[3 0 R]/Count 1>>',
-    '<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R>>',
-    '<</Length 24>>\nstream\nBT (Ciao capriole) Tj ET\nendstream',
+    '<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>>>',
+    '<</Length 44>>\nstream\nBT /F1 24 Tf 72 700 Td (Ciao capriole) Tj ET\nendstream',
     '<</Title(Prova)>>',
   ];
   let pdf = '%PDF-1.7\n';
@@ -67,15 +67,27 @@ test('opens a PDF and walks from the page to its content stream', async ({ page 
 
   // The page's content stream, as operations.
   await expect(page.getByRole('heading', { name: 'Contenuto della pagina 1' })).toBeVisible();
-  await expect(page.getByText('3 operazioni')).toBeVisible();
+  await expect(page.getByText('5 operazioni')).toBeVisible();
   const operations = page.locator('ol li');
-  await expect(operations).toHaveCount(3);
-  await expect(operations.nth(1)).toContainText('(Ciao capriole)');
-  await expect(operations.nth(1)).toContainText('Tj');
+  await expect(operations).toHaveCount(5);
+  await expect(operations.nth(3)).toContainText('(Ciao capriole)');
+  await expect(operations.nth(3)).toContainText('Tj');
+
+  // The page's text over the preview: a click on a word tells where it comes from — the Tj at offset 39
+  // of the page's content, which the content list highlights.
+  const layer = page.getByTestId('text-layer');
+  await expect(layer).toContainText('Ciao');
+  await layer.getByText('Ciao', { exact: true }).click();
+  const provenance = page.getByTestId('word-provenance');
+  await expect(provenance).toContainText('«Ciao»');
+  await expect(provenance).toContainText('offset 39, operazione n. 4');
+  await expect(operations.nth(3)).toHaveAttribute('aria-current', 'true');
+  await page.getByText('Testo in ordine di lettura').click();
+  await expect(page.getByTestId('page-text')).toHaveText('Ciao capriole');
 
   await page.getByRole('button', { name: '4 0 R' }).click();
   await expect(page.getByRole('heading', { name: 'Oggetto 4 0' })).toBeVisible();
-  await expect(page.locator('pre')).toHaveText('BT (Ciao capriole) Tj ET');
+  await expect(page.locator('pre')).toHaveText('BT /F1 24 Tf 72 700 Td (Ciao capriole) Tj ET');
 
   await page.getByRole('button', { name: 'Indietro' }).click();
   await expect(page.getByRole('heading', { name: 'Oggetto 3 0' })).toBeVisible();

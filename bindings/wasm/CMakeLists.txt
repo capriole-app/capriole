@@ -22,6 +22,7 @@ set(_capriole_exports
   _capriole_document_page_content_json
   _capriole_document_page_preview_json
   _capriole_document_page_render
+  _capriole_document_page_text_json
   _capriole_document_stream_data
   _capriole_document_save
   _capriole_resource_add

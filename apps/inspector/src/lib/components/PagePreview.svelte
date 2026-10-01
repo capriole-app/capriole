@@ -1,10 +1,13 @@
 <script lang="ts">
-  // The page as the engine draws it, two ways from the same interpreted page: vector (SVG, text in a
-  // generic font) or raster (the engine's Blend2D renderer, text as glyph boxes). Images the engine
-  // cannot decode yet (JPEG 2000, JBIG2, CCITT) are placeholders in both.
+  // The page as the engine draws it, two ways from the same interpreted page: vector (SVG, glyphs as
+  // outlines) or raster (the engine's Blend2D renderer).
   // The SVG is shown as an image: a browser runs no script and loads nothing from an <img>.
+  // Over either, the page's text (TextLayer): selectable in reading order, each word traced back to the
+  // operator it comes from (TextPanel).
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-  import type { PagePreview, PageRaster } from '$lib/engine/types';
+  import TextLayer from './TextLayer.svelte';
+  import TextPanel from './TextPanel.svelte';
+  import type { PagePreview, PageRaster, TextOrder } from '$lib/engine/types';
   import { getInspector } from '$lib/inspector.svelte';
 
   let { index }: { index: number } = $props();
@@ -23,6 +26,28 @@
   // high-density screens, and bounded: the engine refuses bitmaps beyond 50 million pixels.
   const dpi = $derived(Math.min(96 * (zoom === 'fit' ? 2 : zoom) * (globalThis.devicePixelRatio || 1), 400));
   const raster = $derived(mode === 'raster' ? inspector.engine.pageRender(index, dpi) : null);
+
+  let order = $state<TextOrder>('content');
+  let outlined = $state(false);
+  let selected = $state<number | null>(null);
+  const text = $derived(inspector.engine.pageText(index, order));
+  const orders = [
+    ['content', 'ordine del contenuto'],
+    ['layout', 'per colonne'],
+  ] as const;
+
+  function setOrder(next: TextOrder) {
+    order = next;
+    selected = null;
+  }
+
+  /** A word picked in the text layer: described in the panel, its operator shown in the page's content. */
+  function select(word: number, words: number, offsetOf: (word: number) => number | null) {
+    if (word < 0 || word >= words) return;
+    selected = word;
+    const offset = offsetOf(word);
+    inspector.highlighted = offset === null ? null : { page: index, offset };
+  }
 
   /** Paints the engine's pixels into the canvas. */
   function paint(canvas: HTMLCanvasElement, image: PageRaster) {
@@ -92,44 +117,76 @@
     {@const width = zoom === 'fit' ? '100%' : `${preview.width * zoom * (96 / 72)}px`}
     {@const maxWidth = zoom === 'fit' ? `${preview.width * 2}px` : 'none'}
     <div class="max-h-[80vh] overflow-auto rounded-lg border bg-muted p-3">
-      {#if raster}
-        {#await raster}
-          <p class="text-sm text-muted-foreground">Rendering della pagina…</p>
-        {:then image}
-          <div role="img" aria-label="Anteprima raster della pagina {preview.page + 1}">
-            <canvas
-              {@attach (node) => paint(node, image)}
-              class="mx-auto block bg-white shadow-sm"
-              style:width
-              style:max-width={maxWidth}
-            ></canvas>
-          </div>
-        {:catch error}
-          <p class="rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">
-            {error instanceof Error ? error.message : String(error)}
-          </p>
+      <div class="relative mx-auto" style:width style:max-width={maxWidth}>
+        {#if raster}
+          {#await raster}
+            <p class="text-sm text-muted-foreground">Rendering della pagina…</p>
+          {:then image}
+            <div role="img" aria-label="Anteprima raster della pagina {preview.page + 1}">
+              <canvas {@attach (node) => paint(node, image)} class="block w-full bg-white shadow-sm"></canvas>
+            </div>
+          {:catch error}
+            <p class="rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">
+              {error instanceof Error ? error.message : String(error)}
+            </p>
+          {/await}
+        {:else}
+          <img
+            {@attach (node) => svgImage(node, preview)}
+            alt="Anteprima della pagina {preview.page + 1}"
+            class="block w-full bg-white shadow-sm"
+          />
+        {/if}
+        {#await text then pageText}
+          <TextLayer
+            text={pageText}
+            {selected}
+            {outlined}
+            onselect={(word) =>
+              select(word, pageText.words.length, (w) => {
+                const char = pageText.chars[pageText.words[w]![4]];
+                return char && char[8] === null ? char[9] : null;
+              })}
+          />
         {/await}
-      {:else}
-        <img
-          {@attach (node) => svgImage(node, preview)}
-          alt="Anteprima della pagina {preview.page + 1}"
-          class="mx-auto block bg-white shadow-sm"
-          style:width
-          style:max-width={maxWidth}
-        />
-      {/if}
+      </div>
     </div>
     <p class="mt-2 text-xs text-muted-foreground">
       {mode === 'raster'
-        ? `Raster, dal renderer del motore (Blend2D) a ${Math.round(dpi)} dpi: il testo è disegnato come riquadri dei glifi.`
-        : "Vettoriale, dall'interprete del motore: il testo è in un carattere generico."}
-      Le immagini JPEG 2000, JBIG2 e CCITT sono ancora segnaposto.
+        ? `Raster, dal renderer del motore (Blend2D) a ${Math.round(dpi)} dpi.`
+        : "Vettoriale, dall'interprete del motore (SVG, i glifi come tracciati)."}
+      Sopra, il testo estratto: selezionabile, trasparente.
       {#each Object.entries(kindLabel) as [kind, label] (kind)}
         {#if preview.commands[kind as keyof PagePreview['commands']]}
           · {preview.commands[kind as keyof PagePreview['commands']]} {label}
         {/if}
       {/each}
     </p>
+    <div class="mt-3 flex flex-wrap items-center gap-3">
+      <h4 class="font-semibold">Testo</h4>
+      <div class="flex rounded-md border text-sm" role="group" aria-label="Ordine di lettura">
+        {#each orders as [key, label] (key)}
+          <button
+            type="button"
+            class={['px-2 py-1 not-first:border-s', order === key && 'bg-accent']}
+            aria-pressed={order === key}
+            onclick={() => setOrder(key)}>{label}</button
+          >
+        {/each}
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" bind:checked={outlined} /> riquadri delle parole
+      </label>
+    </div>
+    {#await text}
+      <p class="mt-2 text-sm text-muted-foreground">Estrazione del testo…</p>
+    {:then pageText}
+      <TextPanel text={pageText} {selected} />
+    {:catch error}
+      <p class="mt-2 rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">
+        {error instanceof Error ? error.message : String(error)}
+      </p>
+    {/await}
     {#if preview.warnings.length > 0}
       <details class="mt-2 rounded-md bg-warning-background px-3 py-2 text-sm text-warning">
         <summary class="flex cursor-pointer items-center gap-2">

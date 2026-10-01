@@ -64,7 +64,9 @@ struct PageText {
   std::vector<Line> lines;
   std::vector<Block> blocks;
 
-  // UTF-8: the words of a line separated by spaces, lines by a newline, blocks by an empty line.
+  // The words of a line separated by spaces, lines by a newline, blocks by an empty line; plain() is
+  // the same in UTF-8.
+  [[nodiscard]] std::u32string plain_text() const;
   [[nodiscard]] std::string plain() const;
 };
 

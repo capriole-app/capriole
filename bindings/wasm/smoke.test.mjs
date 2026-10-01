@@ -74,6 +74,13 @@ try {
   assert.equal(page.object.t, 'dict');
   assert.deepEqual(page.object.v[0], ['Type', { t: 'name', v: 'Page' }]);
 
+  // The page has no content: no text, and its size (the default Letter page).
+  assert.equal(m._capriole_document_page_text_json(doc, 0, 0, out), 0, m.UTF8ToString(m._capriole_last_error_message()));
+  const text = takeJson(out);
+  assert.equal(text.text, '');
+  assert.deepEqual(text.chars, []);
+  assert.equal(text.order, 'content');
+
   assert.equal(m._capriole_document_save(doc, 0, 0, out, out + 4), 0);
   const saved = m.HEAPU32[out >> 2];
   const size = m.HEAPU32[(out >> 2) + 1];

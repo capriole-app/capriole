@@ -667,7 +667,17 @@ le parole come multinsieme, F1 ≥ 0,98; **ordine di lettura**: somiglianza dell
 
 Passi: **7a** da glifo a testo (ToUnicode, nomi dei glifi, collezioni CJK, cmap del font; `/ActualText`;
 provenienza e riquadro di ogni glifo) ✅ · **7b** layout (parole, righe, blocchi, ordine di lettura) ✅ ·
-**7c** interfacce (API C, WASM, Inspector con provenienza) · **7d** confronto ufficiale su 1.000 pagine.
+**7c** interfacce (API C, WASM, Inspector con provenienza) ✅ · **7d** confronto ufficiale su 1.000 pagine.
+
+**7c (2026-10-01).** `capriole_document_page_text_json(document, page, order, &json)`: testo semplice,
+blocchi/righe/parole come intervalli con riquadro, ogni carattere con riquadro, corpo, angolo,
+invisibilità e provenienza (stream, offset e ordinale dell'operatore, byte del codice, font); JSON ASCII
+(testo in `\u`), formato in `capi/README.md`; esportata nel modulo WASM (smoke test). Inspector: sopra
+l'anteprima (vettoriale o raster) il **livello di testo** — parole trasparenti e selezionabili nell'ordine
+di lettura, posizionate in frazioni della pagina e dimensionate in unità del contenitore (seguono lo zoom)
+—, l'ordine (contenuto / colonne), i riquadri delle parole a richiesta; la parola selezionata mostra da
+quale operatore e da quale font viene, e l'operatore si evidenzia nel contenuto della pagina (form
+XObject e font sono link all'oggetto). Test e2e del percorso parola → operatore.
 
 **7a + 7b (2026-09-30).** Modulo nuovo `text/` (`capriole/text/text.hpp`, ADR 0007).
 - *Da glifo a testo* (`Font::text`, §9.10.2): `/ToUnicode` per tutti i font (anche Type 3); per i font

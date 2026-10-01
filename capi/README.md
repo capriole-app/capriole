@@ -74,6 +74,31 @@ render, `capriole_last_missing_resources_json` gives the same list as a JSON arr
 `width` and `height` are in points, with /Rotate applied. The SVG is ASCII: text from the document is
 written as character references, so it cannot inject markup.
 
+`capriole_document_page_text_json` (the page's text, phase 7; ADR 0007):
+
+```json
+{"page":0, "width":100.00, "height":50.00, "order":"content", "text":"Caf\u00e9 \u20ac1\n",
+ "blocks":[[x0,y0,x1,y1, first line, line count], …],
+ "lines":[[x0,y0,x1,y1, first word, word count], …],
+ "words":[[x0,y0,x1,y1, first char, char count], …],
+ "chars":[["\u00e9", x0,y0,x1,y1, size, angle, invisible, stream, offset, operation, byte, font], …],
+ "warnings":[…], "missing_resources":[…]}
+```
+
+Coordinates are points on the page as shown — origin at the top left of the crop box, y down, /Rotate
+applied, the same as a rendering at 72 dpi — as JSON numbers (two decimals). `text` is the plain text in
+reading order (words separated by spaces, lines by `\n`, blocks by an empty line); blocks, lines and
+words are consecutive ranges of the next level, in the same order, and `chars` are in reading order. A
+character: its text (one character, a few for a ligature, the whole `/ActualText` of a marked sequence,
+U+FFFD when the font says nothing), its box, the font size as shown, the angle of its baseline (degrees
+clockwise; 90 for text running down), 1 when invisible (render mode 3 or 7, the text layer of a scan),
+and where it comes from: `stream` (`null` for the page's `/Contents`, joined; `[number, generation]`
+for a form XObject), the offset and ordinal (from 0) of the text operator in that stream — the `o` of
+`capriole_document_page_content_json` for the page's own content —, the byte of its code within the
+operator's strings, and the font dictionary (`[number, generation]` or `null`). `order`:
+`CAPRIOLE_TEXT_ORDER_CONTENT` (the content's order, the default) or `CAPRIOLE_TEXT_ORDER_LAYOUT` (by
+columns). Unlike the other functions, the text here is Unicode: the JSON is ASCII with `\uXXXX` escapes.
+
 `capriole_document_page_render` draws the same interpreted page with the engine's rasterizer (Blend2D,
 ADR 0002) at the requested dpi: `width` × `height` pixels of straight RGBA, rows top to bottom, on an
 opaque white page, released with `capriole_free`. Bitmaps above 50 million pixels are refused with

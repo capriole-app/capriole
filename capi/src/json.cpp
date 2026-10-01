@@ -23,6 +23,29 @@ void append_json_string(std::string& out, std::string_view bytes) {
   out += '"';
 }
 
+void append_json_text(std::string& out, std::u32string_view text) {
+  out += '"';
+  for (char32_t c : text) {
+    if (c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF)) {
+      c = 0xFFFD;
+    }
+    if (c == '"' || c == '\\') {
+      out += '\\';
+      out += static_cast<char>(c);
+    } else if (c >= 0x20 && c < 0x7F) {
+      out += static_cast<char>(c);
+    } else if (c == '\n') {
+      out += "\\n";
+    } else if (c < 0x10000) {
+      out += std::format("\\u{:04x}", static_cast<std::uint32_t>(c));
+    } else {
+      const std::uint32_t v = static_cast<std::uint32_t>(c) - 0x10000;
+      out += std::format("\\u{:04x}\\u{:04x}", 0xD800 + (v >> 10U), 0xDC00 + (v & 0x3FFU));
+    }
+  }
+  out += '"';
+}
+
 namespace {
 
 // Integers and reals as strings: int64 values do not all fit a JavaScript number, and a real keeps

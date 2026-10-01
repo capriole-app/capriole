@@ -106,6 +106,20 @@ capriole_status capriole_document_page_preview_json(capriole_document* document,
  */
 capriole_status capriole_document_page_render(capriole_document* document, uint32_t page_index, double dpi, uint8_t** rgba, uint32_t* width, uint32_t* height);
 
+/* Reading orders of capriole_document_page_text_json. */
+#define CAPRIOLE_TEXT_ORDER_CONTENT 0 /* the content's order, joined where the geometry continues (default) */
+#define CAPRIOLE_TEXT_ORDER_LAYOUT 1  /* by columns */
+
+/*
+ * The text of page page_index (0-based) as JSON: the plain text in reading order, its blocks, lines and
+ * words with their boxes, and every character with its box and where it comes from (content stream,
+ * operator, byte of its code, font). Coordinates are points on the page as shown (origin at the top
+ * left of the crop box, /Rotate applied) — a rendering at 72 dpi. order: CAPRIOLE_TEXT_ORDER_*. The
+ * JSON is ASCII (text as \u escapes). Resources the text wanted and did not find:
+ * "missing_resources", as for capriole_document_page_preview_json. Format in capi/README.md.
+ */
+capriole_status capriole_document_page_text_json(capriole_document* document, uint32_t page_index, int order, char** json);
+
 /*
  * Registers a resource pages may need (fonts and CMaps too large to build into the engine: the resource
  * pack of scripts/fetch_resources.sh), by its name in the pack — "cmap/UniJIS-UCS2-H",

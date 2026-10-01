@@ -62,7 +62,14 @@
     {/if}
     <ol class="max-h-[70vh] overflow-auto rounded-lg border bg-card py-2 font-mono text-xs leading-relaxed">
       {#each nested(content.operations) as { operation, depth } (operation.o)}
-        <li class="flex gap-3 px-3 hover:bg-muted">
+        {@const highlighted = inspector.highlighted?.page === index && inspector.highlighted.offset === operation.o}
+        <li
+          class={['flex gap-3 px-3 hover:bg-muted', highlighted && 'bg-primary/20']}
+          aria-current={highlighted ? 'true' : undefined}
+          {@attach (node) => {
+            if (highlighted) node.scrollIntoView({ block: 'nearest' });
+          }}
+        >
           <span class="w-16 shrink-0 text-end text-muted-foreground select-none">{operation.o}</span>
           <span class="inline-flex min-w-0 flex-wrap gap-x-[1ch]" style:padding-inline-start="{depth * 1.25}rem">
             {#each operation.operands as operand, i (i)}<Value value={operand} depth={2} />{/each}

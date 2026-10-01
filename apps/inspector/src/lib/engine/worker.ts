@@ -172,6 +172,14 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
       if (await supplyMissing(m)) raster = render();
       return { value: raster, transfer: [raster.pixels] };
     }
+    case 'pageText': {
+      const order = request.order === 'layout' ? 1 : 0; // CAPRIOLE_TEXT_ORDER_*
+      const text = () =>
+        takeJson(m, (out) => m._capriole_document_page_text_json(requireDocument(), request.index, order, out));
+      let value = text();
+      if (await supplyMissing(m)) value = text();
+      return { value, transfer: [] };
+    }
     case 'stream': {
       const data = takeBytes(m, (outData, outSize) =>
         m._capriole_document_stream_data(requireDocument(), request.number, request.decoded ? 1 : 0, outData, outSize),

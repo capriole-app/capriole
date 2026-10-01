@@ -1,5 +1,15 @@
 // The page's side of the engine worker: one promise per request.
-import type { ObjectInfo, PageContent, PagePreview, PageRaster, Request, Response, Summary } from './types';
+import type {
+  ObjectInfo,
+  PageContent,
+  PagePreview,
+  PageRaster,
+  PageText,
+  Request,
+  Response,
+  Summary,
+  TextOrder,
+} from './types';
 
 export class EngineError extends Error {
   constructor(
@@ -68,6 +78,11 @@ export class EngineClient {
   /** Page `index` (0-based) drawn by the engine's rasterizer at `dpi` dots per inch. */
   pageRender(index: number, dpi: number): Promise<PageRaster> {
     return this.#call({ kind: 'pageRender', index, dpi });
+  }
+
+  /** The text of page `index` (0-based): words, lines, blocks and every character's provenance. */
+  pageText(index: number, order: TextOrder): Promise<PageText> {
+    return this.#call({ kind: 'pageText', index, order });
   }
 
   stream(number: number, decoded: boolean): Promise<ArrayBuffer> {
