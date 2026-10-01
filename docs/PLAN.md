@@ -654,7 +654,7 @@ monte (oggetti illeggibili, filtri immagine della fase 6, nomi di filtro con mai
 **Uscita:** su un campione di 1.000 pagine, differenza di pixel sotto soglia rispetto alla maggioranza
 dei riferimenti ≥ 95% (il "95% raggiungibile" della spec).
 
-## Fase 7 — Estrazione del testo con provenienza (~1–2 mesi) — 🔜 in corso
+## Fase 7 — Estrazione del testo con provenienza (~1–2 mesi) — ✅ completata (2026-10-01)
 
 Glifi → parole → righe → blocchi/colonne; ogni elemento conserva la provenienza (content stream,
 indice dell'operatore, oggetto). Base del modello alto, della ricerca, della redaction e della
@@ -667,7 +667,23 @@ le parole come multinsieme, F1 ≥ 0,98; **ordine di lettura**: somiglianza dell
 
 Passi: **7a** da glifo a testo (ToUnicode, nomi dei glifi, collezioni CJK, cmap del font; `/ActualText`;
 provenienza e riquadro di ogni glifo) ✅ · **7b** layout (parole, righe, blocchi, ordine di lettura) ✅ ·
-**7c** interfacce (API C, WASM, Inspector con provenienza) ✅ · **7d** confronto ufficiale su 1.000 pagine.
+**7c** interfacce (API C, WASM, Inspector con provenienza) ✅ · **7d** confronto ufficiale su 1.000 pagine ✅.
+
+**7d (2026-10-01) — criterio di uscita della fase 7: raggiunto.** Giro ufficiale di
+`corpus-tools/compare_text.py` sulla build release, rapporto in
+`CORPORA/reports/text-safedocs-0000-20261001-141402/`:
+
+| Campione | Pagine | Passano (contenuto ≥ 0,98 e ordine ≥ 0,90, stesso riferimento) | Strette | I riferimenti concordano fra loro |
+|---|---|---|---|---|
+| SafeDocs 0000, seme `capriole-phase-7` | 1.000 | **951 (95,1%)** | 517 (51,7%) | 521/1.000 (52,1%) |
+
+Media del riferimento migliore: contenuto 0,993, ordine 0,988; nessun fallimento né timeout di `cpdf`;
+133 pagine escluse perché nessun riferimento vi trova testo. Il giro di prova del 30 settembre dava 953:
+le due pagine di differenza (0000910, 0000752) sono `|` e `~` scritti in UCS-2 (`UniJIS-UCS2-H`), che
+leggiamo come i caratteri che il file contiene mentre i riferimenti passano per il CID della collezione
+Japan1 e restituiscono `¦` e una tilde combinante: scelta mantenuta. Restano per le fasi successive le
+cause elencate sopra (font senza informazioni, scritture complesse e bidirezionali, CJK verticale, moduli
+disegnati fuori ordine).
 
 **7c (2026-10-01).** `capriole_document_page_text_json(document, page, order, &json)`: testo semplice,
 blocchi/righe/parole come intervalli con riquadro, ogni carattere con riquadro, corpo, angolo,
