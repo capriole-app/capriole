@@ -742,7 +742,7 @@ desktop (Tauri, ADR 0008).
 
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
-motore in `packages/engine-client`) · **8c** shell desktop Tauri `apps/desktop` · 8d annotazioni · 8e
+motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` · 8d annotazioni · 8e
 moduli AcroForm · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
@@ -774,6 +774,22 @@ una pagina (anche incrementale) — rotazione letta da Poppler, e ruotandola ind
 stessi —, riordina tre pagine, estrae una pagina, unisce: `qpdf --check` mai peggiore dell'originale e
 pagine identiche a quelle di partenza (pdftoppm, somiglianza ≥ 0,99). **200 / 200 file**; rapporto in
 `CORPORA/reports/pages-safedocs-0000-20261001-161458/`.
+
+**8b (2026-10-02) — la web app.** `packages/engine-client`: il client del motore (worker WASM, tipi
+del JSON, script che copia il modulo) uscito dall'Inspector, condiviso con un alias di SvelteKit
+(nessun pacchetto npm collegato); nuove richieste: `openForEditing` (un file che ha richiesto
+riparazioni è salvato per intero e riletto in memoria prima di modificarlo, e le riparazioni tornano
+all'interfaccia), `pagesRotate`, `pagesArrange`, `importFile`, `extract` (su una copia: il documento
+aperto non cambia), `saveCompact`. `apps/capriole` (Svelte 5, SvelteKit statico, lo stack
+dell'Inspector): apertura con trascinamento, griglia di miniature disegnate dal motore quando entrano
+in vista, selezione (clic, Ctrl/Cmd, Maiusc, Ctrl/Cmd+A), trascinamento per riordinare (la posizione
+d'arrivo dal puntatore e dalla pagina più vicina, anche negli spazi), frecce della barra per riordinare
+da tastiera, ruota, duplica, elimina (non tutte), inserisci un altro PDF dopo la selezione, estrai,
+annulla (copie intere del documento, fino a 256 MB), salva (compatto, con /ModDate); avviso se il file
+era danneggiato; conferma prima di chiudere o lasciare la pagina con modifiche. Il gate costruisce e
+verifica entrambe le app. Criterio: test e2e dei flussi (ruota, elimina, annulla, sposta, trascina,
+inserisci, estrai, salva — i byte salvati letti per verificare ordine e rotazione —, file danneggiato):
+3/3 verdi, tutto nel browser.
 
 ---
 

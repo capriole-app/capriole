@@ -1,7 +1,7 @@
 // The engine in a worker: loads the WebAssembly module and answers the page's requests through the
 // C API. One document open at a time.
 import createCapriole, { type CaprioleModule } from './generated/capriole.mjs';
-import { Status, type Request, type Response } from './types';
+import { Status, type Request, type Response, type Summary } from './types';
 
 class EngineFailure extends Error {
   constructor(
@@ -14,6 +14,8 @@ class EngineFailure extends Error {
 
 const engine: Promise<CaprioleModule> = createCapriole();
 let documentHandle = 0;
+/** The open document's password: copies of it (extracting pages) are saved encrypted alike. */
+let documentPassword = '';
 
 function check(m: CaprioleModule, status: number): void {
   if (status !== Status.ok) {
@@ -103,6 +105,47 @@ async function supplyMissing(m: CaprioleModule): Promise<boolean> {
   return added;
 }
 
+/** Opens bytes as a document (repairs on) and returns its handle. */
+function openBytes(m: CaprioleModule, bytes: Uint8Array, password: string): number {
+  return withScratch(m, Math.max(bytes.length, 1), (data) => {
+    m.HEAPU8.set(bytes, data);
+    return withString(m, password, (passwordPointer) =>
+      withScratch(m, 4, (out) => {
+        check(m, m._capriole_document_open(data, bytes.length, passwordPointer, 1, out));
+        return m.HEAPU32[out >> 2]!;
+      }),
+    );
+  });
+}
+
+/** Saves a document: full (incremental 0), or compact. */
+function saveBytes(m: CaprioleModule, handle: number, compact: boolean, date: string | null): ArrayBuffer {
+  const save = (datePointer: number) =>
+    takeBytes(m, (outData, outSize) =>
+      compact
+        ? m._capriole_document_save_compact(handle, datePointer, outData, outSize)
+        : m._capriole_document_save(handle, 0, datePointer, outData, outSize),
+    );
+  return date === null ? save(0) : withString(m, date, save);
+}
+
+/** Calls fn with page indices as a uint32_t array in the module's memory. */
+function withIndices<T>(m: CaprioleModule, indices: number[], fn: (pointer: number) => T): T {
+  return withScratch(m, Math.max(indices.length, 1) * 4, (pointer) => {
+    m.HEAPU32.set(indices, pointer >> 2);
+    return fn(pointer);
+  });
+}
+
+function summaryOf(m: CaprioleModule, handle: number): unknown {
+  return takeJson(m, (out) => m._capriole_document_summary_json(handle, out));
+}
+
+function replaceDocument(m: CaprioleModule, handle: number): void {
+  if (documentHandle !== 0) m._capriole_document_close(documentHandle);
+  documentHandle = handle;
+}
+
 function requireDocument(): number {
   if (documentHandle === 0) {
     throw new EngineFailure(Status.invalidArgument, 'no document is open');
@@ -121,6 +164,7 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         documentHandle = 0;
       }
       const bytes = new Uint8Array(request.data);
+      documentPassword = request.password;
       documentHandle = withScratch(m, Math.max(bytes.length, 1), (data) => {
         m.HEAPU8.set(bytes, data);
         return withString(m, request.password, (password) =>
@@ -194,6 +238,66 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         );
       const data =
         request.modificationDate === null ? save(0) : withString(m, request.modificationDate, (date) => save(date));
+      return { value: data, transfer: [data] };
+    }
+    case 'openForEditing': {
+      const opened = openBytes(m, new Uint8Array(request.data), request.password);
+      replaceDocument(m, opened);
+      documentPassword = request.password;
+      let summary = summaryOf(m, opened) as Summary;
+      const repairs = summary.repairs;
+      if (repairs.length > 0) {
+        // What the repairs found is written out, and the document read back from it is the one edited.
+        const sound = openBytes(m, new Uint8Array(saveBytes(m, opened, false, null)), request.password);
+        replaceDocument(m, sound);
+        summary = summaryOf(m, sound) as Summary;
+      }
+      return { value: { summary, repairs }, transfer: [] };
+    }
+    case 'pagesRotate': {
+      const document = requireDocument();
+      withIndices(m, request.pages, (pages) =>
+        check(m, m._capriole_document_pages_rotate(document, pages, request.pages.length, request.degrees)),
+      );
+      return { value: summaryOf(m, document), transfer: [] };
+    }
+    case 'pagesArrange': {
+      const document = requireDocument();
+      withIndices(m, request.order, (order) =>
+        check(m, m._capriole_document_pages_arrange(document, order, request.order.length)),
+      );
+      return { value: summaryOf(m, document), transfer: [] };
+    }
+    case 'importFile': {
+      const document = requireDocument();
+      const source = openBytes(m, new Uint8Array(request.data), request.password);
+      try {
+        const pages = (summaryOf(m, source) as Summary).pages ?? [];
+        withIndices(
+          m,
+          pages.map((_, i) => i),
+          (indices) => check(m, m._capriole_document_pages_import(document, source, indices, pages.length, request.at)),
+        );
+      } finally {
+        m._capriole_document_close(source);
+      }
+      return { value: summaryOf(m, document), transfer: [] };
+    }
+    case 'extract': {
+      // On a copy: the document as it is now, saved and read back, keeps only these pages.
+      const copy = openBytes(m, new Uint8Array(saveBytes(m, requireDocument(), false, null)), documentPassword);
+      try {
+        withIndices(m, request.pages, (pages) =>
+          check(m, m._capriole_document_pages_arrange(copy, pages, request.pages.length)),
+        );
+        const data = saveBytes(m, copy, true, null);
+        return { value: data, transfer: [data] };
+      } finally {
+        m._capriole_document_close(copy);
+      }
+    }
+    case 'saveCompact': {
+      const data = saveBytes(m, requireDocument(), true, request.modificationDate);
       return { value: data, transfer: [data] };
     }
     case 'close':

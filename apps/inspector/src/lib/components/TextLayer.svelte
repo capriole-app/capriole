@@ -3,7 +3,7 @@
   // engine's). Where a selection starts — a click puts the caret there — picks the word to describe.
   // Positions are fractions of the page, the font size a fraction of the layer's width (container units),
   // so the layer follows any zoom.
-  import type { PageText } from '$lib/engine/types';
+  import type { PageText } from '@capriole/engine-client';
 
   let {
     text,

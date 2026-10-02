@@ -21,7 +21,7 @@ RUN git clone --depth 1 https://github.com/emscripten-core/emsdk.git /opt/emsdk 
 
 ENV EMSDK=/opt/emsdk
 
-# Node 22 for the Inspector app (apps/inspector pins it: .nvmrc, engines, engine-strict). The one in
+# Node 22 for the apps (apps/inspector, apps/capriole pin it: .nvmrc, engines, engine-strict). The one in
 # emsdk is Node 24 and stays emsdk's. The archive is checked against the official SHASUMS256.txt,
 # fetched over TLS at build time — TODO: pin the hash here, as for the other dependencies.
 ARG NODE_VERSION=22.23.3

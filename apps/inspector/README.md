@@ -12,7 +12,7 @@ A demo and a development tool now; later the debug panel of the real app (DOCS/C
 desktop app will be this same web UI inside Tauri).
 
 ```sh
-# once: the engine as WebAssembly (from the repository root)
+# once: the engine as WebAssembly (from the repository root); its client is packages/engine-client
 source ~/emsdk/emsdk_env.sh && cmake --preset wasm && cmake --build --preset wasm
 cd apps/inspector
 npm ci

@@ -5,6 +5,7 @@ import type {
   PagePreview,
   PageRaster,
   PageText,
+  EditableDocument,
   Request,
   Response,
   Summary,
@@ -83,6 +84,39 @@ export class EngineClient {
   /** The text of page `index` (0-based): words, lines, blocks and every character's provenance. */
   pageText(index: number, order: TextOrder): Promise<PageText> {
     return this.#call({ kind: 'pageText', index, order });
+  }
+
+  /**
+   * Opens a file to edit its pages. A file that needed repairs is saved fully and read back first (page
+   * operations work on a sound document, edit/pages.hpp): the repairs come back for the user to see.
+   */
+  openForEditing(data: ArrayBuffer, password: string): Promise<EditableDocument> {
+    return this.#call({ kind: 'openForEditing', data, password }, [data]);
+  }
+
+  /** Rotates pages (indices from 0) by a multiple of 90 degrees, clockwise. */
+  pagesRotate(pages: number[], degrees: number): Promise<Summary> {
+    return this.#call({ kind: 'pagesRotate', pages, degrees });
+  }
+
+  /** The pages, in this order, by their current indices: left out = deleted, repeated = duplicated. */
+  pagesArrange(order: number[]): Promise<Summary> {
+    return this.#call({ kind: 'pagesArrange', order });
+  }
+
+  /** Every page of another file, inserted before page `at` (= the page count: appended). */
+  importFile(data: ArrayBuffer, password: string, at: number): Promise<Summary> {
+    return this.#call({ kind: 'importFile', data, password, at }, [data]);
+  }
+
+  /** A new file with these pages only; the open document stays as it is. */
+  extract(pages: number[]): Promise<ArrayBuffer> {
+    return this.#call({ kind: 'extract', pages });
+  }
+
+  /** A full save without the objects nothing uses any more. */
+  saveCompact(modificationDate: string | null): Promise<ArrayBuffer> {
+    return this.#call({ kind: 'saveCompact', modificationDate });
   }
 
   stream(number: number, decoded: boolean): Promise<ArrayBuffer> {

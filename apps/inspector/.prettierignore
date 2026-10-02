@@ -1,7 +1,6 @@
 node_modules
 .svelte-kit
 build
-src/lib/engine/generated
 package-lock.json
 test-results
 playwright-report

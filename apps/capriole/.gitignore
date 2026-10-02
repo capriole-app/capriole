@@ -1,0 +1,7 @@
+node_modules
+.svelte-kit
+build
+test-results
+playwright-report
+# The resource pack, copied by packages/engine-client/scripts/sync-engine.mjs when it has been fetched.
+static/resources

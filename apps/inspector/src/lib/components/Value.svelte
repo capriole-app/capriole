@@ -1,7 +1,7 @@
 <script lang="ts">
   // A PDF value, recursively: dictionaries as key/value rows, references as links to their object.
   import Value from './Value.svelte';
-  import type { PdfValue } from '$lib/engine/types';
+  import type { PdfValue } from '@capriole/engine-client';
   import { getInspector } from '$lib/inspector.svelte';
   import { hexOf, latin1Bytes, nameOf, textOf } from '$lib/pdf/text';
 

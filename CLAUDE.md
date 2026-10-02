@@ -16,6 +16,8 @@ engine/      libreria C++ (capriole::engine) — include/capriole/<area>/, src/<
 capi/        API C stabile: l'UNICO confine verso WASM, FFI desktop, terzi
 bindings/wasm/  modulo Emscripten (ES module) + smoke test Node
 apps/inspector/ app web (Svelte 5, statica): il motore WASM nel browser — demo e strumento di debug
+apps/capriole/  la web app per l'utente (Svelte 5, statica): pagine — riordina, ruota, elimina, unisci, estrai
+packages/engine-client/  il client del motore (worker WASM + tipi del JSON) condiviso dalle app (ADR 0008)
 tools/cpdf/  CLI di sviluppo: ogni capacità del motore ha prima un sottocomando qui
 tests/unit/  GoogleTest     tests/regression/  un file minimizzato per bug   tests/differential/  vs motori esterni
 fuzz/        target libFuzzer + corpus seme (fuzz/corpus/<target>/)

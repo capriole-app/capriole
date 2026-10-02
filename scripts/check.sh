@@ -4,8 +4,8 @@
 #   scripts/check.sh            format + build/test with ASan/UBSan + clang-tidy
 #   scripts/check.sh --fix      apply clang-format instead of checking it
 #   SKIP_TIDY=1 / SKIP_WASM=0   opt out of tidy / opt in to the WASM build+tests (needs EMSDK) and,
-#                               with it, the Inspector app (apps/inspector: format, type-check, build)
-#   SKIP_E2E=0                  with SKIP_WASM=0, also the app's end-to-end tests (Playwright; needs its
+#                               with it, the apps (apps/inspector, apps/capriole: format, type-check, build)
+#   SKIP_E2E=0                  with SKIP_WASM=0, also the apps' end-to-end tests (Playwright; needs its
 #                               Chromium: npx playwright install chromium)
 #
 # A step that cannot run because a tool is missing FAILS the gate; it is never silently skipped.
@@ -70,19 +70,23 @@ if [[ "$SKIP_WASM" != 1 ]]; then
   cmake --build --preset wasm
   ctest --preset wasm
 
-  step "Inspector app (apps/inspector): format, type-check, build"
   need npm
-  (
-    cd apps/inspector
-    # A fresh install when the lockfile is newer than what is installed (or nothing is).
-    [[ node_modules/.package-lock.json -nt package-lock.json ]] || npm ci --no-fund --no-audit
-    npm run lint
-    npm run check
-    npm run build
-    if [[ "$SKIP_E2E" != 1 ]]; then
-      npx playwright test
-    fi
-  )
+  # The apps share the engine client (packages/engine-client, ADR 0008): the Inspector also checks
+  # its formatting.
+  for app in inspector capriole; do
+    step "App apps/$app: format, type-check, build"
+    (
+      cd "apps/$app"
+      # A fresh install when the lockfile is newer than what is installed (or nothing is).
+      [[ node_modules/.package-lock.json -nt package-lock.json ]] || npm ci --no-fund --no-audit
+      npm run lint
+      npm run check
+      npm run build
+      if [[ "$SKIP_E2E" != 1 ]]; then
+        npx playwright test
+      fi
+    )
+  done
 fi
 
 printf '\n\033[1;32mGate green.\033[0m\n'

@@ -7,7 +7,7 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import TextLayer from './TextLayer.svelte';
   import TextPanel from './TextPanel.svelte';
-  import type { PagePreview, PageRaster, TextOrder } from '$lib/engine/types';
+  import type { PagePreview, PageRaster, TextOrder } from '@capriole/engine-client';
   import { getInspector } from '$lib/inspector.svelte';
 
   let { index }: { index: number } = $props();

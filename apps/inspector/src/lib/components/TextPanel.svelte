@@ -2,7 +2,7 @@
   // The page's text as the engine extracts it (phase 7): plain text in reading order, and where the
   // selected word comes from — the text operator in the content stream, the byte of its code, the font.
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-  import type { PageText } from '$lib/engine/types';
+  import type { PageText } from '@capriole/engine-client';
   import { getInspector } from '$lib/inspector.svelte';
 
   let { text, selected }: { text: PageText; selected: number | null } = $props();

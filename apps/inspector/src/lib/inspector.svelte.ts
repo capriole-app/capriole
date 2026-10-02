@@ -1,7 +1,7 @@
 // The inspector's state: the open file, what the engine says about it, and where the user is looking.
 import { createContext } from 'svelte';
-import { EngineClient, EngineError } from './engine/client';
-import { Status, type ObjectInfo, type Summary } from './engine/types';
+import { EngineClient, EngineError } from '@capriole/engine-client';
+import { Status, type ObjectInfo, type Summary } from '@capriole/engine-client';
 
 export type Tab = 'overview' | 'pages' | 'objects';
 

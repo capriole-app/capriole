@@ -8,6 +8,8 @@ const config = {
   kit: {
     // Static files only (DOCS/CAPRIOLE.md §2): the whole app runs in the browser, no server.
     adapter: adapter(),
+    // The engine client shared by the apps (packages/engine-client, ADR 0008).
+    alias: { '@capriole/engine-client': '../../packages/engine-client/src' },
   },
 };
 

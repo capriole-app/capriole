@@ -1,0 +1,40 @@
+{
+  "name": "@capriole/app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capriole: PDF pages in the browser — open, reorder, rotate, delete, merge, extract (WebAssembly, nothing leaves the device).",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "engine": "node ../../packages/engine-client/scripts/sync-engine.mjs .",
+    "dev": "npm run engine && vite dev",
+    "build": "npm run engine && vite build",
+    "preview": "vite preview",
+    "check": "npm run engine && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "format": "prettier --write .",
+    "lint": "prettier --check .",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@lucide/svelte": "^1.48.0",
+    "@playwright/test": "^1.63.0",
+    "@sveltejs/adapter-static": "^3.0.10",
+    "@sveltejs/kit": "^2.70.3",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "clsx": "^2.1.1",
+    "mode-watcher": "^1.1.0",
+    "prettier": "^3.9.9",
+    "prettier-plugin-svelte": "^4.1.1",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.7.6",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.1"
+  }
+}

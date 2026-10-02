@@ -3,7 +3,7 @@
   // coloured by its category (ISO 32000-2 Table 50).
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Value from './Value.svelte';
-  import type { ContentOperation } from '$lib/engine/types';
+  import type { ContentOperation } from '@capriole/engine-client';
   import { getInspector } from '$lib/inspector.svelte';
   import { formatBytes } from '$lib/pdf/text';
 

@@ -130,6 +130,12 @@ export interface PageText {
   missing_resources: string[];
 }
 
+/** A document opened for editing: its summary, and the repairs it needed (already written into it). */
+export interface EditableDocument {
+  summary: Summary;
+  repairs: Repair[];
+}
+
 /** capriole_status values (capriole.h). */
 export const Status = {
   ok: 0,
@@ -162,6 +168,12 @@ export type Request =
   | { kind: 'pageRender'; index: number; dpi: number }
   | { kind: 'pageText'; index: number; order: TextOrder }
   | { kind: 'stream'; number: number; decoded: boolean }
+  | { kind: 'openForEditing'; data: ArrayBuffer; password: string }
+  | { kind: 'pagesRotate'; pages: number[]; degrees: number }
+  | { kind: 'pagesArrange'; order: number[] }
+  | { kind: 'importFile'; data: ArrayBuffer; password: string; at: number }
+  | { kind: 'extract'; pages: number[] }
+  | { kind: 'saveCompact'; modificationDate: string | null }
   | { kind: 'save'; incremental: boolean; modificationDate: string | null }
   | { kind: 'close' };
 
