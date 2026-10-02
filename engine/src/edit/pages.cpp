@@ -11,6 +11,8 @@
 #include <string_view>
 #include <utility>
 
+#include "sound.hpp"
+
 namespace capriole::edit {
 
 namespace {
@@ -246,16 +248,7 @@ Result<std::vector<ObjectRef>> pages_of(Document& document) {
   return std::move(*pages);
 }
 
-// The pages of a document that needed repairs are what the repairs made of it, in memory only: a
-// placeholder for a page that does not exist, a root found by its pages' /Parent, references to objects
-// the scan did not find (whose numbers a new object could take). Edits go on a sound document: a full
-// save writes the repaired structure out, and the document read back from it has none of this.
-Result<void> require_sound(Document& document) {
-  if (!document.repairs().empty()) {
-    return make_error(ErrorCode::kUnsupported, "the document needed repairs: save it fully and open the result, then edit its pages");
-  }
-  return {};
-}
+Result<void> require_sound(Document& document) { return detail::require_sound_structure(document, "pages"); }
 
 // Copies objects of one document into another: each object once, at a new number, references
 // rewritten; the source's pages map to the imported ones, or to null.

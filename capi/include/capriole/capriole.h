@@ -171,6 +171,31 @@ capriole_status capriole_document_pages_arrange(capriole_document* document, con
  */
 capriole_status capriole_document_pages_import(capriole_document* document, capriole_document* source, const uint32_t* pages, size_t count, uint32_t at);
 
+/* ── Annotations (edit/annotations.hpp) ─────────────────────────────────────────────────── */
+
+/*
+ * The annotations of page page_index as JSON (an array, popups left out): for each its reference
+ * ([number, generation], null for a direct object), subtype, rectangle as shown (as for text), contents
+ * and author (Unicode), colour ([r, g, b] or null), hidden, editable. Format in capi/README.md.
+ */
+capriole_status capriole_document_page_annotations_json(capriole_document* document, uint32_t page_index, char** json);
+
+/*
+ * Adds an annotation to page page_index from a JSON specification (UTF-8; format in capi/README.md):
+ * kind, geometry as shown, colour, text. Its appearance is generated. On success *number and
+ * *generation receive its reference. CAPRIOLE_ERROR_SYNTAX for malformed JSON or a specification that
+ * does not fit the kind.
+ */
+capriole_status capriole_document_annotation_add(capriole_document* document, uint32_t page_index, const char* spec_json, uint32_t* number,
+                                                 uint32_t* generation);
+
+/* Changes an annotation of page page_index (JSON: moveBy, contents, color, opacity, date). */
+capriole_status capriole_document_annotation_update(capriole_document* document, uint32_t page_index, uint32_t number, uint32_t generation,
+                                                    const char* change_json);
+
+/* Removes an annotation (and its popup) from page page_index. */
+capriole_status capriole_document_annotation_remove(capriole_document* document, uint32_t page_index, uint32_t number, uint32_t generation);
+
 /*
  * A full save that leaves out the objects nothing references any more (after deleting or extracting
  * pages); otherwise as capriole_document_save with incremental = 0.

@@ -29,6 +29,10 @@ set(_capriole_exports
   _capriole_document_pages_rotate
   _capriole_document_pages_arrange
   _capriole_document_pages_import
+  _capriole_document_page_annotations_json
+  _capriole_document_annotation_add
+  _capriole_document_annotation_update
+  _capriole_document_annotation_remove
   _capriole_resource_add
   _capriole_last_missing_resources_json
   _malloc

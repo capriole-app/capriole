@@ -1,5 +1,6 @@
 #include "capriole/model/text_string.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -46,6 +47,35 @@ char32_t pdf_doc(unsigned char c) {
 }
 
 }  // namespace
+
+std::u32string from_utf8(std::string_view text) {
+  std::string marked = "\xEF\xBB\xBF";
+  marked += text;
+  return decode_text_string(marked);
+}
+
+std::string encode_text_string(std::u32string_view text) {
+  if (std::ranges::all_of(text, [](char32_t c) { return c >= 0x20 && c < 0x7F; })) {
+    return {text.begin(), text.end()};
+  }
+  std::string out = "\xFE\xFF";
+  const auto unit = [&out](char32_t u) {
+    out.push_back(static_cast<char>((u >> 8U) & 0xFFU));
+    out.push_back(static_cast<char>(u & 0xFFU));
+  };
+  for (char32_t c : text) {
+    if (c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF)) {
+      c = kReplacement;
+    }
+    if (c >= 0x10000) {
+      unit(0xD800 + ((c - 0x10000) >> 10U));
+      unit(0xDC00 + ((c - 0x10000) & 0x3FFU));
+    } else {
+      unit(c);
+    }
+  }
+  return out;
+}
 
 std::u32string decode_text_string(std::string_view bytes) {
   std::u32string out;

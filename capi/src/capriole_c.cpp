@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <format>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -22,9 +23,11 @@
 #include "capriole/core/version_config.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/edit/annotations.hpp"
 #include "capriole/edit/pages.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
+#include "capriole/model/text_string.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/render/raster.hpp"
 #include "capriole/repair/repair.hpp"
@@ -32,6 +35,7 @@
 #include "capriole/writer/byte_sink.hpp"
 #include "capriole/writer/save.hpp"
 #include "json.hpp"
+#include "json_read.hpp"
 
 namespace {
 
@@ -646,6 +650,282 @@ capriole_status capriole_document_pages_import(capriole_document* document, capr
   try {
     auto added = capriole::edit::import_pages(document->document, source->document, std::span(pages, count), at);
     return added ? CAPRIOLE_OK : fail(added.error());
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+}  // extern "C"
+
+namespace {
+
+// Specifications in JSON → the editor's structures. A key the kind does not use is ignored; a value of
+// the wrong shape is an error.
+capriole::Result<std::vector<double>> numbers_in(const capriole::capi::JsonValue* value, std::size_t count, std::string_view what) {
+  const auto* array = value != nullptr ? value->array() : nullptr;
+  if (array == nullptr || array->size() != count) {
+    return capriole::make_error(capriole::ErrorCode::kSyntax, std::format("{}: an array of {} numbers expected", what, count));
+  }
+  std::vector<double> out;
+  for (const auto& item : *array) {
+    const auto n = item.number();
+    if (!n) {
+      return capriole::make_error(capriole::ErrorCode::kSyntax, std::format("{}: numbers expected", what));
+    }
+    out.push_back(*n);
+  }
+  return out;
+}
+
+capriole::Result<capriole::graphics::Rect> rect_in(const capriole::capi::JsonValue* value, std::string_view what) {
+  auto v = numbers_in(value, 4, what);
+  if (!v) {
+    return std::unexpected(std::move(v.error()));
+  }
+  return capriole::graphics::Rect{(*v)[0], (*v)[1], (*v)[2], (*v)[3]}.normalized();
+}
+
+capriole::Result<capriole::graphics::Point> point_in(const capriole::capi::JsonValue* value, std::string_view what) {
+  auto v = numbers_in(value, 2, what);
+  if (!v) {
+    return std::unexpected(std::move(v.error()));
+  }
+  return capriole::graphics::Point{(*v)[0], (*v)[1]};
+}
+
+capriole::Result<capriole::edit::Rgb> rgb_in(const capriole::capi::JsonValue* value, std::string_view what) {
+  auto v = numbers_in(value, 3, what);
+  if (!v) {
+    return std::unexpected(std::move(v.error()));
+  }
+  return capriole::edit::Rgb{(*v)[0], (*v)[1], (*v)[2]};
+}
+
+capriole::Result<capriole::edit::AnnotationSpec> spec_of(const capriole::capi::JsonValue& json) {
+  using capriole::ErrorCode;
+  using capriole::make_error;
+  using capriole::edit::AnnotationKind;
+  if (json.object() == nullptr) {
+    return make_error(ErrorCode::kSyntax, "the specification is not an object");
+  }
+  const auto* kind = json.get("kind");
+  const std::string* kind_name = kind != nullptr ? kind->string() : nullptr;
+  static const std::map<std::string_view, AnnotationKind> kKinds = {{"highlight", AnnotationKind::kHighlight}, {"underline", AnnotationKind::kUnderline},
+                                                                    {"strikeout", AnnotationKind::kStrikeOut}, {"squiggly", AnnotationKind::kSquiggly},
+                                                                    {"note", AnnotationKind::kNote},           {"ink", AnnotationKind::kInk},
+                                                                    {"square", AnnotationKind::kSquare},       {"circle", AnnotationKind::kCircle},
+                                                                    {"line", AnnotationKind::kLine},           {"freetext", AnnotationKind::kFreeText}};
+  const auto found = kind_name != nullptr ? kKinds.find(*kind_name) : kKinds.end();
+  if (found == kKinds.end()) {
+    return make_error(ErrorCode::kSyntax, "unknown or missing \"kind\"");
+  }
+  capriole::edit::AnnotationSpec spec;
+  spec.kind = found->second;
+  if (const auto* quads = json.get("quads")) {
+    if (quads->array() == nullptr) {
+      return make_error(ErrorCode::kSyntax, "quads: an array expected");
+    }
+    for (const auto& q : *quads->array()) {
+      auto r = rect_in(&q, "quads");
+      if (!r) {
+        return std::unexpected(std::move(r.error()));
+      }
+      spec.quads.push_back(*r);
+    }
+  }
+  if (const auto* strokes = json.get("strokes")) {
+    if (strokes->array() == nullptr) {
+      return make_error(ErrorCode::kSyntax, "strokes: an array expected");
+    }
+    for (const auto& stroke : *strokes->array()) {
+      if (stroke.array() == nullptr) {
+        return make_error(ErrorCode::kSyntax, "strokes: arrays of points expected");
+      }
+      std::vector<capriole::graphics::Point> points;
+      for (const auto& p : *stroke.array()) {
+        auto point = point_in(&p, "strokes");
+        if (!point) {
+          return std::unexpected(std::move(point.error()));
+        }
+        points.push_back(*point);
+      }
+      spec.strokes.push_back(std::move(points));
+    }
+  }
+  const auto read = [&](std::string_view key, auto& target, auto reader) -> capriole::Result<void> {
+    if (const auto* value = json.get(key)) {
+      auto parsed = reader(value, key);
+      if (!parsed) {
+        return std::unexpected(std::move(parsed.error()));
+      }
+      target = *parsed;
+    }
+    return {};
+  };
+  for (auto result : {read("rect", spec.rect, rect_in), read("from", spec.from, point_in), read("to", spec.to, point_in), read("color", spec.color, rgb_in)}) {
+    if (!result) {
+      return std::unexpected(std::move(result.error()));
+    }
+  }
+  if (const auto* fill = json.get("fill"); fill != nullptr && fill->array() != nullptr) {
+    auto c = rgb_in(fill, "fill");
+    if (!c) {
+      return std::unexpected(std::move(c.error()));
+    }
+    spec.fill = *c;
+  }
+  for (const auto& [key, target] : {std::pair<std::string_view, double*>{"width", &spec.width}, {"opacity", &spec.opacity}, {"fontSize", &spec.font_size}}) {
+    if (const auto* value = json.get(key)) {
+      if (!value->number()) {
+        return make_error(ErrorCode::kSyntax, std::format("{}: a number expected", key));
+      }
+      *target = *value->number();
+    }
+  }
+  for (const auto& [key, target] : {std::pair<std::string_view, std::string*>{"contents", &spec.contents}, {"author", &spec.author}, {"date", &spec.date}}) {
+    if (const auto* value = json.get(key)) {
+      if (value->string() == nullptr) {
+        return make_error(ErrorCode::kSyntax, std::format("{}: a string expected", key));
+      }
+      *target = *value->string();
+    }
+  }
+  return spec;
+}
+
+capriole::Result<capriole::edit::AnnotationChange> change_of(const capriole::capi::JsonValue& json) {
+  using capriole::ErrorCode;
+  using capriole::make_error;
+  if (json.object() == nullptr) {
+    return make_error(ErrorCode::kSyntax, "the change is not an object");
+  }
+  capriole::edit::AnnotationChange change;
+  if (const auto* move = json.get("moveBy")) {
+    auto p = point_in(move, "moveBy");
+    if (!p) {
+      return std::unexpected(std::move(p.error()));
+    }
+    change.move_by = *p;
+  }
+  if (const auto* color = json.get("color")) {
+    auto c = rgb_in(color, "color");
+    if (!c) {
+      return std::unexpected(std::move(c.error()));
+    }
+    change.color = *c;
+  }
+  if (const auto* contents = json.get("contents")) {
+    if (contents->string() == nullptr) {
+      return make_error(ErrorCode::kSyntax, "contents: a string expected");
+    }
+    change.contents = *contents->string();
+  }
+  if (const auto* opacity = json.get("opacity")) {
+    if (!opacity->number()) {
+      return make_error(ErrorCode::kSyntax, "opacity: a number expected");
+    }
+    change.opacity = opacity->number();
+  }
+  if (const auto* date = json.get("date"); date != nullptr && date->string() != nullptr) {
+    change.date = *date->string();
+  }
+  return change;
+}
+
+}  // namespace
+
+extern "C" {
+
+capriole_status capriole_document_page_annotations_json(capriole_document* document, uint32_t page_index, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto list = capriole::edit::list_annotations(document->document, page_index);
+    if (!list) {
+      return fail(list.error());
+    }
+    std::string out = "[";
+    for (std::size_t i = 0; i < list->size(); ++i) {
+      const auto& a = (*list)[i];
+      out += i == 0 ? "{" : ",{";
+      out += a.ref ? std::format(R"("ref":[{},{}])", a.ref->number, a.ref->generation) : std::string(R"("ref":null)");
+      out += R"(,"subtype":)";
+      capriole::capi::append_json_string(out, a.subtype);
+      out += std::format(R"(,"rect":[{:.2f},{:.2f},{:.2f},{:.2f}],"contents":)", a.rect.x0, a.rect.y0, a.rect.x1, a.rect.y1);
+      capriole::capi::append_json_text(out, capriole::model::from_utf8(a.contents));
+      out += R"(,"author":)";
+      capriole::capi::append_json_text(out, capriole::model::from_utf8(a.author));
+      out += a.color ? std::format(R"(,"color":[{:.3f},{:.3f},{:.3f}])", (*a.color)[0], (*a.color)[1], (*a.color)[2]) : std::string(R"(,"color":null)");
+      out += std::format(R"(,"hidden":{},"editable":{}}})", a.hidden, a.editable);
+    }
+    out += "]";
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_annotation_add(capriole_document* document, uint32_t page_index, const char* spec_json, uint32_t* number,
+                                                 uint32_t* generation) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || number == nullptr || generation == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto json = capriole::capi::parse_json(spec_json);
+    if (!json) {
+      return fail(json.error());
+    }
+    auto spec = spec_of(*json);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    auto ref = capriole::edit::add_annotation(document->document, page_index, *spec);
+    if (!ref) {
+      return fail(ref.error());
+    }
+    *number = ref->number;
+    *generation = ref->generation;
+    return CAPRIOLE_OK;
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_annotation_update(capriole_document* document, uint32_t page_index, uint32_t number, uint32_t generation,
+                                                    const char* change_json) {
+  g_last_error.clear();
+  if (document == nullptr || change_json == nullptr || generation > 65535) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument or generation out of range");
+  }
+  try {
+    auto json = capriole::capi::parse_json(change_json);
+    if (!json) {
+      return fail(json.error());
+    }
+    auto change = change_of(*json);
+    if (!change) {
+      return fail(change.error());
+    }
+    const capriole::model::ObjectRef ref{.number = number, .generation = static_cast<std::uint16_t>(generation)};
+    auto done = capriole::edit::update_annotation(document->document, page_index, ref, *change);
+    return done ? CAPRIOLE_OK : fail(done.error());
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_annotation_remove(capriole_document* document, uint32_t page_index, uint32_t number, uint32_t generation) {
+  g_last_error.clear();
+  if (document == nullptr || generation > 65535) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument or generation out of range");
+  }
+  try {
+    const capriole::model::ObjectRef ref{.number = number, .generation = static_cast<std::uint16_t>(generation)};
+    auto done = capriole::edit::remove_annotation(document->document, page_index, ref);
+    return done ? CAPRIOLE_OK : fail(done.error());
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

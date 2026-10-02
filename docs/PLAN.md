@@ -742,7 +742,7 @@ desktop (Tauri, ADR 0008).
 
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
-motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · 8d annotazioni · 8e
+motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app) · 8e
 moduli AcroForm · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
@@ -806,6 +806,29 @@ schermata d'apertura con il motore caricato («motore Capriole 0.0.1 (WebAssembl
 desktop riconosciuta. Prova a mano dell'utente (apri, modifica, salva su disco) e test e2e automatici
 della shell (`tauri-driver`, richiede il pacchetto `webkit2gtk-driver`) da fare; Flathub quando si
 distribuisce.
+
+**8d-1 (2026-10-02) — annotazioni nel motore: uscita raggiunta.** `edit/annotations.hpp`: elencare,
+aggiungere, modificare (spostare, colore, testo, opacità) ed eliminare (col popup) le annotazioni di
+una pagina, in coordinate della pagina come la si vede (quelle del testo). Dieci tipi: evidenzia,
+sottolinea, barra, ondulato (da riquadri di testo orizzontale), nota, inchiostro, rettangolo, ellisse,
+linea, testo libero. Ognuna nasce col suo aspetto `/AP` generato dal motore — il generatore dei markup
+della fase 6 è ora `content/appearance.hpp`, comune a renderer ed editor; l'icona delle note; il testo
+libero in Helvetica, a capo nella larghezza (testo latino: fuori WinAnsi `?`) —, `/NM` unico, autore,
+date. Le note si scrivono come Acrobat: icona dritta nello spazio della pagina, NoZoom e NoRotate,
+con l'angolo agganciato dove l'utente l'ha messa. Il renderer ora **rispetta NoRotate** (prima lo
+ignorava: le note di Acrobat su pagine ruotate uscivano storte). Lettore JSON rigoroso nell'API C
+(`capi/src/json_read`), `capriole_document_page_annotations_json`, `capriole_document_annotation_add|
+update|remove` (anche nel modulo WASM), `cpdf annot list|add|remove` (attraverso l'API C), fuzz
+target `fuzz_annotations` (documenti ostili e JSON ostile: pulito), test. Corretta strada facendo la
+regola del «documento riparato» (anche per le pagine): ferma le modifiche solo una riparazione
+**strutturale** (xref ricostruita, albero delle pagine rifatto, catalogo trovato per scansione); quelle
+di singoli oggetti, che compaiono man mano che gli oggetti si leggono, prima bloccavano le modifiche a
+metà (bastava disegnare una miniatura). Limite dichiarato: evidenziazioni su testo verticale disegnate
+orizzontali.
+Criterio: `corpus-tools/check_annotations.py` — **fedeltà 20/20** (ogni tipo, pagina dritta e ruotata,
+disegnato da pdftoppm e mutool come da Capriole: somiglianza 0,990–1,000) e **100/100 file reali**
+(dieci tipi aggiunti in incrementale, `qpdf --check` mai peggiore, riletti, disegnati da tutti e tre i
+motori); rapporto in `CORPORA/reports/annotations-safedocs-0000-20261002-194522/`.
 
 ---
 

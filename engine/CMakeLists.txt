@@ -22,6 +22,7 @@ add_library(capriole_engine STATIC
   src/graphics/svg.cpp
   src/render/blend.cpp
   src/render/png.cpp
+  src/edit/annotations.cpp
   src/edit/pages.cpp
   src/render/raster.cpp
   src/text/extract.cpp
@@ -55,6 +56,7 @@ add_library(capriole_engine STATIC
   src/writer/byte_sink.cpp
   src/content/cmyk_table.cpp
   src/content/color_space.cpp
+  src/content/appearance.cpp
   src/content/content_parser.cpp
   src/content/function.cpp
   src/content/icc.cpp

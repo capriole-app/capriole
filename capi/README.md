@@ -119,3 +119,41 @@ splitting is extracting from fresh copies of the document.
 Arranging and importing write the page tree anew, flat (the root lists every page); pages that move
 from under an intermediate node take the attributes they inherited from it. References to deleted
 pages (outline items, links) read as null afterwards.
+
+## Annotations
+
+`capriole_document_page_annotations_json` lists a page's annotations (popups left out, they belong to
+their parent):
+
+```json
+[{"ref":[12,0], "subtype":"Highlight", "rect":[x0,y0,x1,y1], "contents":"…", "author":"…",
+  "color":[1.000,0.820,0.000] | null, "hidden":false, "editable":true}, …]
+```
+
+`ref` is `null` for an annotation written directly in `/Annots` (listed, not editable); `editable` is
+false for those and for form widgets (phase 8e). Coordinates are those of the page as shown, as for
+text (points, top-left origin, /Rotate applied); a note (NoRotate) is given where it is shown, upright.
+`contents` and `author` are Unicode (`\u` escapes).
+
+`capriole_document_annotation_add` takes a specification in JSON (UTF-8 text; unknown keys ignored, a
+known key with a value of the wrong shape is an error, as is malformed JSON — nested at most 32 deep):
+
+```json
+{"kind":"highlight"|"underline"|"strikeout"|"squiggly"|"note"|"ink"|"square"|"circle"|"line"|"freetext",
+ "quads":[[x0,y0,x1,y1], …],          // text markup: boxes of horizontal text (e.g. words of the page's text)
+ "strokes":[[[x,y], …], …],           // ink
+ "rect":[x0,y0,x1,y1],                // note (its icon), square, circle, free text
+ "from":[x,y], "to":[x,y],            // line
+ "color":[r,g,b], "fill":[r,g,b],     // 0..1; fill: the interior of a square or circle
+ "width":1, "opacity":1, "fontSize":12,
+ "contents":"…", "author":"…", "date":"D:20261002120000Z"}
+```
+
+The annotation gets its appearance (/AP), made by the engine, so that every reader draws it as
+Capriole does: markup from its geometry, a note's icon (NoZoom and NoRotate, as Acrobat writes notes),
+free text in Helvetica wrapped to its rectangle (Latin text: characters outside WinAnsi become `?`).
+`capriole_document_annotation_update` takes `{"moveBy":[dx,dy], "contents":"…", "color":[r,g,b],
+"opacity":n, "date":"…"}` (any of them); a new colour or text makes the appearance again (for the kinds
+the engine makes; another kind's colour is `CAPRIOLE_ERROR_UNSUPPORTED`). `capriole_document_annotation_remove`
+removes it with its popup. Documents whose structure needed repairs are edited after a full save
+(`CAPRIOLE_ERROR_UNSUPPORTED` until then); listing works on any document.

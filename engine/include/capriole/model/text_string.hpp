@@ -15,4 +15,11 @@ namespace capriole::model {
 // UTF-8 of Unicode text; code points that are not characters (surrogates, beyond U+10FFFF) become U+FFFD.
 [[nodiscard]] std::string to_utf8(std::u32string_view text);
 
+// Unicode of UTF-8 text (no byte order mark expected); malformed sequences become U+FFFD.
+[[nodiscard]] std::u32string from_utf8(std::string_view text);
+
+// A text string for Unicode text: printable ASCII as it is (it reads the same in PDFDocEncoding),
+// otherwise UTF-16BE with its byte order mark.
+[[nodiscard]] std::string encode_text_string(std::u32string_view text);
+
 }  // namespace capriole::model

@@ -39,6 +39,22 @@ export interface CaprioleModule {
   _capriole_document_pages_rotate(document: number, pages: number, count: number, degrees: number): number;
   _capriole_document_pages_arrange(document: number, order: number, count: number): number;
   _capriole_document_pages_import(document: number, source: number, pages: number, count: number, at: number): number;
+  _capriole_document_page_annotations_json(document: number, pageIndex: number, out: number): number;
+  _capriole_document_annotation_add(
+    document: number,
+    pageIndex: number,
+    spec: number,
+    outNumber: number,
+    outGeneration: number,
+  ): number;
+  _capriole_document_annotation_update(
+    document: number,
+    pageIndex: number,
+    num: number,
+    generation: number,
+    change: number,
+  ): number;
+  _capriole_document_annotation_remove(document: number, pageIndex: number, num: number, generation: number): number;
   _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,

@@ -80,3 +80,17 @@ pass `qpdf --check` no worse than the original, and its pages must match the pag
 pdftoppm draws them (similarity ≥ 0.99 with the metric of compare_render.py); a rotated page is checked
 by its rotation (`pdfinfo`) and by rotating it back, which must give the original pixels. Exit criterion
 of phase 8a: every file passes.
+
+## Annotations (PLAN.md phase 8d, exit criterion)
+
+```sh
+nice -n 10 corpus-tools/check_annotations.py ../CORPORA/safedocs/0000 --cpdf build/release/tools/cpdf/cpdf \
+    --files 100 --jobs 3 --report-dir ../CORPORA/reports --name annotations-safedocs-0000
+```
+
+Two checks, every annotation made by `cpdf annot add` (the C API): **fidelity** — on a blank page,
+upright and turned by /Rotate 90, each of the ten kinds drawn by pdftoppm and by mutool as by Capriole
+(similarity ≥ 0.99, the metric of compare_render.py) —; **real files** — on one page per file the ten
+kinds are added (text markup over horizontal words of the page), saved incrementally; `qpdf --check`
+no worse than the original, the annotations read back, and each drawn by all three engines inside its
+rectangle (≥ 0.3% of its pixels changed). Exit criterion of phase 8d (engine): everything passes.

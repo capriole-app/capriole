@@ -13,12 +13,13 @@
 // What points at a page that is deleted (outline items, link destinations, form widgets) is left as
 // it is: a reference to a deleted object reads as null (§7.3.10), which readers take as "no target".
 //
-// The document edited must not have needed repairs (Document::repairs() empty, after its page tree was
-// read): what repairs make of a damaged file exists in memory only — placeholder pages, a page tree
-// found through /Parent links, numbers of missing objects that a new object would take. Those are
-// refused with kUnsupported, before any change; a full save writes the repaired document out soundly
-// (writer/save.hpp), and the document read back from it can be edited. The source of an import may be
-// damaged: what it reads as is what is copied.
+// The document edited must not have needed structural repairs (a cross-reference table rebuilt, a page
+// tree rebuilt or with guessed node types, a catalog found by scanning): what those make of a damaged
+// file exists in memory only — placeholder pages, a page tree found through /Parent links, numbers of
+// missing objects that a new object would take. Such documents are refused with kUnsupported, before any
+// change; a full save writes the repaired document out soundly (writer/save.hpp), and the document read
+// back from it can be edited. Repairs of single objects (tolerant parsing and the like) do not stand in
+// the way. The source of an import may be damaged: what it reads as is what is copied.
 
 #include <cstddef>
 #include <cstdint>

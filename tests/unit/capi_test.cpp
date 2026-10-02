@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <span>
@@ -251,6 +252,45 @@ TEST(CApiDocument, PageOperations) {
   EXPECT_NE(take_json(json).find("Hi"), std::string::npos);
   EXPECT_EQ(capriole_document_page_content_json(reopened, 2, 10, &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
   capriole_document_close(reopened);
+}
+
+TEST(CApiDocument, Annotations) {
+  capriole_document* document = open_document(sample_pdf());
+  std::uint32_t number = 0;
+  std::uint32_t generation = 0;
+  ASSERT_EQ(capriole_document_annotation_add(
+                document, 0, R"({"kind":"square","rect":[10,10,60,40],"color":[0,0,1],"width":2,"contents":"Citt\u00e0","author":"N"})", &number, &generation),
+            CAPRIOLE_OK)
+      << capriole_last_error_message();
+  EXPECT_GT(number, 0U);
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
+  const std::string listed = take_json(json);
+  EXPECT_NE(listed.find(std::format(R"({{"ref":[{},0],"subtype":"Square","rect":[10.00,10.00,60.00,40.00],"contents":"Citt\u00e0","author":"N")", number)),
+            std::string::npos)
+      << listed;
+  EXPECT_NE(listed.find(R"("editable":true)"), std::string::npos);
+  EXPECT_EQ(capriole_document_annotation_update(document, 0, number, generation, R"({"moveBy":[5,0],"color":[1,0,0]})"), CAPRIOLE_OK);
+  ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("rect":[15.00,10.00,65.00,40.00])"), std::string::npos);
+  EXPECT_EQ(capriole_document_annotation_remove(document, 0, number, generation), CAPRIOLE_OK);
+  ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_EQ(take_json(json), "[]");
+
+  // Malformed or hostile specifications: refused, nothing added.
+  for (const char* bad :
+       {"", "{", R"({"kind":"square"})", R"({"kind":"spiral","rect":[0,0,1,1]})", R"({"kind":"square","rect":[0,0,1]})", R"({"kind":"square","rect":"no"})",
+        R"({"kind":"note","rect":[0,0,9,9],"contents":"\ud800"})", "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+        R"({"kind":"note","rect":[0,0,9,9]} x)", R"({"kind":"note","rect":[01,0,9,9]})", R"({"kind":"line","from":[0,0],"to":[1e999,0]})"}) {
+    SCOPED_TRACE(bad);
+    EXPECT_NE(capriole_document_annotation_add(document, 0, bad, &number, &generation), CAPRIOLE_OK);
+  }
+  ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_EQ(take_json(json), "[]");
+  EXPECT_EQ(capriole_document_annotation_add(document, 3, R"({"kind":"note","rect":[0,0,9,9]})", &number, &generation), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(capriole_document_annotation_remove(document, 0, 999, 0), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(capriole_document_annotation_update(document, 0, 1, 70000, "{}"), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  capriole_document_close(document);
 }
 
 TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {

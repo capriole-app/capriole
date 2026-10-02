@@ -13,6 +13,7 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -23,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "capriole/capriole.h"
 #include "capriole/content/content_parser.hpp"
 #include "capriole/content/interpreter.hpp"
 #include "capriole/content/page_content.hpp"
@@ -87,6 +89,11 @@ void print_usage() {
                "  split <file> <n> <prefix>  every n pages into prefix-1.pdf, prefix-2.pdf, ...\n"
                "  merge <output> <file> <file>...  the first file with the pages of the others appended\n"
                "                  pages: 1-based, comma-separated: 3 · 1-4 · 6- · -2 · 5-1 (backwards)\n"
+               "  annot list <file> <page>       the page's annotations, as JSON\n"
+               "  annot add <file> <page> <json> <output>\n"
+               "                  add an annotation (capi/README.md: {\"kind\":\"highlight\",\"quads\":[[x0,y0,x1,y1]]}, ...;\n"
+               "                  coordinates as the page is shown), saved incrementally (fully if it needed repairs)\n"
+               "  annot remove <file> <page> <object number> <output>\n"
                "  content <file> <page>\n"
                "                  print the operations of a page's content stream (page from 1)\n"
                "  save [--incremental] [--moddate D:...] <file> <output>\n"
@@ -499,6 +506,80 @@ int cmd_text(std::string_view path, std::uint64_t page_number, bool words, capri
   return kExitOk;
 }
 
+// annot list|add|remove: annotations through the C API (capi/README.md), as the apps use them.
+int cmd_annot(std::span<char* const> args) {
+  const std::string_view action = args[0];
+  const std::string_view path = args[1];
+  std::ifstream in{std::string(path), std::ios::binary};
+  const std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  if (!in && !in.eof()) {
+    std::cerr << std::format("cpdf: cannot read {}\n", path);
+    return kExitFailure;
+  }
+  const char* password = std::getenv("CAPRIOLE_PASSWORD");  // NOLINT(concurrency-mt-unsafe): single-threaded tool
+  capriole_document* document = nullptr;
+  const auto failed = [&](std::string_view what) {
+    std::cerr << std::format("cpdf: {}: {}: {}\n", path, what, capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  };
+  const auto* input = reinterpret_cast<const std::uint8_t*>(bytes.data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes as bytes
+  if (capriole_document_open(input, bytes.size(), password, 1, &document) != CAPRIOLE_OK) {
+    return failed("open");
+  }
+  const auto page = parse_uint(args[2]);
+  if (!page || *page == 0 || *page > 0xFFFFFFFFULL) {
+    capriole_document_close(document);
+    print_usage();
+    return kExitUsage;
+  }
+  const auto index = static_cast<std::uint32_t>(*page - 1);
+  if (action == "list") {
+    char* json = nullptr;
+    if (capriole_document_page_annotations_json(document, index, &json) != CAPRIOLE_OK) {
+      return failed("list");
+    }
+    std::cout << json << '\n';
+    capriole_free(json);
+    capriole_document_close(document);
+    return kExitOk;
+  }
+  if (action == "add") {
+    std::uint32_t number = 0;
+    std::uint32_t generation = 0;
+    if (capriole_document_annotation_add(document, index, args[3], &number, &generation) != CAPRIOLE_OK) {
+      return failed("add");
+    }
+    std::cout << std::format("added {} {} R\n", number, generation);
+  } else {
+    const auto number = parse_uint(args[3]);
+    if (!number || *number > 0xFFFFFFFFULL || capriole_document_annotation_remove(document, index, static_cast<std::uint32_t>(*number), 0) != CAPRIOLE_OK) {
+      return failed("remove");
+    }
+  }
+  // Appended to the original bytes; a file that needed repairs is written anew instead (the writer
+  // refuses to append to a structure that reads only with repairs).
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  bool incremental = true;
+  if (capriole_document_save(document, 1, nullptr, &data, &size) != CAPRIOLE_OK) {
+    incremental = false;
+    if (capriole_document_save(document, 0, nullptr, &data, &size) != CAPRIOLE_OK) {
+      return failed("save");
+    }
+  }
+  std::ofstream out{std::string(args[4]), std::ios::binary};
+  out.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  capriole_free(data);
+  capriole_document_close(document);
+  if (!out) {
+    std::cerr << std::format("cpdf: cannot write {}\n", args[4]);
+    return kExitFailure;
+  }
+  std::cout << std::format("{}: {} bytes ({})\n", args[4], size, incremental ? "incremental" : "full: the file needed repairs");
+  return kExitOk;
+}
+
 int cmd_pages(std::string_view path) {
   auto document = open_document(path);
   if (!document) {
@@ -802,6 +883,12 @@ int run(std::span<char*> args) {
         degrees = static_cast<std::int32_t>(*value) * (negative ? -1 : 1);
       }
       return cmd_pages_edit(command, args[i], args[i + 1], degrees, args[i + expected - 1], incremental);
+    }
+  }
+  if (command == "annot" && args.size() >= 5) {
+    const std::string_view action = args[2];
+    if ((action == "list" && args.size() == 5) || ((action == "add" || action == "remove") && args.size() == 7)) {
+      return cmd_annot(args.subspan(2));
     }
   }
   if (command == "merge" && args.size() >= 4) {
