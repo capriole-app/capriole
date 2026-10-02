@@ -22,9 +22,11 @@
 
   // Small, sharp on high-density screens: an A4 page is about 160 px wide on screen.
   const dpi = Math.round(20 * Math.min(globalThis.devicePixelRatio || 1, 2));
+  // Asked again after each edit (the page at this place may be another); the editor answers from its
+  // cache when that page object was drawn already.
   const raster = $derived.by(() => {
-    void editor.version; // drawn again after each edit
-    return visible ? editor.engine.pageRender(index, dpi) : null;
+    void editor.version;
+    return visible ? editor.thumbnail(index, dpi) : null;
   });
 
   /** Marks the page visible the first time it scrolls into view. */
@@ -75,7 +77,13 @@
     ></span>
   {/if}
   <span class="flex h-48 w-36 items-center justify-center">
-    {#if raster}
+    {#if raster && !(raster instanceof Promise)}
+      <canvas
+        {@attach (node) => paint(node, raster)}
+        class="max-h-48 max-w-36 bg-white shadow-sm ring-1 ring-border"
+        style:aspect-ratio="{raster.width} / {raster.height}"
+      ></canvas>
+    {:else if raster}
       {#await raster}
         <span class="h-44 w-32 animate-pulse rounded bg-muted"></span>
       {:then image}

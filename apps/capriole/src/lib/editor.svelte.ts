@@ -2,7 +2,7 @@
 // engine (packages/engine-client), which changes the document in its worker; nothing leaves the browser.
 import { createContext } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
-import { EngineClient, EngineError, Status, type Repair, type Summary } from '@capriole/engine-client';
+import { EngineClient, EngineError, Status, type PageRaster, type Repair, type Summary } from '@capriole/engine-client';
 import { baseName, pdfDateNow } from './files';
 import { fileName, fromBrowser, pickPdf, savePdf, type PickedFile } from './platform';
 
@@ -34,6 +34,10 @@ export class Editor {
   canUndo = $state(false);
 
   #source: PickedFile | null = null;
+  /** The page objects ("number generation"), in page order: what a thumbnail shows does not change when its page moves. */
+  #refs: string[] = [];
+  /** Thumbnails by page object and resolution: the bitmap once drawn, the promise while drawing. */
+  #thumbnails = new Map<string, PageRaster | Promise<PageRaster>>();
   #password = '';
   #history: ArrayBuffer[] = [];
 
@@ -126,10 +130,35 @@ export class Editor {
 
   // ── Edits ──────────────────────────────────────────────────────────────────────────────────
 
-  /** Rotates the selected pages by a multiple of 90 degrees, clockwise. */
+  /**
+   * Page `index` drawn small: from the cache when that page object was drawn already (moving a page does
+   * not change it), else by the engine. A bitmap at once, or a promise while it is drawn.
+   */
+  thumbnail(index: number, dpi: number): PageRaster | Promise<PageRaster> | null {
+    const ref = this.#refs[index];
+    if (ref === undefined) return null;
+    const key = `${ref}@${dpi}`;
+    const cached = this.#thumbnails.get(key);
+    if (cached) return cached;
+    const drawing = this.engine.pageRender(index, dpi).then(
+      (raster) => {
+        if (this.#thumbnails.get(key) === drawing) this.#thumbnails.set(key, raster);
+        return raster;
+      },
+      (error: unknown) => {
+        this.#thumbnails.delete(key);
+        throw error;
+      },
+    );
+    this.#thumbnails.set(key, drawing);
+    return drawing;
+  }
+
+  /** Rotates the selected pages by a multiple of 90 degrees, clockwise: those thumbnails are drawn again. */
   rotate(degrees: number): Promise<void> {
     const pages = this.selection;
-    return this.#edit(() => this.engine.pagesRotate(pages, degrees), pages);
+    const rotated = new Set(pages.map((p) => this.#refs[p]));
+    return this.#edit(() => this.engine.pagesRotate(pages, degrees), pages, rotated);
   }
 
   /** Deletes the selected pages (not all of them: a document keeps at least one page). */
@@ -248,6 +277,8 @@ export class Editor {
     this.name = null;
     this.path = null;
     this.pages = 0;
+    this.#refs = [];
+    this.#thumbnails.clear();
     this.selected.clear();
     this.anchor = null;
     this.repairs = [];
@@ -264,7 +295,17 @@ export class Editor {
     return Array.from({ length: this.pages }, (_, i) => i);
   }
 
-  #show(summary: Summary, select: number[]): void {
+  /**
+   * The document after a change: its pages, the selection, and the thumbnails to forget — those of pages
+   * that changed (changed), or all of them (null: a document read anew, whose objects may be others).
+   */
+  #show(summary: Summary, select: number[], changed: Set<string | undefined> | null = null): void {
+    this.#refs = (summary.pages ?? []).map(([number, generation]) => `${number} ${generation}`);
+    const live = new Set(this.#refs);
+    for (const key of [...this.#thumbnails.keys()]) {
+      const ref = key.slice(0, key.indexOf('@'));
+      if (changed === null || changed.has(ref) || !live.has(ref)) this.#thumbnails.delete(key);
+    }
     this.pages = summary.pages?.length ?? 0;
     this.selected.clear();
     for (const p of select) if (p < this.pages) this.selected.add(p);
@@ -273,12 +314,16 @@ export class Editor {
   }
 
   /** An edit: the document is kept for undo first, then changed; select picks the pages to select after. */
-  async #edit(change: () => Promise<Summary>, select: number[] | ((summary: Summary) => number[])): Promise<void> {
+  async #edit(
+    change: () => Promise<Summary>,
+    select: number[] | ((summary: Summary) => number[]),
+    changed: Set<string | undefined> = new Set(),
+  ): Promise<void> {
     await this.#run(async () => {
       const before = await this.engine.save(false, null);
       const summary = await change();
       this.#remember(before);
-      this.#show(summary, typeof select === 'function' ? select(summary) : select);
+      this.#show(summary, typeof select === 'function' ? select(summary) : select, changed);
       this.modified = true;
     });
   }

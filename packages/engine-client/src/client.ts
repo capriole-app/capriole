@@ -37,12 +37,17 @@ export class EngineClient {
       else pending.reject(new EngineError(response.status, response.message));
     };
     this.#worker.onerror = (event) => {
-      const error = new EngineError(101, `the engine stopped: ${event.message}`);
+      // An error event without a message: the worker's script did not load at all (in development, a
+      // server started before its configuration changed serves an old address — restart it).
+      const reason =
+        event.message || 'its worker could not start (the script did not load; in development, restart the server)';
+      const error = new EngineError(101, `the engine stopped: ${reason}`);
       for (const pending of this.#pending.values()) pending.reject(error);
       this.#pending.clear();
     };
     // Where the resource pack is served: fonts and CMaps a page needs are fetched from there.
-    void this.#call({ kind: 'resourceBase', base: new URL('resources/', document.baseURI).href });
+    // A failure here (the worker did not start) is reported by the requests that follow.
+    this.#call({ kind: 'resourceBase', base: new URL('resources/', document.baseURI).href }).catch(() => {});
   }
 
   #call<T>(request: Request, transfer: Transferable[] = []): Promise<T> {
