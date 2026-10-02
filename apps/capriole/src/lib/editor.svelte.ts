@@ -3,7 +3,8 @@
 import { createContext } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import { EngineClient, EngineError, Status, type Repair, type Summary } from '@capriole/engine-client';
-import { baseName, download, pdfDateNow } from './files';
+import { baseName, pdfDateNow } from './files';
+import { fileName, fromBrowser, pickPdf, savePdf, type PickedFile } from './platform';
 
 /** Undo keeps full copies of the document before each edit, within this many bytes (oldest dropped). */
 const kHistoryBytes = 256 * 1024 * 1024;
@@ -14,6 +15,8 @@ export class Editor {
   engineVersion = $state<string | null>(null);
   /** The open file's name; null when no file is open. */
   name = $state<string | null>(null);
+  /** Desktop: where the open file lives ("Save" writes there); null in the browser or for a new file. */
+  path = $state<string | null>(null);
   pages = $state(0);
   /** Goes up with every change of the document: the thumbnails draw again. */
   version = $state(0);
@@ -30,7 +33,7 @@ export class Editor {
   passwordRejected = $state(false);
   canUndo = $state(false);
 
-  #file: File | null = null;
+  #source: PickedFile | null = null;
   #password = '';
   #history: ArrayBuffer[] = [];
 
@@ -46,13 +49,29 @@ export class Editor {
     return [...this.selected].sort((a, b) => a - b);
   }
 
-  async open(file: File, password = ''): Promise<void> {
-    this.#file = file;
+  /** A file from the browser's input or a drop. */
+  async openFile(file: File): Promise<void> {
+    await this.open(await fromBrowser(file));
+  }
+
+  /** Desktop: a file chosen in the system's dialog. */
+  async openFromDialog(): Promise<void> {
+    const picked = await pickPdf().catch((error: unknown) => {
+      this.error = describe(error);
+      return null;
+    });
+    if (picked) await this.open(picked);
+  }
+
+  async open(source: PickedFile, password = ''): Promise<void> {
+    this.#source = source;
     this.#password = password;
     await this.#run(async () => {
       try {
-        const opened = await this.engine.openForEditing(await file.arrayBuffer(), password);
-        this.name = file.name;
+        // A copy goes to the engine (the bytes are transferred): asking for a password reads them again.
+        const opened = await this.engine.openForEditing(source.data.slice(0), password);
+        this.name = source.name;
+        this.path = source.path;
         this.repairs = opened.repairs;
         this.#history = [];
         this.canUndo = false;
@@ -72,13 +91,13 @@ export class Editor {
   }
 
   async submitPassword(password: string): Promise<void> {
-    if (this.#file) await this.open(this.#file, password);
+    if (this.#source) await this.open(this.#source, password);
   }
 
   cancelPassword(): void {
     this.passwordNeeded = false;
     this.passwordRejected = false;
-    this.#file = null;
+    this.#source = null;
   }
 
   // ── Selection ──────────────────────────────────────────────────────────────────────────────
@@ -161,35 +180,53 @@ export class Editor {
     return Promise.resolve();
   }
 
+  /** Desktop: the pages of a PDF chosen in the system's dialog (see insert). */
+  async insertFromDialog(): Promise<void> {
+    const picked = await pickPdf().catch((error: unknown) => {
+      this.error = describe(error);
+      return null;
+    });
+    if (picked) await this.insert(picked);
+  }
+
   /** Every page of another PDF, after the selected pages (or at the end); the new pages end up selected. */
-  async insert(file: File): Promise<void> {
+  async insert(source: PickedFile): Promise<void> {
     const at = this.selected.size > 0 ? this.selection.at(-1)! + 1 : this.pages;
     const before = this.pages;
-    const data = await file.arrayBuffer();
+    const data = source.data.slice(0);
     await this.#edit(
       () => this.engine.importFile(data, '', at),
       (summary) => Array.from({ length: (summary.pages?.length ?? before) - before }, (_, i) => at + i),
     );
   }
 
-  /** The selected pages as a new file, downloaded; the document stays as it is. */
+  /** The selected pages as a new file (downloaded, or where the save dialog says); the document stays. */
   async extract(): Promise<void> {
     const pages = this.selection;
     if (pages.length === 0 || !this.name) return;
     const name = this.name;
     await this.#run(async () => {
       const data = await this.engine.extract(pages);
-      download(data, `${baseName(name)}-pagine.pdf`);
+      await savePdf(data, `${baseName(name)}-pagine.pdf`, null);
     });
   }
 
-  /** The document as it is now, downloaded under its own name (a full save, compact). */
-  async save(): Promise<void> {
+  /**
+   * The document as it is now (a full save, compact): downloaded under its own name, or on the desktop
+   * written over the file it came from. asNew: wherever the save dialog says (desktop).
+   */
+  async save(asNew = false): Promise<void> {
     if (!this.name) return;
     const name = this.name;
+    const path = asNew ? null : this.path;
     await this.#run(async () => {
       const data = await this.engine.saveCompact(pdfDateNow());
-      download(data, name);
+      const saved = await savePdf(data, name, path);
+      if (!saved) return; // cancelled
+      if (saved.path !== null) {
+        this.path = saved.path;
+        this.name = fileName(saved.path);
+      }
       this.modified = false;
     });
   }
@@ -209,6 +246,7 @@ export class Editor {
   async close(): Promise<void> {
     await this.engine.close().catch(() => {});
     this.name = null;
+    this.path = null;
     this.pages = 0;
     this.selected.clear();
     this.anchor = null;
@@ -217,7 +255,7 @@ export class Editor {
     this.#history = [];
     this.canUndo = false;
     this.error = null;
-    this.#file = null;
+    this.#source = null;
   }
 
   // ── Internals ──────────────────────────────────────────────────────────────────────────────

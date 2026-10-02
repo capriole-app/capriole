@@ -13,6 +13,7 @@
   import X from '@lucide/svelte/icons/x';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor } from '$lib/editor.svelte';
+  import { fromBrowser, isDesktop } from '$lib/platform';
 
   const editor = getEditor();
   let input: HTMLInputElement | undefined = $state();
@@ -79,7 +80,12 @@
     <button type="button" class={button} disabled={!some || editor.busy} onclick={() => editor.extract()}>
       <FileOutput class="size-4" /> Estrai
     </button>
-    <button type="button" class={button} disabled={editor.busy} onclick={() => input?.click()}>
+    <button
+      type="button"
+      class={button}
+      disabled={editor.busy}
+      onclick={() => (isDesktop ? editor.insertFromDialog() : input?.click())}
+    >
       <FilePlus class="size-4" /> Inserisci PDF
     </button>
     <input
@@ -90,7 +96,7 @@
       data-testid="insert-file"
       onchange={(e) => {
         const file = e.currentTarget.files?.[0];
-        if (file) editor.insert(file);
+        if (file) fromBrowser(file).then((picked) => editor.insert(picked));
         e.currentTarget.value = '';
       }}
     />
@@ -102,9 +108,15 @@
       class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
       disabled={editor.busy}
       onclick={() => editor.save()}
+      title={editor.path ? `Sovrascrive ${editor.path}` : undefined}
     >
       <FileDown class="size-4" /> Salva
     </button>
+    {#if isDesktop}
+      <button type="button" class={button} disabled={editor.busy} onclick={() => editor.save(true)}>
+        <FileDown class="size-4" /> Salva con nome
+      </button>
+    {/if}
   </div>
   <ThemeMenu />
   <button

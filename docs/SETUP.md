@@ -22,11 +22,24 @@ sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld
   per i test differenziali**, usati come programmi esterni. Non si linkano mai (licenze, spec §7.3).
   PDFium e pdf.js arrivano alla fase 4 (binario precompilato / Node).
 
-## Node, per l'app Inspector (`apps/inspector`)
+## Node, per le app (`apps/inspector`, `apps/capriole`, `apps/desktop`)
 
 Node **22** (fissato in `.nvmrc`, `engines` e `engine-strict`): per esempio con nvm, `nvm install 22`.
 Quello incluso in emsdk è il 24 e non va bene per l'app. Per i test end-to-end, una volta:
 `cd apps/inspector && npx playwright install chromium`. Istruzioni d'uso in `apps/inspector/README.md`.
+
+## Rust e WebKitGTK, per la shell desktop (`apps/desktop`, fase 8c)
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y     # Rust stabile (rustup)
+sudo apt update && sudo apt install libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev
+cd apps/desktop && npm ci && npm run dev     # l'app nella shell (avvia anche apps/capriole in sviluppo)
+npm run build                                # pacchetti .deb e AppImage in src-tauri/target/release/bundle/
+```
+
+Nel gate il passo desktop è facoltativo: `SKIP_WASM=0 SKIP_DESKTOP=0 scripts/check.sh` (clippy sul crate,
+avvisi come errori). Compila con al più 4 job (`CARGO_BUILD_JOBS=4`): la macchina ha poca memoria.
 
 ## Hook git (obbligatorio, una volta per clone)
 

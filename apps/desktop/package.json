@@ -1,0 +1,19 @@
+{
+  "name": "@capriole/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capriole desktop: the web app (apps/capriole) in a Tauri shell, with the system's file dialogs.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.1"
+  }
+}

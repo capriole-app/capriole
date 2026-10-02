@@ -3,6 +3,7 @@
   import FolderOpen from '@lucide/svelte/icons/folder-open';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor } from '$lib/editor.svelte';
+  import { isDesktop } from '$lib/platform';
 
   const editor = getEditor();
   let dragging = $state(false);
@@ -10,7 +11,7 @@
 
   function take(files: FileList | null | undefined): void {
     const file = files?.[0];
-    if (file) editor.open(file);
+    if (file) editor.openFile(file);
   }
 </script>
 
@@ -48,7 +49,7 @@
       type="button"
       class="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-base font-medium text-primary-foreground disabled:opacity-60"
       disabled={editor.busy}
-      onclick={() => input?.click()}
+      onclick={() => (isDesktop ? editor.openFromDialog() : input?.click())}
     >
       <FolderOpen class="size-5" />
       {editor.busy ? 'Apertura…' : 'Scegli un PDF'}
@@ -62,7 +63,9 @@
       onchange={(e) => take(e.currentTarget.files)}
     />
     <p class="mt-4 text-center text-sm text-muted-foreground">
-      …oppure trascinalo qui. Il file resta nel browser: nessun byte va su un server.
+      …oppure trascinalo qui. {isDesktop
+        ? 'Il file resta sul tuo computer.'
+        : 'Il file resta nel browser: nessun byte va su un server.'}
     </p>
     {#if editor.engineVersion}
       <p class="mt-6 text-center text-xs text-muted-foreground">

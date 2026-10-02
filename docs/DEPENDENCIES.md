@@ -47,12 +47,32 @@ MuPDF/mutool (AGPL), Poppler (GPL), PDFium (BSD, ma API da viewer), pdf.js (Apac
 jbig2dec (AGPL: oracolo delle fixture JBIG2, `tests/data/jbig2/make_fixtures.py`), libtiff tramite Pillow
 (generazione delle fixture CCITT e MMR).
 
-## Inspector app (`apps/inspector`) — npm, devDependencies only
+## Apps (`apps/inspector`, `apps/capriole`) — npm, devDependencies only
 
-Versions pinned by `apps/inspector/package-lock.json`; nothing is linked into the engine. All
+Versions pinned by each app's `package-lock.json`; nothing is linked into the engine. The same stack in
+both (ADR 0008). All
 permissive licences: `svelte`, `@sveltejs/kit`, `@sveltejs/adapter-static`, `@sveltejs/vite-plugin-svelte`,
 `vite`, `tailwindcss`, `@tailwindcss/vite`, `mode-watcher`, `clsx`, `tailwind-merge`, `svelte-check`,
 `prettier`, `prettier-plugin-svelte`, `prettier-plugin-tailwindcss` (MIT); `@lucide/svelte` (ISC);
 `typescript` 6.x (Apache-2.0; 7.x is not yet accepted by Kit and svelte-check); `@playwright/test`
 (Apache-2.0, tests only). `npm audit`: 3 *low* advisories in `cookie` via SvelteKit's server side, which
 a static site does not have.
+
+`apps/capriole` also has the desktop shell's JavaScript APIs, loaded only inside it (dynamic imports):
+`@tauri-apps/plugin-dialog` 2.8.1, `@tauri-apps/plugin-fs` 2.6.0, and `@tauri-apps/api` 2.12.1 through
+them (MIT OR Apache-2.0).
+
+## Desktop shell (`apps/desktop`, PLAN.md 8c, ADR 0008)
+
+| Component | Version | Licence | Use |
+|---|---|---|---|
+| `tauri` (Rust crate) | 2.x, pinned by `src-tauri/Cargo.lock` | MIT OR Apache-2.0 | the shell: a WebKitGTK webview around `apps/capriole` |
+| `tauri-build` | 2.x | MIT OR Apache-2.0 | build script (capabilities, context) |
+| `tauri-plugin-dialog`, `tauri-plugin-fs` | 2.x | MIT OR Apache-2.0 | system open/save dialogs; reading and writing the files picked in them |
+| `@tauri-apps/cli` (npm) | 2.12.1 | MIT OR Apache-2.0 | `tauri dev` / `tauri build` (prebuilt binary) |
+
+The crates' own dependencies (a few hundred, as for any Tauri app) are pinned by `Cargo.lock`; their
+licences are permissive (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode) — to be checked with `cargo deny`
+when the app is distributed. System libraries on Linux: WebKitGTK 4.1, GTK 3, libsoup 3 (LGPL, linked
+dynamically from the system, as every Tauri app on Linux does: not linked into the engine).
+

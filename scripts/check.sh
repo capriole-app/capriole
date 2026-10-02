@@ -5,6 +5,8 @@
 #   scripts/check.sh --fix      apply clang-format instead of checking it
 #   SKIP_TIDY=1 / SKIP_WASM=0   opt out of tidy / opt in to the WASM build+tests (needs EMSDK) and,
 #                               with it, the apps (apps/inspector, apps/capriole: format, type-check, build)
+#   SKIP_DESKTOP=0              with SKIP_WASM=0, also the desktop shell (apps/desktop: cargo clippy on
+#                               the Tauri crate, warnings as errors; needs Rust and WebKitGTK, docs/SETUP.md)
 #   SKIP_E2E=0                  with SKIP_WASM=0, also the apps' end-to-end tests (Playwright; needs its
 #                               Chromium: npx playwright install chromium)
 #
@@ -87,6 +89,17 @@ if [[ "$SKIP_WASM" != 1 ]]; then
       fi
     )
   done
+fi
+
+if [[ "${SKIP_DESKTOP:-1}" != 1 ]]; then
+  [[ "$SKIP_WASM" != 1 ]] || die "SKIP_DESKTOP=0 needs SKIP_WASM=0: the shell compiles in the web app's build"
+  step "Desktop shell (apps/desktop): cargo clippy"
+  command -v cargo >/dev/null || [[ -x "$HOME/.cargo/bin/cargo" ]] || die "cargo not found — see docs/SETUP.md (rustup)"
+  (
+    export PATH="$HOME/.cargo/bin:$PATH"
+    cd apps/desktop/src-tauri
+    cargo clippy --locked --all-targets -- -D warnings
+  )
 fi
 
 printf '\n\033[1;32mGate green.\033[0m\n'

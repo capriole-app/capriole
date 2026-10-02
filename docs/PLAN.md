@@ -742,7 +742,7 @@ desktop (Tauri, ADR 0008).
 
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
-motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` · 8d annotazioni · 8e
+motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · 8d annotazioni · 8e
 moduli AcroForm · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
@@ -790,6 +790,22 @@ era danneggiato; conferma prima di chiudere o lasciare la pagina con modifiche. 
 verifica entrambe le app. Criterio: test e2e dei flussi (ruota, elimina, annulla, sposta, trascina,
 inserisci, estrai, salva — i byte salvati letti per verificare ordine e rotazione —, file danneggiato):
 3/3 verdi, tutto nel browser.
+
+**8c (2026-10-02) — la shell desktop.** `apps/desktop`: Tauri 2 (crate `tauri`, plugin `dialog` e
+`fs`, CLI npm 2.12.1) attorno alla build di `apps/capriole`, che non cambia comportamento nel browser:
+`apps/capriole/src/lib/platform.ts` sceglie da sé, e nella shell «Apri» e «Inserisci PDF» usano il
+dialogo di sistema, «Salva» scrive sul file aperto, «Salva con nome» chiede dove, «Estrai» propone il
+nome; i plugin si caricano solo lì (import dinamici). Il motore resta il modulo WASM nel worker della
+webview (WebKitGTK). Permessi minimi (`capabilities/default.json`: i due dialoghi, e leggere/scrivere
+solo i file scelti in essi); policy dei contenuti che consente gli script della pagina, WebAssembly e i
+suoi worker, nulla dalla rete. Il pacchetto di risorse (font CJK, CMap, profilo CMYK) viaggia con
+l'app. Gate: passo facoltativo `SKIP_DESKTOP=0` (clippy sul crate, avvisi come errori); prerequisiti
+in `docs/SETUP.md`. Criterio: `tauri build` produce `Capriole_0.1.0_amd64.deb` (27 MB) e l'AppImage
+(104 MB, con le librerie GTK); il binario di release, avviato su un display virtuale (Xvfb), mostra la
+schermata d'apertura con il motore caricato («motore Capriole 0.0.1 (WebAssembly)») e la modalità
+desktop riconosciuta. Prova a mano dell'utente (apri, modifica, salva su disco) e test e2e automatici
+della shell (`tauri-driver`, richiede il pacchetto `webkit2gtk-driver`) da fare; Flathub quando si
+distribuisce.
 
 ---
 
