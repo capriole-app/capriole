@@ -742,8 +742,8 @@ desktop (Tauri, ADR 0008).
 
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
-motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · 8e
-moduli AcroForm · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
+motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
+moduli AcroForm (8e-1 motore ✅, 8e-2 app) · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -840,6 +840,38 @@ della pagina (la via della tastiera: Canc, Esc). Ogni modifica passa da «Annull
 miniatura di quella pagina. Client del motore: `annotations`, `annotationAdd|Update|Remove`.
 Criterio: test e2e del flusso (evidenzia, nota con commento, rettangolo spostato, Canc, Annulla, salva —
 i byte salvati riletti: tipi, testo, `/Rect` spostato, un `/AP` per annotazione) verde.
+
+**8e-1 (2026-10-02) — moduli nel motore: uscita raggiunta.** `edit/forms.hpp`: `list_fields` (i campi
+terminali dell'AcroForm: nome completo, etichetta, tipo, valore, opzioni, flag — sola lettura,
+obbligatorio, multiriga, password, a pettine, `/MaxLen`, combo modificabile, elenco a scelta multipla —,
+widget con pagina e riquadro come la si vede e stato «on»; attributi ereditati; albero ostile limitato:
+profondità, nodi, cicli; `null` come assente) e `fill_field` (testo, casella, radio, combo, elenco). Ogni
+widget riceve l'aspetto del valore, generato dal motore: il font del campo (`/DA` nel `/DR` del modulo)
+quando è semplice, con larghezze note e un glifo per ogni carattere — altrimenti Helvetica —;
+dimensione automatica, `/Q`, celle del pettine, asterischi, più righe, sfondo, bordo e rotazione di `/MK`;
+l'elenco con le scelte evidenziate; caselle e radio accendono il loro stato (`/AS`), con un segno
+disegnato se il widget non ne ha. Firme (8h), pulsanti e campi in sola lettura: elencati, non compilati.
+Un modulo con XFA lo perde quando si compila (con `/NeedsRendering`). Parti condivise con le annotazioni
+in `edit/common` (geometria della pagina, Helvetica, a capo — ora lineare: una parola lunghissima
+bloccava —, `/DA` letto con il parser dei contenuti). API C `capriole_document_form_fields_json` e
+`capriole_document_form_field_fill` (anche WASM), `cpdf form list|fill`, fuzz target `fuzz_forms` (25
+minuti in due giri: pulito), test. Corretti strada facendo, ciascuno con il suo test: una riparazione
+strutturale trovata durante la compilazione (l'albero delle pagine rifatto quando la si percorre per
+la prima volta) lasciava il primo campo compilato e rifiutava gli altri — ora si legge e si prepara
+tutto, si ricontrolla la struttura e solo allora si scrive: un rifiuto non cambia nulla —; un `/DA`
+con un NUL (spazio bianco in PDF) letto a mano dava un testo bianco su bianco.
+Criterio: `corpus-tools/check_forms.py` — ogni campo compilabile di ogni modulo (i 14 moduli di
+`safedocs/0000`, i 242 di `unsafe/x008` — malformazioni sintetiche dello stesso modulo —, e due moduli
+fatti dallo script con un campo di ogni tipo, dritto e su una pagina ruotata) ha un valore diverso dal
+suo, compilato in incrementale: riletto da MuPDF (`mutool run`) e da Capriole esattamente come scritto,
+mostrato cambiato da Capriole, Poppler e MuPDF in ogni widget visibile, `qpdf --check` mai peggiore.
+**126/126 moduli, 3349 campi** (più 132 moduli con nulla da compilare: firme, pulsanti, sola lettura).
+MuPDF non è confrontato a vista dove non sa mostrare il modulo nemmeno prima (22 moduli di `x008`: non
+riesce a generarne gli aspetti, ripara la pagina con un'altra misura, o il campo non ha nome — non lo
+disegna); lì Capriole e Poppler sì, e MuPDF rilegge comunque i valori. `unsafe/x002` non ha moduli.
+Rapporto in `CORPORA/reports/forms-all-20261002-235329/`. Limiti dichiarati: Capriole non
+disegna i widget senza aspetto (Poppler e MuPDF lo generano: lo farà l'app, 8e-2, mostrando i valori);
+testo in font a byte singolo (oltre WinAnsi, `?`), non CJK.
 
 ---
 

@@ -131,7 +131,7 @@ their parent):
 ```
 
 `ref` is `null` for an annotation written directly in `/Annots` (listed, not editable); `editable` is
-false for those and for form widgets (phase 8e). Coordinates are those of the page as shown, as for
+false for those and for form widgets (they change with their fields: see Forms). Coordinates are those of the page as shown, as for
 text (points, top-left origin, /Rotate applied); a note (NoRotate) is given where it is shown, upright.
 `contents` and `author` are Unicode (`\u` escapes).
 
@@ -151,9 +151,48 @@ known key with a value of the wrong shape is an error, as is malformed JSON — 
 
 The annotation gets its appearance (/AP), made by the engine, so that every reader draws it as
 Capriole does: markup from its geometry, a note's icon (NoZoom and NoRotate, as Acrobat writes notes),
-free text in Helvetica wrapped to its rectangle (Latin text: characters outside WinAnsi become `?`).
+free text in Helvetica wrapped to its rectangle, line breaks kept (Latin text: characters outside WinAnsi
+become `?`).
 `capriole_document_annotation_update` takes `{"moveBy":[dx,dy], "contents":"…", "color":[r,g,b],
 "opacity":n, "date":"…"}` (any of them); a new colour or text makes the appearance again (for the kinds
 the engine makes; another kind's colour is `CAPRIOLE_ERROR_UNSUPPORTED`). `capriole_document_annotation_remove`
 removes it with its popup. Documents whose structure needed repairs are edited after a full save
 (`CAPRIOLE_ERROR_UNSUPPORTED` until then); listing works on any document.
+
+## Forms
+
+`capriole_document_form_fields_json` lists the terminal fields of the document's form (AcroForm), in
+the order of the field tree (`[]` without a form):
+
+```json
+[{"ref":[10,0], "name":"person.address", "label":"…",
+  "type":"text"|"checkbox"|"radio"|"pushbutton"|"combobox"|"listbox"|"signature",
+  "value":["…"], "options":[{"value":"it","display":"Italiano"}, …], "maxLength":20 | null,
+  "readOnly":false, "required":false, "multiline":false, "password":false, "comb":false,
+  "editable":false, "multiSelect":false, "fillable":true,
+  "widgets":[{"ref":[10,0], "page":0 | null, "rect":[x0,y0,x1,y1], "onState":"Yes"}, …]}, …]
+```
+
+`name` is fully qualified (partial names joined with `.`); text is Unicode (`\u` escapes). `value` is an
+array: one string for text and combo boxes (none when empty), the chosen options of a list box, the
+state that is on for check boxes and radio buttons (`"Off"` when none). `options` are a choice's options
+(the value `/V` holds, the text shown) or a button's on states (shown by their `/Opt` export value).
+A widget's `rect` is on its page as shown, as for annotations (`page` null when no page lists it: its
+`/Rect` as it is); `onState` is a button widget's on state. `fillable` is false for read-only fields,
+signatures (phase 8h) and push buttons.
+
+`capriole_document_form_field_fill(document, number, generation, value_json)` fills a field: `"text"`,
+`["a","b"]` (list boxes; one string otherwise), or `null` to clear it. Text: line breaks become spaces in
+a single-line field, at most `maxLength` characters. Check box: its on state or `"Off"`; radio button: a
+widget's on state (widgets sharing it come on together) or `"Off"`; combo box: an option's value, or any
+text when editable; list box: option values, several when multi-select. A value the field does not take
+is `CAPRIOLE_ERROR_OUT_OF_RANGE`, as is a reference that is not a terminal field; a field that is not
+fillable is `CAPRIOLE_ERROR_UNSUPPORTED`.
+
+Each widget gets the appearance of the value, made by the engine (§12.7.4.3): text and choices in the
+field's font (`/DA` in the form's `/DR`) when it is a simple font with a glyph for every character,
+otherwise in Helvetica (WinAnsi); auto size, alignment (`/Q`), comb cells, password asterisks, several
+lines, the widget's background, border and rotation (`/MK`); a list box shows its options with the
+chosen ones highlighted. Check boxes and radio buttons turn on their state (`/AS`), with a drawn mark
+when the widget has no appearance states. A form with XFA loses it when filled (readers that know XFA
+would show it instead). Documents whose structure needed repairs are filled after a full save.

@@ -55,6 +55,8 @@ export interface CaprioleModule {
     change: number,
   ): number;
   _capriole_document_annotation_remove(document: number, pageIndex: number, num: number, generation: number): number;
+  _capriole_document_form_fields_json(document: number, out: number): number;
+  _capriole_document_form_field_fill(document: number, num: number, generation: number, value: number): number;
   _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,

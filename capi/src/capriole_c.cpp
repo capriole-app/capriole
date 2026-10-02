@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "capriole/capriole.h"
@@ -24,6 +25,7 @@
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
 #include "capriole/edit/annotations.hpp"
+#include "capriole/edit/forms.hpp"
 #include "capriole/edit/pages.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
@@ -925,6 +927,90 @@ capriole_status capriole_document_annotation_remove(capriole_document* document,
   try {
     const capriole::model::ObjectRef ref{.number = number, .generation = static_cast<std::uint16_t>(generation)};
     auto done = capriole::edit::remove_annotation(document->document, page_index, ref);
+    return done ? CAPRIOLE_OK : fail(done.error());
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_form_fields_json(capriole_document* document, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto fields = capriole::edit::list_fields(document->document);
+    if (!fields) {
+      return fail(fields.error());
+    }
+    using capriole::edit::FieldType;
+    const auto text = [](std::string& out, const std::string& utf8) { capriole::capi::append_json_text(out, capriole::model::from_utf8(utf8)); };
+    std::string out = "[";
+    for (std::size_t i = 0; i < fields->size(); ++i) {
+      const auto& f = (*fields)[i];
+      out += std::format(R"({}{{"ref":[{},{}],"name":)", i == 0 ? "" : ",", f.ref.number, f.ref.generation);
+      text(out, f.name);
+      out += R"(,"label":)";
+      text(out, f.label);
+      static constexpr std::array<std::string_view, 7> kTypes = {"text", "checkbox", "radio", "pushbutton", "combobox", "listbox", "signature"};
+      out += std::format(R"(,"type":"{}","value":[)", kTypes.at(static_cast<std::size_t>(f.type)));
+      for (std::size_t v = 0; v < f.value.size(); ++v) {
+        out += v == 0 ? "" : ",";
+        text(out, f.value[v]);
+      }
+      out += R"(],"options":[)";
+      for (std::size_t o = 0; o < f.options.size(); ++o) {
+        out += o == 0 ? R"({"value":)" : R"(,{"value":)";
+        text(out, f.options[o].value);
+        out += R"(,"display":)";
+        text(out, f.options[o].display);
+        out += "}";
+      }
+      out += f.max_length ? std::format(R"(],"maxLength":{})", *f.max_length) : std::string(R"(],"maxLength":null)");
+      out += std::format(R"(,"readOnly":{},"required":{},"multiline":{},"password":{},"comb":{},"editable":{},"multiSelect":{},"fillable":{},"widgets":[)",
+                         f.read_only, f.required, f.multiline, f.password, f.comb, f.editable, f.multi_select, f.fillable);
+      for (std::size_t w = 0; w < f.widgets.size(); ++w) {
+        const auto& widget = f.widgets[w];
+        out += std::format(R"({}{{"ref":[{},{}],"page":{},"rect":[{:.2f},{:.2f},{:.2f},{:.2f}],"onState":)", w == 0 ? "" : ",", widget.ref.number,
+                           widget.ref.generation, widget.page ? std::to_string(*widget.page) : std::string("null"), widget.rect.x0, widget.rect.y0,
+                           widget.rect.x1, widget.rect.y1);
+        text(out, widget.on_state);
+        out += "}";
+      }
+      out += "]}";
+    }
+    out += "]";
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_form_field_fill(capriole_document* document, uint32_t number, uint32_t generation, const char* value_json) {
+  g_last_error.clear();
+  if (document == nullptr || value_json == nullptr || generation > 65535) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument or generation out of range");
+  }
+  try {
+    auto json = capriole::capi::parse_json(value_json);
+    if (!json) {
+      return fail(json.error());
+    }
+    std::vector<std::string> value;
+    if (const std::string* one = json->string()) {
+      value.push_back(*one);
+    } else if (const auto* many = json->array()) {
+      for (const auto& item : *many) {
+        if (item.string() == nullptr) {
+          return fail(CAPRIOLE_ERROR_SYNTAX, "the value: an array of strings expected");
+        }
+        value.push_back(*item.string());
+      }
+    } else if (!std::holds_alternative<std::nullptr_t>(json->value)) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "the value: a string, an array of strings or null expected");
+    }
+    const capriole::model::ObjectRef ref{.number = number, .generation = static_cast<std::uint16_t>(generation)};
+    auto done = capriole::edit::fill_field(document->document, ref, value);
     return done ? CAPRIOLE_OK : fail(done.error());
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");

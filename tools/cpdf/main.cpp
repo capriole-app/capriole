@@ -94,6 +94,10 @@ void print_usage() {
                "                  add an annotation (capi/README.md: {\"kind\":\"highlight\",\"quads\":[[x0,y0,x1,y1]]}, ...;\n"
                "                  coordinates as the page is shown), saved incrementally (fully if it needed repairs)\n"
                "  annot remove <file> <page> <object number> <output>\n"
+               "  form list <file>               the form's fields, as JSON\n"
+               "  form fill <file> <output> <number>=<json>...\n"
+               "                  fill fields by object number: a string, an array of strings (list boxes), or null;\n"
+               "                  their appearances are generated; saved incrementally (fully if it needed repairs)\n"
                "  content <file> <page>\n"
                "                  print the operations of a page's content stream (page from 1)\n"
                "  save [--incremental] [--moddate D:...] <file> <output>\n"
@@ -506,27 +510,64 @@ int cmd_text(std::string_view path, std::uint64_t page_number, bool words, capri
   return kExitOk;
 }
 
-// annot list|add|remove: annotations through the C API (capi/README.md), as the apps use them.
-int cmd_annot(std::span<char* const> args) {
-  const std::string_view action = args[0];
-  const std::string_view path = args[1];
+// A document opened through the C API (capi/README.md), as the apps open it; nullptr after a message.
+capriole_document* open_capi(std::string_view path) {
   std::ifstream in{std::string(path), std::ios::binary};
   const std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   if (!in && !in.eof()) {
     std::cerr << std::format("cpdf: cannot read {}\n", path);
-    return kExitFailure;
+    return nullptr;
   }
   const char* password = std::getenv("CAPRIOLE_PASSWORD");  // NOLINT(concurrency-mt-unsafe): single-threaded tool
   capriole_document* document = nullptr;
+  const auto* input = reinterpret_cast<const std::uint8_t*>(bytes.data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes as bytes
+  if (capriole_document_open(input, bytes.size(), password, 1, &document) != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: open: {}\n", path, capriole_last_error_message());
+    return nullptr;
+  }
+  return document;
+}
+
+// Writes an edited document to output and closes it: appended to the original bytes; a file that
+// needed repairs is written anew instead (the writer refuses to append to a structure that reads only
+// with repairs).
+int save_capi(capriole_document* document, std::string_view output) {
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  bool incremental = true;
+  if (capriole_document_save(document, 1, nullptr, &data, &size) != CAPRIOLE_OK) {
+    incremental = false;
+    if (capriole_document_save(document, 0, nullptr, &data, &size) != CAPRIOLE_OK) {
+      std::cerr << std::format("cpdf: save: {}\n", capriole_last_error_message());
+      capriole_document_close(document);
+      return kExitFailure;
+    }
+  }
+  std::ofstream out{std::string(output), std::ios::binary};
+  out.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  capriole_free(data);
+  capriole_document_close(document);
+  if (!out) {
+    std::cerr << std::format("cpdf: cannot write {}\n", output);
+    return kExitFailure;
+  }
+  std::cout << std::format("{}: {} bytes ({})\n", output, size, incremental ? "incremental" : "full: the file needed repairs");
+  return kExitOk;
+}
+
+// annot list|add|remove: annotations through the C API, as the apps use them.
+int cmd_annot(std::span<char* const> args) {
+  const std::string_view action = args[0];
+  const std::string_view path = args[1];
+  capriole_document* document = open_capi(path);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
   const auto failed = [&](std::string_view what) {
     std::cerr << std::format("cpdf: {}: {}: {}\n", path, what, capriole_last_error_message());
     capriole_document_close(document);
     return kExitFailure;
   };
-  const auto* input = reinterpret_cast<const std::uint8_t*>(bytes.data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes as bytes
-  if (capriole_document_open(input, bytes.size(), password, 1, &document) != CAPRIOLE_OK) {
-    return failed("open");
-  }
   const auto page = parse_uint(args[2]);
   if (!page || *page == 0 || *page > 0xFFFFFFFFULL) {
     capriole_document_close(document);
@@ -557,27 +598,46 @@ int cmd_annot(std::span<char* const> args) {
       return failed("remove");
     }
   }
-  // Appended to the original bytes; a file that needed repairs is written anew instead (the writer
-  // refuses to append to a structure that reads only with repairs).
-  std::uint8_t* data = nullptr;
-  std::size_t size = 0;
-  bool incremental = true;
-  if (capriole_document_save(document, 1, nullptr, &data, &size) != CAPRIOLE_OK) {
-    incremental = false;
-    if (capriole_document_save(document, 0, nullptr, &data, &size) != CAPRIOLE_OK) {
-      return failed("save");
-    }
-  }
-  std::ofstream out{std::string(args[4]), std::ios::binary};
-  out.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
-  capriole_free(data);
-  capriole_document_close(document);
-  if (!out) {
-    std::cerr << std::format("cpdf: cannot write {}\n", args[4]);
+  return save_capi(document, args[4]);
+}
+
+// form list <file> | form fill <file> <output> <number>=<json>...: the form's fields through the C API.
+int cmd_form(std::span<char* const> args) {
+  const std::string_view action = args[0];
+  const std::string_view path = args[1];
+  capriole_document* document = open_capi(path);
+  if (document == nullptr) {
     return kExitFailure;
   }
-  std::cout << std::format("{}: {} bytes ({})\n", args[4], size, incremental ? "incremental" : "full: the file needed repairs");
-  return kExitOk;
+  if (action == "list") {
+    char* json = nullptr;
+    if (capriole_document_form_fields_json(document, &json) != CAPRIOLE_OK) {
+      std::cerr << std::format("cpdf: {}: list: {}\n", path, capriole_last_error_message());
+      capriole_document_close(document);
+      return kExitFailure;
+    }
+    std::cout << json << '\n';
+    capriole_free(json);
+    capriole_document_close(document);
+    return kExitOk;
+  }
+  for (const char* assignment : args.subspan(3)) {
+    const std::string_view text = assignment;
+    const std::size_t equals = text.find('=');
+    const auto number = equals != std::string_view::npos ? parse_uint(text.substr(0, equals)) : std::nullopt;
+    if (!number || *number > 0xFFFFFFFFULL) {
+      capriole_document_close(document);
+      print_usage();
+      return kExitUsage;
+    }
+    const std::string value(text.substr(equals + 1));
+    if (capriole_document_form_field_fill(document, static_cast<std::uint32_t>(*number), 0, value.c_str()) != CAPRIOLE_OK) {
+      std::cerr << std::format("cpdf: {}: field {}: {}\n", path, *number, capriole_last_error_message());
+      capriole_document_close(document);
+      return kExitFailure;
+    }
+  }
+  return save_capi(document, args[2]);
 }
 
 int cmd_pages(std::string_view path) {
@@ -889,6 +949,12 @@ int run(std::span<char*> args) {
     const std::string_view action = args[2];
     if ((action == "list" && args.size() == 5) || ((action == "add" || action == "remove") && args.size() == 7)) {
       return cmd_annot(args.subspan(2));
+    }
+  }
+  if (command == "form" && args.size() >= 4) {
+    const std::string_view action = args[2];
+    if ((action == "list" && args.size() == 4) || (action == "fill" && args.size() >= 6)) {
+      return cmd_form(args.subspan(2));
     }
   }
   if (command == "merge" && args.size() >= 4) {

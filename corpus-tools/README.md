@@ -94,3 +94,20 @@ upright and turned by /Rotate 90, each of the ten kinds drawn by pdftoppm and by
 kinds are added (text markup over horizontal words of the page), saved incrementally; `qpdf --check`
 no worse than the original, the annotations read back, and each drawn by all three engines inside its
 rectangle (≥ 0.3% of its pixels changed). Exit criterion of phase 8d (engine): everything passes.
+
+## Forms (PLAN.md phase 8e, exit criterion)
+
+```sh
+nice -n 10 corpus-tools/check_forms.py ../CORPORA/safedocs/0000 ../CORPORA/unsafe/x002 ../CORPORA/unsafe/x008 \
+    --cpdf build/release/tools/cpdf/cpdf --jobs 2 --report-dir ../CORPORA/reports --name forms-all
+```
+
+Every fillable field of every form — the corpus files whose form has fields, and two forms made by the
+script with a field of every kind (upright, and on a page turned by /Rotate 90 with its widgets turned
+back by /MK /R) — gets a value different from its own (`cpdf form fill`, the C API, saved
+incrementally). The output must read back in MuPDF (`mutool run`: `getValue()`, or `/V` itself for
+several values) and in Capriole with exactly the values written; every engine (Capriole, Poppler,
+MuPDF) must show the change in each visible widget (≥ 1% of its pixels; a button's widgets only where
+they turn on or off); `qpdf --check` no worse than the original. Forms with nothing to fill (signatures,
+push buttons, read-only fields) and files that do not open are reported apart. Exit criterion of phase
+8e (engine): every field of every form passes.

@@ -33,6 +33,8 @@ set(_capriole_exports
   _capriole_document_annotation_add
   _capriole_document_annotation_update
   _capriole_document_annotation_remove
+  _capriole_document_form_fields_json
+  _capriole_document_form_field_fill
   _capriole_resource_add
   _capriole_last_missing_resources_json
   _malloc

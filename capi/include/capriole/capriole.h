@@ -196,6 +196,24 @@ capriole_status capriole_document_annotation_update(capriole_document* document,
 /* Removes an annotation (and its popup) from page page_index. */
 capriole_status capriole_document_annotation_remove(capriole_document* document, uint32_t page_index, uint32_t number, uint32_t generation);
 
+/* ── Forms (edit/forms.hpp) ──────────────────────────────────────────────────────────────── */
+
+/*
+ * The terminal fields of the document's form as JSON (an array; empty without a form): for each its
+ * reference, fully qualified name and label (Unicode), type ("text", "checkbox", "radio", "pushbutton",
+ * "combobox", "listbox", "signature"), value (an array of strings), options, flags, and widgets (page,
+ * rectangle as shown, on state). Format in capi/README.md.
+ */
+capriole_status capriole_document_form_fields_json(capriole_document* document, char** json);
+
+/*
+ * Fills field number/generation with value_json (UTF-8): a string, an array of strings (list boxes take
+ * several), or null to clear it. Its widgets get the appearance of the value. CAPRIOLE_ERROR_OUT_OF_RANGE
+ * for a value the field does not take (not an option, a state it lacks, too long) or a reference that is
+ * not a field; CAPRIOLE_ERROR_UNSUPPORTED for a read-only field, a signature, a push button.
+ */
+capriole_status capriole_document_form_field_fill(capriole_document* document, uint32_t number, uint32_t generation, const char* value_json);
+
 /*
  * A full save that leaves out the objects nothing references any more (after deleting or extracting
  * pages); otherwise as capriole_document_save with incremental = 0.

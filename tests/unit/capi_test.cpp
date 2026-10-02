@@ -293,6 +293,52 @@ TEST(CApiDocument, Annotations) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, Forms) {
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R/AcroForm<</Fields[4 0 R 5 0 R 6 0 R]/DA(/Helv 0 Tf 0 g)>>>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]/Annots[4 0 R 5 0 R 6 0 R]>>");
+  b.add_object(4, "<</FT/Tx/T(nome)/TU(Il tuo nome)/MaxLen 20/Subtype/Widget/Rect[10 70 110 90]>>");
+  b.add_object(5, "<</FT/Ch/Ff 2097152/T(lingue)/Opt[[(it)(Italiano)][(en)(English)]]/Subtype/Widget/Rect[10 10 110 60]>>");
+  b.add_object(6, "<</FT/Btn/T(ok)/V/Off/Subtype/Widget/Rect[150 70 164 84]>>");
+  b.finish_table("/Size 7/Root 1 0 R");
+  capriole_document* document = open_document(b.str());
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_form_fields_json(document, &json), CAPRIOLE_OK);
+  const std::string listed = take_json(json);
+  EXPECT_NE(listed.find(R"({"ref":[4,0],"name":"nome","label":"Il tuo nome","type":"text","value":[],"options":[],"maxLength":20,"readOnly":false,)"
+                        R"("required":false,"multiline":false,"password":false,"comb":false,"editable":false,"multiSelect":false,"fillable":true,)"
+                        R"("widgets":[{"ref":[4,0],"page":0,"rect":[10.00,10.00,110.00,30.00],"onState":""}]})"),
+            std::string::npos)
+      << listed;
+  EXPECT_NE(listed.find(R"("type":"listbox","value":[],"options":[{"value":"it","display":"Italiano"},{"value":"en","display":"English"}])"), std::string::npos)
+      << listed;
+  EXPECT_NE(listed.find(R"("type":"checkbox","value":["Off"])"), std::string::npos) << listed;
+
+  EXPECT_EQ(capriole_document_form_field_fill(document, 4, 0, R"("Citt\u00e0")"), CAPRIOLE_OK) << capriole_last_error_message();
+  EXPECT_EQ(capriole_document_form_field_fill(document, 5, 0, R"(["it","en"])"), CAPRIOLE_OK) << capriole_last_error_message();
+  EXPECT_EQ(capriole_document_form_field_fill(document, 6, 0, R"("Yes")"), CAPRIOLE_OK) << capriole_last_error_message();
+  ASSERT_EQ(capriole_document_form_fields_json(document, &json), CAPRIOLE_OK);
+  const std::string filled = take_json(json);
+  EXPECT_NE(filled.find(R"("value":["Citt\u00e0"])"), std::string::npos) << filled;
+  EXPECT_NE(filled.find(R"("value":["it","en"])"), std::string::npos) << filled;
+  EXPECT_NE(filled.find(R"("value":["Yes"])"), std::string::npos) << filled;
+  EXPECT_EQ(capriole_document_form_field_fill(document, 4, 0, "null"), CAPRIOLE_OK);
+
+  // Malformed values, values the field does not take, what is not a field.
+  for (const char* bad : {"", "{", "1", "[1]", R"({"a":"b"})", R"("x" "y")"}) {
+    SCOPED_TRACE(bad);
+    EXPECT_EQ(capriole_document_form_field_fill(document, 4, 0, bad), CAPRIOLE_ERROR_SYNTAX);
+  }
+  EXPECT_EQ(capriole_document_form_field_fill(document, 5, 0, R"(["fr"])"), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(capriole_document_form_field_fill(document, 4, 0, R"("ventuno caratteri qui")"), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(capriole_document_form_field_fill(document, 3, 0, R"("x")"), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  EXPECT_EQ(capriole_document_form_field_fill(document, 4, 70000, R"("x")"), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_form_field_fill(nullptr, 4, 0, R"("x")"), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_form_fields_json(document, nullptr), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {
   // A Japanese font that is not embedded, with a predefined CMap: both come from the resource pack.
   capriole::test::PdfBuilder b;

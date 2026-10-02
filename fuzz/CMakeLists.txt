@@ -34,6 +34,9 @@ capriole_add_fuzzer(fuzz_pages fuzz_pages.cpp)
 # Through the C API, as the apps edit annotations.
 capriole_add_fuzzer(fuzz_annotations fuzz_annotations.cpp)
 target_link_libraries(fuzz_annotations PRIVATE capriole::capi)
+# Through the C API, as the apps fill forms.
+capriole_add_fuzzer(fuzz_forms fuzz_forms.cpp)
+target_link_libraries(fuzz_forms PRIVATE capriole::capi)
 capriole_add_fuzzer(fuzz_icc fuzz_icc.cpp)
 target_include_directories(fuzz_icc PRIVATE ${PROJECT_SOURCE_DIR}/engine/src)
 # These two exercise the engine's internals (font/): its sources are their include path.
