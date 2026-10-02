@@ -130,6 +130,47 @@ export interface PageText {
   missing_resources: string[];
 }
 
+/** An annotation of a page, as the engine lists it (capi/README.md). Coordinates: the page as shown, points. */
+export interface AnnotationInfo {
+  ref: [number, number] | null;
+  subtype: string;
+  rect: [number, number, number, number];
+  contents: string;
+  author: string;
+  color: [number, number, number] | null;
+  hidden: boolean;
+  editable: boolean;
+}
+
+export type AnnotationKind =
+  'highlight' | 'underline' | 'strikeout' | 'squiggly' | 'note' | 'ink' | 'square' | 'circle' | 'line' | 'freetext';
+
+/** What capriole_document_annotation_add takes (capi/README.md). */
+export interface AnnotationSpec {
+  kind: AnnotationKind;
+  quads?: [number, number, number, number][];
+  strokes?: [number, number][][];
+  rect?: [number, number, number, number];
+  from?: [number, number];
+  to?: [number, number];
+  color?: [number, number, number];
+  fill?: [number, number, number];
+  width?: number;
+  opacity?: number;
+  fontSize?: number;
+  contents?: string;
+  author?: string;
+  date?: string;
+}
+
+export interface AnnotationChange {
+  moveBy?: [number, number];
+  contents?: string;
+  color?: [number, number, number];
+  opacity?: number;
+  date?: string;
+}
+
 /** A document opened for editing: its summary, and the repairs it needed (already written into it). */
 export interface EditableDocument {
   summary: Summary;
@@ -174,6 +215,10 @@ export type Request =
   | { kind: 'importFile'; data: ArrayBuffer; password: string; at: number }
   | { kind: 'extract'; pages: number[] }
   | { kind: 'saveCompact'; modificationDate: string | null }
+  | { kind: 'annotations'; index: number }
+  | { kind: 'annotationAdd'; index: number; spec: AnnotationSpec }
+  | { kind: 'annotationUpdate'; index: number; ref: [number, number]; change: AnnotationChange }
+  | { kind: 'annotationRemove'; index: number; ref: [number, number] }
   | { kind: 'save'; incremental: boolean; modificationDate: string | null }
   | { kind: 'close' };
 

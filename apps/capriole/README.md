@@ -18,6 +18,14 @@ npm run lint       # prettier --check
 npx playwright test   # end-to-end in Chromium (port 4174)
 ```
 
+**Annotations** (phase 8d): double-click a page (or select it and press "Annota") to show it large.
+Tools: highlight, underline and strike out (drag over the text: one mark per line), note (click; its
+comment in the side panel), pen, rectangle, ellipse, line, free text (drag a box; its text in the
+panel), and a colour for the next annotation. With "Seleziona e sposta", click an annotation to edit its
+text or colour or remove it, drag it to move it; the panel also lists the page's annotations (the
+keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
+annotation gets its appearance from the engine, so other readers show it the same.
+
 Same stack as the Inspector (ADR 0008, the workspace's frontend standards). Keyboard: Ctrl/Cmd-click
 adds a page to the selection, Shift-click a range, Ctrl/Cmd+A selects all, Delete deletes, Ctrl/Cmd+Z
 undoes; the arrows in the toolbar move the selected pages. Undo keeps whole copies of the document

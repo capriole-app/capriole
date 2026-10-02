@@ -1,0 +1,111 @@
+<script lang="ts">
+  // The page shown large: back to the pages, the page before and after, the tools that make
+  // annotations, the colour of the next one, undo and save.
+  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import Circle from '@lucide/svelte/icons/circle';
+  import FileDown from '@lucide/svelte/icons/file-down';
+  import Highlighter from '@lucide/svelte/icons/highlighter';
+  import LayoutGrid from '@lucide/svelte/icons/layout-grid';
+  import Minus from '@lucide/svelte/icons/minus';
+  import MousePointer2 from '@lucide/svelte/icons/mouse-pointer-2';
+  import PenLine from '@lucide/svelte/icons/pen-line';
+  import Square from '@lucide/svelte/icons/square';
+  import StickyNote from '@lucide/svelte/icons/sticky-note';
+  import Strikethrough from '@lucide/svelte/icons/strikethrough';
+  import Type from '@lucide/svelte/icons/type';
+  import Underline from '@lucide/svelte/icons/underline';
+  import Undo2 from '@lucide/svelte/icons/undo-2';
+  import ThemeMenu from './ThemeMenu.svelte';
+  import { getEditor, type Rgb, type Tool } from '$lib/editor.svelte';
+  import { colors, css, sameColor } from '$lib/colors';
+
+  const editor = getEditor();
+  const page = $derived(editor.viewing ?? 0);
+
+  const tools: { tool: Tool; label: string; icon: typeof Highlighter }[] = [
+    { tool: 'select', label: 'Seleziona e sposta', icon: MousePointer2 },
+    { tool: 'highlight', label: 'Evidenzia', icon: Highlighter },
+    { tool: 'underline', label: 'Sottolinea', icon: Underline },
+    { tool: 'strikeout', label: 'Barra', icon: Strikethrough },
+    { tool: 'note', label: 'Nota', icon: StickyNote },
+    { tool: 'ink', label: 'Penna', icon: PenLine },
+    { tool: 'square', label: 'Rettangolo', icon: Square },
+    { tool: 'circle', label: 'Ellisse', icon: Circle },
+    { tool: 'line', label: 'Linea', icon: Minus },
+    { tool: 'freetext', label: 'Testo', icon: Type },
+  ];
+  const button =
+    'flex items-center justify-center rounded-md border hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
+</script>
+
+<header class="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2">
+  <button type="button" class={[button, 'gap-1.5 px-2.5 py-1.5 text-sm']} onclick={() => editor.closeView()}>
+    <LayoutGrid class="size-4" /> Pagine
+  </button>
+  <div class="flex items-center gap-1">
+    <button
+      type="button"
+      class={[button, 'size-8']}
+      aria-label="Pagina precedente"
+      disabled={page === 0 || editor.busy}
+      onclick={() => editor.view(page - 1)}><ChevronLeft class="size-4" /></button
+    >
+    <span class="min-w-24 text-center text-sm tabular-nums" aria-live="polite">Pagina {page + 1} di {editor.pages}</span
+    >
+    <button
+      type="button"
+      class={[button, 'size-8']}
+      aria-label="Pagina successiva"
+      disabled={page >= editor.pages - 1 || editor.busy}
+      onclick={() => editor.view(page + 1)}><ChevronRight class="size-4" /></button
+    >
+  </div>
+
+  <div class="flex flex-wrap items-center gap-1" role="toolbar" aria-label="Strumenti">
+    {#each tools as { tool, label, icon: Icon } (tool)}
+      <button
+        type="button"
+        class={[button, 'size-9', editor.tool === tool && 'border-primary bg-accent']}
+        aria-label={label}
+        title={label}
+        aria-pressed={editor.tool === tool}
+        onclick={() => (editor.tool = tool)}><Icon class="size-4" /></button
+      >
+    {/each}
+  </div>
+
+  <div class="flex items-center gap-1" role="radiogroup" aria-label="Colore">
+    {#each colors as { name, rgb } (name)}
+      <button
+        type="button"
+        role="radio"
+        aria-checked={sameColor(editor.color, rgb)}
+        aria-label={name}
+        title={name}
+        class={[
+          'size-6 rounded-full border-2',
+          sameColor(editor.color, rgb) ? 'border-foreground' : 'border-transparent',
+        ]}
+        style:background-color={css(rgb)}
+        onclick={() => (editor.color = [...rgb] as Rgb)}
+      ></button>
+    {/each}
+  </div>
+
+  <div class="ms-auto flex items-center gap-2">
+    <button
+      type="button"
+      class={[button, 'gap-1.5 px-2.5 py-1.5 text-sm']}
+      disabled={!editor.canUndo || editor.busy}
+      onclick={() => editor.undo()}><Undo2 class="size-4" /> Annulla</button
+    >
+    <button
+      type="button"
+      class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
+      disabled={editor.busy}
+      onclick={() => editor.save()}><FileDown class="size-4" /> Salva</button
+    >
+    <ThemeMenu />
+  </div>
+</header>

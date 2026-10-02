@@ -300,6 +300,37 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
       const data = saveBytes(m, requireDocument(), true, request.modificationDate);
       return { value: data, transfer: [data] };
     }
+    case 'annotations':
+      return {
+        value: takeJson(m, (out) => m._capriole_document_page_annotations_json(requireDocument(), request.index, out)),
+        transfer: [],
+      };
+    case 'annotationAdd': {
+      const document = requireDocument();
+      const ref = withString(m, JSON.stringify(request.spec), (spec) =>
+        withScratch(m, 8, (out) => {
+          check(m, m._capriole_document_annotation_add(document, request.index, spec, out, out + 4));
+          return [m.HEAPU32[out >> 2]!, m.HEAPU32[(out >> 2) + 1]!] as [number, number];
+        }),
+      );
+      return { value: ref, transfer: [] };
+    }
+    case 'annotationUpdate': {
+      const document = requireDocument();
+      withString(m, JSON.stringify(request.change), (change) =>
+        check(
+          m,
+          m._capriole_document_annotation_update(document, request.index, request.ref[0], request.ref[1], change),
+        ),
+      );
+      return { value: null, transfer: [] };
+    }
+    case 'annotationRemove':
+      check(
+        m,
+        m._capriole_document_annotation_remove(requireDocument(), request.index, request.ref[0], request.ref[1]),
+      );
+      return { value: null, transfer: [] };
     case 'close':
       if (documentHandle !== 0) {
         m._capriole_document_close(documentHandle);

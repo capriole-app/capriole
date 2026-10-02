@@ -1,5 +1,8 @@
 // The page's side of the engine worker: one promise per request.
 import type {
+  AnnotationChange,
+  AnnotationInfo,
+  AnnotationSpec,
   ObjectInfo,
   PageContent,
   PagePreview,
@@ -122,6 +125,24 @@ export class EngineClient {
   /** A full save without the objects nothing uses any more. */
   saveCompact(modificationDate: string | null): Promise<ArrayBuffer> {
     return this.#call({ kind: 'saveCompact', modificationDate });
+  }
+
+  /** The annotations of page `index`. */
+  annotations(index: number): Promise<AnnotationInfo[]> {
+    return this.#call({ kind: 'annotations', index });
+  }
+
+  /** Adds an annotation to page `index` (its appearance made by the engine); resolves to its reference. */
+  annotationAdd(index: number, spec: AnnotationSpec): Promise<[number, number]> {
+    return this.#call({ kind: 'annotationAdd', index, spec });
+  }
+
+  annotationUpdate(index: number, ref: [number, number], change: AnnotationChange): Promise<void> {
+    return this.#call({ kind: 'annotationUpdate', index, ref, change });
+  }
+
+  annotationRemove(index: number, ref: [number, number]): Promise<void> {
+    return this.#call({ kind: 'annotationRemove', index, ref });
   }
 
   stream(number: number, decoded: boolean): Promise<ArrayBuffer> {

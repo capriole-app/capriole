@@ -1,17 +1,37 @@
 <script lang="ts">
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import OpenCard from '$lib/components/OpenCard.svelte';
+  import AnnotationToolbar from '$lib/components/AnnotationToolbar.svelte';
   import PageGrid from '$lib/components/PageGrid.svelte';
+  import PageView from '$lib/components/PageView.svelte';
   import PasswordDialog from '$lib/components/PasswordDialog.svelte';
   import Toolbar from '$lib/components/Toolbar.svelte';
   import { Editor, setEditor } from '$lib/editor.svelte';
 
   const editor = setEditor(new Editor());
 
-  /** Keyboard shortcuts on the pages: Delete, Ctrl/Cmd+Z, Ctrl/Cmd+A — not while typing. */
+  /**
+   * Keyboard shortcuts — not while typing. On the pages: Delete, Ctrl/Cmd+Z, Ctrl/Cmd+A. On a page shown
+   * large: Delete removes the selected annotation, Escape lets it go, then goes back to the pages.
+   */
   function shortcut(e: KeyboardEvent) {
-    if (!editor.name || editor.busy || e.target instanceof HTMLInputElement) return;
+    if (!editor.name || editor.busy || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+      return;
     const command = e.ctrlKey || e.metaKey;
+    if (editor.viewing !== null) {
+      const selected = editor.selectedAnnotation;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
+        e.preventDefault();
+        editor.removeAnnotation(selected);
+      } else if (e.key === 'Escape') {
+        if (selected) editor.selectedAnnotation = null;
+        else editor.closeView();
+      } else if (command && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        editor.undo();
+      }
+      return;
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && editor.selected.size > 0) {
       e.preventDefault();
       editor.remove();
@@ -38,7 +58,11 @@
   <OpenCard />
 {:else}
   <div class="flex h-dvh flex-col">
-    <Toolbar />
+    {#if editor.viewing !== null}
+      <AnnotationToolbar />
+    {:else}
+      <Toolbar />
+    {/if}
     {#if editor.error}
       <p class="bg-danger-background px-4 py-2 text-sm text-danger" role="alert">{editor.error}</p>
     {/if}
@@ -55,8 +79,12 @@
         </ul>
       </details>
     {/if}
-    <main class="min-h-0 flex-1 overflow-y-auto bg-muted">
-      <PageGrid />
-    </main>
+    {#if editor.viewing !== null}
+      <PageView />
+    {:else}
+      <main class="min-h-0 flex-1 overflow-y-auto bg-muted">
+        <PageGrid />
+      </main>
+    {/if}
   </div>
 {/if}

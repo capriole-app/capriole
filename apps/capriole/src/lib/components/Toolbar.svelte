@@ -6,6 +6,7 @@
   import FileDown from '@lucide/svelte/icons/file-down';
   import FileOutput from '@lucide/svelte/icons/file-output';
   import FilePlus from '@lucide/svelte/icons/file-plus';
+  import Highlighter from '@lucide/svelte/icons/highlighter';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
   import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -31,7 +32,8 @@
     <p class="truncate text-sm font-medium" title={editor.name ?? ''}>
       {editor.name}{editor.modified ? ' •' : ''}
     </p>
-    <p class="text-xs text-muted-foreground" aria-live="polite">
+    <!-- One line, truncated: the bar keeps its height whatever the selection says (a drag must not move the grid). -->
+    <p class="truncate text-xs text-muted-foreground" aria-live="polite">
       {editor.pages}
       {editor.pages === 1 ? 'pagina' : 'pagine'}{some ? ` · ${editor.selected.size} selezionate` : ''}
       {#if editor.busy}· al lavoro…{/if}
@@ -76,6 +78,15 @@
       onclick={() => editor.remove()}
     >
       <Trash2 class="size-4" /> Elimina
+    </button>
+    <button
+      type="button"
+      class={button}
+      disabled={editor.selected.size !== 1 || editor.busy}
+      title="Mostra la pagina grande per annotarla (anche: doppio clic)"
+      onclick={() => editor.view(editor.selection[0]!)}
+    >
+      <Highlighter class="size-4" /> Annota
     </button>
     <button type="button" class={button} disabled={!some || editor.busy} onclick={() => editor.extract()}>
       <FileOutput class="size-4" /> Estrai

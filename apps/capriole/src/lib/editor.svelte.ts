@@ -2,9 +2,24 @@
 // engine (packages/engine-client), which changes the document in its worker; nothing leaves the browser.
 import { createContext } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
-import { EngineClient, EngineError, Status, type PageRaster, type Repair, type Summary } from '@capriole/engine-client';
+import {
+  EngineClient,
+  EngineError,
+  Status,
+  type AnnotationChange,
+  type AnnotationInfo,
+  type AnnotationSpec,
+  type PageRaster,
+  type Repair,
+  type Summary,
+} from '@capriole/engine-client';
 import { baseName, pdfDateNow } from './files';
 import { fileName, fromBrowser, pickPdf, savePdf, type PickedFile } from './platform';
+
+/** What a pointer does on the page shown large: select (and move) annotations, or make one. */
+export type Tool = 'select' | AnnotationSpec['kind'];
+
+export type Rgb = [number, number, number];
 
 /** Undo keeps full copies of the document before each edit, within this many bytes (oldest dropped). */
 const kHistoryBytes = 256 * 1024 * 1024;
@@ -32,6 +47,15 @@ export class Editor {
   passwordNeeded = $state(false);
   passwordRejected = $state(false);
   canUndo = $state(false);
+
+  /** The page shown large, to annotate; null: the grid of pages. */
+  viewing = $state<number | null>(null);
+  /** Its annotations, as the engine lists them. */
+  annotations = $state.raw<AnnotationInfo[]>([]);
+  /** The annotation selected on it (its reference). */
+  selectedAnnotation = $state.raw<[number, number] | null>(null);
+  tool = $state<Tool>('select');
+  color = $state.raw<Rgb>([1, 0.82, 0]);
 
   #source: PickedFile | null = null;
   /** The page objects ("number generation"), in page order: what a thumbnail shows does not change when its page moves. */
@@ -269,6 +293,13 @@ export class Editor {
       const opened = await this.engine.openForEditing(previous, this.#password);
       this.#show(opened.summary, []);
       this.modified = true;
+      if (this.viewing !== null) {
+        if (this.viewing >= this.pages) this.closeView();
+        else {
+          this.selectedAnnotation = null;
+          await this.#loadAnnotations();
+        }
+      }
     });
   }
 
@@ -279,6 +310,7 @@ export class Editor {
     this.pages = 0;
     this.#refs = [];
     this.#thumbnails.clear();
+    this.closeView();
     this.selected.clear();
     this.anchor = null;
     this.repairs = [];
@@ -287,6 +319,79 @@ export class Editor {
     this.canUndo = false;
     this.error = null;
     this.#source = null;
+  }
+
+  // ── Annotations, on the page shown large ──────────────────────────────────────────────────────
+
+  /** Shows page `index` large, with its annotations. */
+  async view(index: number): Promise<void> {
+    if (index < 0 || index >= this.pages) return;
+    this.viewing = index;
+    this.selectedAnnotation = null;
+    await this.#run(() => this.#loadAnnotations());
+  }
+
+  closeView(): void {
+    this.viewing = null;
+    this.annotations = [];
+    this.selectedAnnotation = null;
+    this.tool = 'select';
+  }
+
+  /** The selected annotation, as listed. */
+  get annotation(): AnnotationInfo | null {
+    const ref = this.selectedAnnotation;
+    return ref === null ? null : (this.annotations.find((a) => a.ref?.[0] === ref[0] && a.ref?.[1] === ref[1]) ?? null);
+  }
+
+  /** Adds an annotation to the page shown; it ends up selected. */
+  annotate(spec: AnnotationSpec): Promise<void> {
+    const page = this.viewing;
+    if (page === null) return Promise.resolve();
+    return this.#editPage(async () => {
+      this.selectedAnnotation = await this.engine.annotationAdd(page, { ...spec, date: pdfDateNow() });
+    });
+  }
+
+  changeAnnotation(ref: [number, number], change: AnnotationChange): Promise<void> {
+    const page = this.viewing;
+    if (page === null) return Promise.resolve();
+    return this.#editPage(() => this.engine.annotationUpdate(page, ref, { ...change, date: pdfDateNow() }));
+  }
+
+  removeAnnotation(ref: [number, number]): Promise<void> {
+    const page = this.viewing;
+    if (page === null) return Promise.resolve();
+    return this.#editPage(async () => {
+      await this.engine.annotationRemove(page, ref);
+      this.selectedAnnotation = null;
+    });
+  }
+
+  async #loadAnnotations(): Promise<void> {
+    this.annotations = this.viewing === null ? [] : await this.engine.annotations(this.viewing);
+  }
+
+  /** An edit of the page shown: kept for undo, its thumbnail drawn again, its annotations listed again. */
+  async #editPage(change: () => Promise<void>): Promise<void> {
+    const page = this.viewing;
+    if (page === null) return;
+    await this.#run(async () => {
+      const before = await this.engine.save(false, null);
+      await change();
+      this.#remember(before);
+      this.#forget(this.#refs[page]);
+      this.version++;
+      this.modified = true;
+      await this.#loadAnnotations();
+    });
+  }
+
+  /** Forgets the thumbnails of one page object. */
+  #forget(ref: string | undefined): void {
+    for (const key of [...this.#thumbnails.keys()]) {
+      if (key.slice(0, key.indexOf('@')) === ref) this.#thumbnails.delete(key);
+    }
   }
 
   // ── Internals ──────────────────────────────────────────────────────────────────────────────

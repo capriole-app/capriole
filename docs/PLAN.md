@@ -742,7 +742,7 @@ desktop (Tauri, ADR 0008).
 
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
-motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app) · 8e
+motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · 8e
 moduli AcroForm · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
@@ -829,6 +829,17 @@ Criterio: `corpus-tools/check_annotations.py` — **fedeltà 20/20** (ogni tipo,
 disegnato da pdftoppm e mutool come da Capriole: somiglianza 0,990–1,000) e **100/100 file reali**
 (dieci tipi aggiunti in incrementale, `qpdf --check` mai peggiore, riletti, disegnati da tutti e tre i
 motori); rapporto in `CORPORA/reports/annotations-safedocs-0000-20261002-194522/`.
+
+**8d-2 (2026-10-02) — annotazioni nell'app.** `apps/capriole`: doppio clic su una pagina (o «Annota»)
+la mostra grande, adattata alla finestra, disegnata dal motore; sopra, un livello SVG nelle coordinate
+della pagina come la si vede. Strumenti: evidenzia, sottolinea, barra (trascinando sulle parole del
+testo estratto della fase 7: un riquadro per riga), nota (clic), penna, rettangolo, ellisse, linea,
+testo libero; colore della prossima annotazione. Con «Seleziona e sposta» un'annotazione si seleziona,
+si trascina, se ne cambiano testo e colore nel pannello, si elimina; il pannello elenca le annotazioni
+della pagina (la via della tastiera: Canc, Esc). Ogni modifica passa da «Annulla» e ridisegna la
+miniatura di quella pagina. Client del motore: `annotations`, `annotationAdd|Update|Remove`.
+Criterio: test e2e del flusso (evidenzia, nota con commento, rettangolo spostato, Canc, Annulla, salva —
+i byte salvati riletti: tipi, testo, `/Rect` spostato, un `/AP` per annotazione) verde.
 
 ---
 

@@ -67,6 +67,8 @@
   aria-label="Pagina {index + 1}"
   data-testid="page"
   onclick={(e) => editor.select(index, { range: e.shiftKey, toggle: e.ctrlKey || e.metaKey })}
+  ondblclick={() => editor.view(index)}
+  title="Doppio clic per annotare"
   {ondragstart}
   {ondragend}
 >
