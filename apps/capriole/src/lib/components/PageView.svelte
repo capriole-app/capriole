@@ -4,7 +4,9 @@
   // pointer makes annotations with the tool chosen, or selects and moves them. Beside it, the selected
   // annotation (its text, colour, removal) and the list of the page's annotations (the keyboard's way).
   import Trash2 from '@lucide/svelte/icons/trash-2';
-  import type { AnnotationInfo, PageRaster, PageText } from '@capriole/engine-client';
+  import FormLayer from './FormLayer.svelte';
+  import type { AnnotationInfo, FieldInfo, PageRaster, PageText } from '@capriole/engine-client';
+  import { tick } from 'svelte';
   import { colors, css, sameColor } from '$lib/colors';
   import { getEditor, type Rgb } from '$lib/editor.svelte';
 
@@ -88,7 +90,7 @@
 
   function down(event: PointerEvent, page: PageText) {
     console.log('down', event.button, editor.busy, editor.tool);
-    if (event.button !== 0 || editor.busy) return;
+    if (event.button !== 0 || editor.busy || editor.tool === 'form') return;
     const p = pointOf(event);
     const tool = editor.tool;
     if (tool === 'select') {
@@ -166,6 +168,35 @@
     Stamp: 'Timbro',
   };
   const nameOf = (a: AnnotationInfo) => names[a.subtype] ?? a.subtype;
+  // Form widgets belong to their fields (listed apart, filled with the form tool).
+  const listed = $derived(editor.annotations.filter((a) => a.subtype !== 'Widget'));
+  const pageFields = $derived(editor.fields.filter((f) => f.widgets.some((w) => w.page === index)));
+
+  /** A field's value in a few words, for the list. */
+  function shown(f: FieldInfo): string {
+    const display = (v: string) => f.options.find((o) => o.value === v)?.display ?? v;
+    switch (f.type) {
+      case 'text':
+        return f.password && f.value[0] ? '••••' : (f.value[0] ?? '');
+      case 'checkbox':
+        return f.value[0] && f.value[0] !== 'Off' ? 'sì' : 'no';
+      case 'radio':
+        return f.value[0] && f.value[0] !== 'Off' ? display(f.value[0]) : '';
+      case 'signature':
+        return 'firma (non compilabile qui)';
+      case 'pushbutton':
+        return 'pulsante';
+      default:
+        return f.value.map(display).join(', ');
+    }
+  }
+
+  /** Goes to a field's control on the page. */
+  async function focusField(f: FieldInfo) {
+    editor.tool = 'form';
+    await tick();
+    document.querySelector<HTMLElement>(`[data-field="${f.ref[0]} ${f.ref[1]}"]`)?.focus();
+  }
   const same = (a: AnnotationInfo, ref: [number, number] | null) =>
     ref !== null && a.ref?.[0] === ref[0] && a.ref?.[1] === ref[1];
   const cursor = $derived(
@@ -184,7 +215,7 @@
     {:then page}
       <!-- The whole page in the window (fit to page): as wide as the room, or as the height allows. -->
       <div
-        class="relative mx-auto bg-white shadow-sm"
+        class="@container relative mx-auto bg-white shadow-sm"
         style:aspect-ratio="{page.width} / {page.height}"
         style:width="min(100%, calc((100dvh - 7.5rem) * {page.width / page.height}))"
       >
@@ -194,7 +225,11 @@
           class="absolute inset-0 size-full touch-none select-none"
           style:cursor
           role="application"
-          aria-label="Pagina {index + 1}: {editor.tool === 'select' ? 'seleziona un’annotazione' : 'disegna'}"
+          aria-label="Pagina {index + 1}: {editor.tool === 'select'
+            ? 'seleziona un’annotazione'
+            : editor.tool === 'form'
+              ? 'il modulo'
+              : 'disegna'}"
           data-testid="page-surface"
           onpointerdown={(e) => down(e, page)}
           onpointermove={(e) => move(e, page)}
@@ -277,6 +312,9 @@
             {/if}
           {/if}
         </svg>
+        {#if editor.tool === 'form'}
+          <FormLayer width={page.width} height={page.height} />
+        {/if}
       </div>
     {:catch error}
       <p class="rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">
@@ -330,18 +368,42 @@
       </section>
     {:else}
       <p class="text-muted-foreground">
-        {editor.tool === 'select'
-          ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
-          : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
+        {editor.tool === 'form'
+          ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
+          : editor.tool === 'select'
+            ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
+            : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
       </p>
+    {/if}
+    {#if pageFields.length > 0}
+      <section class="flex flex-col gap-1">
+        <h2 class="font-semibold">Campi del modulo</h2>
+        <ul class="flex flex-col gap-1" data-testid="field-list">
+          {#each pageFields as f (`${f.ref[0]} ${f.ref[1]}`)}
+            <li>
+              <button
+                type="button"
+                class="flex w-full flex-col rounded-md px-2 py-1 text-start hover:bg-muted disabled:opacity-60"
+                disabled={!f.fillable}
+                onclick={() => focusField(f)}
+              >
+                <span class="truncate"
+                  >{f.label || f.name || 'Campo'}{f.required ? ' *' : ''}{f.readOnly ? ' (sola lettura)' : ''}</span
+                >
+                <span class="truncate text-muted-foreground">{shown(f) || '—'}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </section>
     {/if}
     <section class="flex flex-col gap-1">
       <h2 class="font-semibold">Annotazioni della pagina</h2>
-      {#if editor.annotations.length === 0}
+      {#if listed.length === 0}
         <p class="text-muted-foreground">Nessuna.</p>
       {/if}
       <ul class="flex flex-col gap-1" data-testid="annotation-list">
-        {#each editor.annotations as a, i (a.ref ? `${a.ref[0]} ${a.ref[1]}` : `d${i}`)}
+        {#each listed as a, i (a.ref ? `${a.ref[0]} ${a.ref[1]}` : `d${i}`)}
           <li>
             <button
               type="button"

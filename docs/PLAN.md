@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app) · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -872,6 +872,21 @@ disegna); lì Capriole e Poppler sì, e MuPDF rilegge comunque i valori. `unsafe
 Rapporto in `CORPORA/reports/forms-all-20261002-235329/`. Limiti dichiarati: Capriole non
 disegna i widget senza aspetto (Poppler e MuPDF lo generano: lo farà l'app, 8e-2, mostrando i valori);
 testo in font a byte singolo (oltre WinAnsi, `?`), non CJK.
+
+**8e-2 (2026-10-03) — moduli nell'app.** `apps/capriole`: una pagina con campi si apre nella vista
+grande pronta da compilare (strumento «Compila il modulo», il primo quando il documento ha un modulo):
+sopra ogni widget il controllo HTML che lo compila, in percentuali della pagina come la si vede —
+testo (riga o più righe, password, lunghezza massima), casella, radio, menu (con suggerimenti se la
+combo accetta testo libero), elenco (scelta multipla quando il campo la ammette). Il valore si scrive
+quando si lascia il controllo, dal motore con il suo aspetto; ogni valore passa da «Annulla» e
+ridisegna le miniature delle pagine dei suoi widget. Il pannello elenca i campi della pagina con il
+valore (un clic porta al campo; i widget non compaiono più tra le annotazioni). I controlli restano
+attivi mentre il motore scrive (passare al campo dopo con Tab non perde il fuoco): le modifiche si
+mettono in coda, così ognuna conserva per «Annulla» il documento lasciato dalla precedente. Client del
+motore: `formFields`, `formFill`.
+Criterio: test e2e del flusso (testo, Tab e testo su più righe, casella, radio, menu, elenco multiplo,
+«Annulla» dell'ultimo valore, salva — i byte salvati riletti: ogni `/V`, lo stato `/AS`, gli aspetti
+generati) verde.
 
 ---
 

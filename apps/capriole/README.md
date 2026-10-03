@@ -26,6 +26,14 @@ text or colour or remove it, drag it to move it; the panel also lists the page's
 keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
 annotation gets its appearance from the engine, so other readers show it the same.
 
+**Forms** (phase 8e): a page with form fields opens in the page view ready to fill them ("Compila il
+modulo"): over each widget the control that fills it — text (one or several lines, password, maximum
+length), check box, radio button, menu (with suggestions when the field takes any text), list (several
+choices when the field allows). A value is written when the control is left, by the engine with its
+appearance, so that every reader shows it; every value goes through undo. The side panel lists the
+page's fields with their values (a click goes to the field). Signatures, push buttons and read-only
+fields are shown by the page, not filled.
+
 Same stack as the Inspector (ADR 0008, the workspace's frontend standards). Keyboard: Ctrl/Cmd-click
 adds a page to the selection, Shift-click a range, Ctrl/Cmd+A selects all, Delete deletes, Ctrl/Cmd+Z
 undoes; the arrows in the toolbar move the selected pages. Undo keeps whole copies of the document

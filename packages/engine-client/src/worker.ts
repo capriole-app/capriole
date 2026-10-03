@@ -325,6 +325,18 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
       );
       return { value: null, transfer: [] };
     }
+    case 'formFields':
+      return {
+        value: takeJson(m, (out) => m._capriole_document_form_fields_json(requireDocument(), out)),
+        transfer: [],
+      };
+    case 'formFill': {
+      const document = requireDocument();
+      withString(m, JSON.stringify(request.value), (value) =>
+        check(m, m._capriole_document_form_field_fill(document, request.ref[0], request.ref[1], value)),
+      );
+      return { value: null, transfer: [] };
+    }
     case 'annotationRemove':
       check(
         m,

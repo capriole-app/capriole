@@ -171,6 +171,37 @@ export interface AnnotationChange {
   date?: string;
 }
 
+/** A widget of a form field: where it is shown (the page as shown, points) and, for buttons, its on state. */
+export interface FieldWidget {
+  ref: [number, number];
+  page: number | null;
+  rect: [number, number, number, number];
+  onState: string;
+}
+
+export type FieldType = 'text' | 'checkbox' | 'radio' | 'pushbutton' | 'combobox' | 'listbox' | 'signature';
+
+/** A terminal field of the document's form (capi/README.md). */
+export interface FieldInfo {
+  ref: [number, number];
+  name: string;
+  label: string;
+  type: FieldType;
+  /** Text and combo boxes: one string (none when empty); list boxes: the chosen options; buttons: the state on ("Off"). */
+  value: string[];
+  options: { value: string; display: string }[];
+  maxLength: number | null;
+  readOnly: boolean;
+  required: boolean;
+  multiline: boolean;
+  password: boolean;
+  comb: boolean;
+  editable: boolean;
+  multiSelect: boolean;
+  fillable: boolean;
+  widgets: FieldWidget[];
+}
+
 /** A document opened for editing: its summary, and the repairs it needed (already written into it). */
 export interface EditableDocument {
   summary: Summary;
@@ -219,6 +250,8 @@ export type Request =
   | { kind: 'annotationAdd'; index: number; spec: AnnotationSpec }
   | { kind: 'annotationUpdate'; index: number; ref: [number, number]; change: AnnotationChange }
   | { kind: 'annotationRemove'; index: number; ref: [number, number] }
+  | { kind: 'formFields' }
+  | { kind: 'formFill'; ref: [number, number]; value: string | string[] | null }
   | { kind: 'save'; incremental: boolean; modificationDate: string | null }
   | { kind: 'close' };
 

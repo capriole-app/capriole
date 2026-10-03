@@ -3,6 +3,7 @@ import type {
   AnnotationChange,
   AnnotationInfo,
   AnnotationSpec,
+  FieldInfo,
   ObjectInfo,
   PageContent,
   PagePreview,
@@ -143,6 +144,16 @@ export class EngineClient {
 
   annotationRemove(index: number, ref: [number, number]): Promise<void> {
     return this.#call({ kind: 'annotationRemove', index, ref });
+  }
+
+  /** The fields of the document's form (none without one). */
+  formFields(): Promise<FieldInfo[]> {
+    return this.#call({ kind: 'formFields' });
+  }
+
+  /** Fills a field: a string, several (list boxes), or null to clear it; its widgets get the value's appearance. */
+  formFill(ref: [number, number], value: string | string[] | null): Promise<void> {
+    return this.#call({ kind: 'formFill', ref, value });
   }
 
   stream(number: number, decoded: boolean): Promise<ArrayBuffer> {

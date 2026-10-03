@@ -5,6 +5,7 @@
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Circle from '@lucide/svelte/icons/circle';
   import FileDown from '@lucide/svelte/icons/file-down';
+  import FormInput from '@lucide/svelte/icons/form-input';
   import Highlighter from '@lucide/svelte/icons/highlighter';
   import LayoutGrid from '@lucide/svelte/icons/layout-grid';
   import Minus from '@lucide/svelte/icons/minus';
@@ -23,7 +24,10 @@
   const editor = getEditor();
   const page = $derived(editor.viewing ?? 0);
 
-  const tools: { tool: Tool; label: string; icon: typeof Highlighter }[] = [
+  // Filling the form comes first when the document has one.
+  const hasForm = $derived(editor.fields.some((f) => f.fillable));
+  const all: { tool: Tool; label: string; icon: typeof Highlighter }[] = [
+    { tool: 'form', label: 'Compila il modulo', icon: FormInput },
     { tool: 'select', label: 'Seleziona e sposta', icon: MousePointer2 },
     { tool: 'highlight', label: 'Evidenzia', icon: Highlighter },
     { tool: 'underline', label: 'Sottolinea', icon: Underline },
@@ -35,6 +39,7 @@
     { tool: 'line', label: 'Linea', icon: Minus },
     { tool: 'freetext', label: 'Testo', icon: Type },
   ];
+  const tools = $derived(hasForm ? all : all.filter((t) => t.tool !== 'form'));
   const button =
     'flex items-center justify-center rounded-md border hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
 </script>

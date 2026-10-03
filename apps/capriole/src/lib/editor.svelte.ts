@@ -9,6 +9,7 @@ import {
   type AnnotationChange,
   type AnnotationInfo,
   type AnnotationSpec,
+  type FieldInfo,
   type PageRaster,
   type Repair,
   type Summary,
@@ -16,8 +17,8 @@ import {
 import { baseName, pdfDateNow } from './files';
 import { fileName, fromBrowser, pickPdf, savePdf, type PickedFile } from './platform';
 
-/** What a pointer does on the page shown large: select (and move) annotations, or make one. */
-export type Tool = 'select' | AnnotationSpec['kind'];
+/** What a pointer does on the page shown large: fill the form, select (and move) annotations, or make one. */
+export type Tool = 'form' | 'select' | AnnotationSpec['kind'];
 
 export type Rgb = [number, number, number];
 
@@ -52,6 +53,8 @@ export class Editor {
   viewing = $state<number | null>(null);
   /** Its annotations, as the engine lists them. */
   annotations = $state.raw<AnnotationInfo[]>([]);
+  /** The fields of the document's form, as the engine lists them (widgets on every page). */
+  fields = $state.raw<FieldInfo[]>([]);
   /** The annotation selected on it (its reference). */
   selectedAnnotation = $state.raw<[number, number] | null>(null);
   tool = $state<Tool>('select');
@@ -64,6 +67,8 @@ export class Editor {
   #thumbnails = new Map<string, PageRaster | Promise<PageRaster>>();
   #password = '';
   #history: ArrayBuffer[] = [];
+  /** The edit of the page shown being written (the next waits for it). */
+  #queue: Promise<void> = Promise.resolve();
 
   constructor() {
     this.engine
@@ -298,6 +303,7 @@ export class Editor {
         else {
           this.selectedAnnotation = null;
           await this.#loadAnnotations();
+          await this.#loadFields();
         }
       }
     });
@@ -326,14 +332,26 @@ export class Editor {
   /** Shows page `index` large, with its annotations. */
   async view(index: number): Promise<void> {
     if (index < 0 || index >= this.pages) return;
+    const first = this.viewing === null;
     this.viewing = index;
     this.selectedAnnotation = null;
-    await this.#run(() => this.#loadAnnotations());
+    await this.#run(async () => {
+      await this.#loadAnnotations();
+      await this.#loadFields();
+    });
+    // A page with a form opens ready to fill it.
+    if (
+      first &&
+      this.tool === 'select' &&
+      this.fields.some((f) => f.fillable && f.widgets.some((w) => w.page === index))
+    )
+      this.tool = 'form';
   }
 
   closeView(): void {
     this.viewing = null;
     this.annotations = [];
+    this.fields = [];
     this.selectedAnnotation = null;
     this.tool = 'select';
   }
@@ -368,22 +386,50 @@ export class Editor {
     });
   }
 
+  /** Fills a form field (a string, several for a list box, null to clear it). */
+  fillField(field: FieldInfo, value: string | string[] | null): Promise<void> {
+    const pages = new Set(field.widgets.map((w) => w.page).filter((p): p is number => p !== null));
+    return this.#editPage(() => this.engine.formFill(field.ref, value), pages);
+  }
+
+  async #loadFields(): Promise<void> {
+    this.fields = this.viewing === null ? [] : await this.engine.formFields();
+  }
+
   async #loadAnnotations(): Promise<void> {
     this.annotations = this.viewing === null ? [] : await this.engine.annotations(this.viewing);
   }
 
-  /** An edit of the page shown: kept for undo, its thumbnail drawn again, its annotations listed again. */
-  async #editPage(change: () => Promise<void>): Promise<void> {
+  /**
+   * An edit of the page shown (and of others: a field's widgets may be on several): kept for undo, the
+   * thumbnails of those pages drawn again, the annotations and fields listed again.
+   */
+  async #editPage(change: () => Promise<void>, pages: Set<number> = new Set()): Promise<void> {
+    // One after the other: an edit made while the last is being written (a field left for the next)
+    // waits, so that each keeps for undo the document as the one before left it.
+    const previous = this.#queue;
+    let done = () => {};
+    this.#queue = new Promise<void>((resolve) => (done = resolve));
+    await previous;
+    try {
+      await this.#editPageNow(change, pages);
+    } finally {
+      done();
+    }
+  }
+
+  async #editPageNow(change: () => Promise<void>, pages: Set<number>): Promise<void> {
     const page = this.viewing;
     if (page === null) return;
     await this.#run(async () => {
       const before = await this.engine.save(false, null);
       await change();
       this.#remember(before);
-      this.#forget(this.#refs[page]);
+      for (const p of new Set([page, ...pages])) this.#forget(this.#refs[p]);
       this.version++;
       this.modified = true;
       await this.#loadAnnotations();
+      await this.#loadFields();
     });
   }
 
