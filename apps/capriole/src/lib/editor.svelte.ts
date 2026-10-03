@@ -15,7 +15,7 @@ import {
   type Summary,
 } from '@capriole/engine-client';
 import { baseName, pdfDateNow } from './files';
-import { fileName, fromBrowser, pickPdf, savePdf, type PickedFile } from './platform';
+import { fromBrowser, pickPdf, savePdf, type PickedFile } from './platform';
 
 /** What a pointer does on the page shown large: fill the form, select (and move) annotations, or make one. */
 export type Tool = 'form' | 'select' | AnnotationSpec['kind'];
@@ -61,6 +61,8 @@ export class Editor {
   color = $state.raw<Rgb>([1, 0.82, 0]);
 
   #source: PickedFile | null = null;
+  /** Browser with file access: the file the document is saved to ("Save" writes it again). */
+  #handle: FileSystemFileHandle | null = null;
   /** The page objects ("number generation"), in page order: what a thumbnail shows does not change when its page moves. */
   #refs: string[] = [];
   /** Thumbnails by page object and resolution: the bitmap once drawn, the promise while drawing. */
@@ -87,7 +89,7 @@ export class Editor {
     await this.open(await fromBrowser(file));
   }
 
-  /** Desktop: a file chosen in the system's dialog. */
+  /** A file chosen in the system's dialog (desktop, or a browser with file access). */
   async openFromDialog(): Promise<void> {
     const picked = await pickPdf().catch((error: unknown) => {
       this.error = describe(error);
@@ -105,6 +107,7 @@ export class Editor {
         const opened = await this.engine.openForEditing(source.data.slice(0), password);
         this.name = source.name;
         this.path = source.path;
+        this.#handle = source.handle ?? null;
         this.repairs = opened.repairs;
         this.#history = [];
         this.canUndo = false;
@@ -264,26 +267,26 @@ export class Editor {
     if (pages.length === 0 || !this.name) return;
     const name = this.name;
     await this.#run(async () => {
-      const data = await this.engine.extract(pages);
-      await savePdf(data, `${baseName(name)}-pagine.pdf`, null);
+      await savePdf(() => this.engine.extract(pages), `${baseName(name)}-pagine.pdf`, null);
     });
   }
 
   /**
-   * The document as it is now (a full save, compact): downloaded under its own name, or on the desktop
-   * written over the file it came from. asNew: wherever the save dialog says (desktop).
+   * The document as it is now (a full save, compact), written over the file it came from or was last
+   * saved to (desktop, or a browser with file access; otherwise where the save dialog says), or
+   * downloaded under its own name. asNew: wherever the save dialog says.
    */
   async save(asNew = false): Promise<void> {
     if (!this.name) return;
     const name = this.name;
-    const path = asNew ? null : this.path;
+    const target = asNew ? null : { path: this.path, handle: this.#handle };
     await this.#run(async () => {
-      const data = await this.engine.saveCompact(pdfDateNow());
-      const saved = await savePdf(data, name, path);
+      const saved = await savePdf(() => this.engine.saveCompact(pdfDateNow()), name, target);
       if (!saved) return; // cancelled
-      if (saved.path !== null) {
+      if (saved.path !== null || saved.handle !== null) {
         this.path = saved.path;
-        this.name = fileName(saved.path);
+        this.#handle = saved.handle;
+        this.name = saved.name;
       }
       this.modified = false;
     });
@@ -313,6 +316,7 @@ export class Editor {
     await this.engine.close().catch(() => {});
     this.name = null;
     this.path = null;
+    this.#handle = null;
     this.pages = 0;
     this.#refs = [];
     this.#thumbnails.clear();

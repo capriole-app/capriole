@@ -3,7 +3,7 @@
   import FolderOpen from '@lucide/svelte/icons/folder-open';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor } from '$lib/editor.svelte';
-  import { isDesktop } from '$lib/platform';
+  import { choosesWhere, isDesktop } from '$lib/platform';
 
   const editor = getEditor();
   let dragging = $state(false);
@@ -49,7 +49,7 @@
       type="button"
       class="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-base font-medium text-primary-foreground disabled:opacity-60"
       disabled={editor.busy}
-      onclick={() => (isDesktop ? editor.openFromDialog() : input?.click())}
+      onclick={() => (choosesWhere ? editor.openFromDialog() : input?.click())}
     >
       <FolderOpen class="size-5" />
       {editor.busy ? 'Apertura…' : 'Scegli un PDF'}

@@ -887,6 +887,11 @@ motore: `formFields`, `formFill`.
 Criterio: test e2e del flusso (testo, Tab e testo su più righe, casella, radio, menu, elenco multiplo,
 «Annulla» dell'ultimo valore, salva — i byte salvati riletti: ogni `/V`, lo stato `/AS`, gli aspetti
 generati) verde.
+Dopo la prova dell'utente (2026-10-03): il testo scritto nel pannello di un'annotazione si scrive
+mentre si digita (dopo una pausa di 0,4 s, e lasciando la casella), senza riportare indietro ciò che
+si sta digitando; nei browser con File System Access (Chrome, Edge) aprire e salvare passano dalle
+finestre di sistema — «Salva» riscrive il file aperto (prima finiva tra i download, con «(6)» nel nome),
+«Salva con nome» chiede dove —; Firefox e Safari scaricano. Test e2e per entrambi (le finestre simulate).
 
 ---
 

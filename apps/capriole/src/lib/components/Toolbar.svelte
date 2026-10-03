@@ -14,7 +14,7 @@
   import X from '@lucide/svelte/icons/x';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor } from '$lib/editor.svelte';
-  import { fromBrowser, isDesktop } from '$lib/platform';
+  import { choosesWhere, fromBrowser } from '$lib/platform';
 
   const editor = getEditor();
   let input: HTMLInputElement | undefined = $state();
@@ -95,7 +95,7 @@
       type="button"
       class={button}
       disabled={editor.busy}
-      onclick={() => (isDesktop ? editor.insertFromDialog() : input?.click())}
+      onclick={() => (choosesWhere ? editor.insertFromDialog() : input?.click())}
     >
       <FilePlus class="size-4" /> Inserisci PDF
     </button>
@@ -123,7 +123,7 @@
     >
       <FileDown class="size-4" /> Salva
     </button>
-    {#if isDesktop}
+    {#if choosesWhere}
       <button type="button" class={button} disabled={editor.busy} onclick={() => editor.save(true)}>
         <FileDown class="size-4" /> Salva con nome
       </button>

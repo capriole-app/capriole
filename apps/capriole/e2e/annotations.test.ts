@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { withoutFileAccess } from './downloads';
 import { readFileSync } from 'node:fs';
 
 /** Two pages of 300 × 400 points; "Uno" in 36 pt Helvetica at (40, 200), i.e. y ≈ 174–208 as shown. */
@@ -44,6 +45,9 @@ async function dragOnPage(page: Page, from: [number, number], to: [number, numbe
   await page.mouse.move(b.x, b.y, { steps: 4 });
   await page.mouse.up();
 }
+
+// Saving here is a download (the path of browsers without file access).
+test.beforeEach(({ page }) => withoutFileAccess(page));
 
 test('annotates a page: highlight, note, rectangle; moves, deletes, undoes, saves', async ({ page }) => {
   await page.goto('/');
@@ -94,6 +98,16 @@ test('annotates a page: highlight, note, rectangle; moves, deletes, undoes, save
   expect(saved).toMatch(/\/Contents \(Ciao\)/);
   expect(saved).toMatch(/\/Subtype \/Square[^]*?\/Rect \[70 80 170 150\]/); // moved: x +20 (page space: y from the bottom)
   expect(saved.match(/\/AP <</g)?.length).toBe(3);
+
+  // Free text: what is typed in the panel is written (and drawn) after a pause, without leaving the box.
+  await page.getByRole('button', { name: 'Testo' }).click();
+  await dragOnPage(page, [150, 340], [280, 380]);
+  await expect(list).toContainText('Testo — Testo');
+  const box = page.getByTestId('annotation-panel').getByRole('textbox');
+  await box.fill('Scritto mentre digito');
+  await expect(box).toBeFocused();
+  await expect(list).toContainText('Testo — Scritto mentre digito');
+  await expect(box).toHaveValue('Scritto mentre digito');
 
   // Back to the pages.
   await page.getByRole('button', { name: 'Pagine' }).click();

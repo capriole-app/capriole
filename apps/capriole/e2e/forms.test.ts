@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { withoutFileAccess } from './downloads';
 import { readFileSync } from 'node:fs';
 
 /** One page, 300 × 400 points, with a field of every kind that can be filled. */
@@ -38,6 +39,9 @@ function form(): Buffer {
   text += `trailer\n<</Size ${size}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(text, 'latin1');
 }
+
+// Saving here is a download (the path of browsers without file access).
+test.beforeEach(({ page }) => withoutFileAccess(page));
 
 test('fills a form on the page: text, check box, radio, combo, list; undoes; saves', async ({ page }) => {
   await page.goto('/');

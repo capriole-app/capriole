@@ -6,6 +6,11 @@ pages into a new file, undo, save. Everything runs in the browser: the engine is
 in a Web Worker (`packages/engine-client`), the file never leaves the device. A file that needed
 repairs is repaired before editing (saved fully and read back in memory), and the app says so.
 
+Where files go: in browsers with the File System Access API (Chrome, Edge) "Scegli un PDF" and "Salva"
+use the system's dialogs — "Salva" writes over the file opened (the browser asks once for permission),
+or asks where for a file dropped in; "Salva con nome" always asks. In the others (Firefox, Safari) a
+saved file is a download, where the browser puts downloads.
+
 ```sh
 # once: the engine as WebAssembly (from the repository root)
 source ~/emsdk/emsdk_env.sh && cmake --preset wasm && cmake --build --preset wasm

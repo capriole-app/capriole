@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { withoutFileAccess } from './downloads';
 import { readFileSync } from 'node:fs';
 
 /**
@@ -54,6 +55,9 @@ function labelsOf(text: string): string[] {
     return new RegExp(`\\n${page} 0 obj[^]*?\\((\\w+)\\) Tj`).exec(text)?.[1] ?? '?';
   });
 }
+
+// Saving here is a download (the path of browsers without file access).
+test.beforeEach(({ page }) => withoutFileAccess(page));
 
 test('opens a file and edits its pages: rotate, delete, undo, move, save', async ({ page }) => {
   await open(page, 'tre.pdf', pdfWithPages(['Uno', 'Due', 'Tre']));

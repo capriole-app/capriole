@@ -172,6 +172,27 @@
   const listed = $derived(editor.annotations.filter((a) => a.subtype !== 'Widget'));
   const pageFields = $derived(editor.fields.filter((f) => f.widgets.some((w) => w.page === index)));
 
+  // The text of the selected annotation is written as it is typed: after a short pause (each pause one
+  // step of undo), and when the box is left. The box keeps what is typed (defaultValue: listing the
+  // annotations again after a write does not put back an older text).
+  const kPause = 400;
+  let pending: { ref: [number, number]; text: string; timer: ReturnType<typeof setTimeout> } | null = null;
+
+  function typed(ref: [number, number], text: string) {
+    if (pending) clearTimeout(pending.timer);
+    pending = { ref, text, timer: setTimeout(written, kPause) };
+  }
+
+  /** Writes the text waiting, if any (also when its box goes: another annotation selected). */
+  function written() {
+    if (!pending) return;
+    const { ref, text, timer } = pending;
+    clearTimeout(timer);
+    pending = null;
+    const current = editor.annotations.find((a) => a.ref?.[0] === ref[0] && a.ref?.[1] === ref[1]);
+    if (current && current.contents !== text) editor.changeAnnotation(ref, { contents: text });
+  }
+
   /** A field's value in a few words, for the list. */
   function shown(f: FieldInfo): string {
     const display = (v: string) => f.options.find((o) => o.value === v)?.display ?? v;
@@ -338,8 +359,10 @@
               <span class="text-muted-foreground">{a.subtype === 'FreeText' ? 'Testo' : 'Commento'}</span>
               <textarea
                 class="min-h-24 rounded-md border bg-background px-2 py-1.5 text-base"
-                value={a.contents}
-                onchange={(e) => editor.changeAnnotation(ref, { contents: e.currentTarget.value })}></textarea>
+                defaultValue={a.contents}
+                oninput={(e) => typed(ref, e.currentTarget.value)}
+                onchange={() => written()}
+                {@attach () => written}></textarea>
             </label>
           {/key}
           <div class="flex items-center gap-1" role="radiogroup" aria-label="Colore dell'annotazione">
