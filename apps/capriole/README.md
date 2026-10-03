@@ -25,8 +25,12 @@ npx playwright test   # end-to-end in Chromium (port 4174)
 
 **Annotations** (phase 8d): double-click a page (or select it and press "Annota") to show it large.
 Tools: highlight, underline and strike out (drag over the text: one mark per line), note (click; its
-comment in the side panel), pen, rectangle, ellipse, line, free text (drag a box; its text in the
-panel), and a colour for the next annotation. With "Seleziona e sposta", click an annotation to edit its
+comment in the side panel), pen, rectangle, ellipse, line, free text, and a colour for the next annotation. Free text is written on the page itself, with the
+cursor in a box laid out as the engine will draw it: a click opens a box one line of the chosen size
+high that widens as the text is typed; a dragged rectangle keeps its width, wraps the lines at its edge
+and grows downwards; a double click on a free text (or a click with the text tool) writes it again,
+and emptied it goes. Leaving the box (a click elsewhere, Esc) makes the text the annotation — one step
+of undo. The text size is chosen in the toolbar (for the next text, or the one selected). With "Seleziona e sposta", click an annotation to edit its
 text or colour or remove it, drag it to move it; the panel also lists the page's annotations (the
 keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
 annotation gets its appearance from the engine, so other readers show it the same.

@@ -5,6 +5,7 @@
   // annotation (its text, colour, removal) and the list of the page's annotations (the keyboard's way).
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import FormLayer from './FormLayer.svelte';
+  import TextBoxEditor from './TextBoxEditor.svelte';
   import type { AnnotationInfo, FieldInfo, PageRaster, PageText } from '@capriole/engine-client';
   import { tick } from 'svelte';
   import { colors, css, sameColor } from '$lib/colors';
@@ -46,7 +47,7 @@
     | { kind: 'shape'; start: Point; current: Point };
   let drag = $state.raw<Drag | null>(null);
 
-  function pointOf(event: PointerEvent): Point {
+  function pointOf(event: MouseEvent): Point {
     const svg = event.currentTarget as SVGSVGElement;
     const matrix = svg.getScreenCTM()?.inverse();
     const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix);
@@ -90,9 +91,22 @@
 
   function down(event: PointerEvent, page: PageText) {
     console.log('down', event.button, editor.busy, editor.tool);
-    if (event.button !== 0 || editor.busy || editor.tool === 'form') return;
+    // While a text is written, a click elsewhere only ends it (the box's blur).
+    if (event.button !== 0 || editor.tool === 'form' || editor.typing) return;
+    // Text can be started while the last edit is written (the box does not touch the engine, and its
+    // text joins the queue of edits): a click right after the last text is not lost.
+    if (editor.busy && editor.tool !== 'freetext') return;
     const p = pointOf(event);
     const tool = editor.tool;
+    if (tool === 'freetext') {
+      // On a free text: write it again, in place.
+      const text = freeTextAt(p);
+      if (text) {
+        event.preventDefault();
+        editor.retype(text);
+        return;
+      }
+    }
     if (tool === 'select') {
       const hit = [...editor.annotations].reverse().find((a) => a.editable && a.ref && inside(p, a.rect, 3));
       editor.selectedAnnotation = hit?.ref ?? null;
@@ -110,6 +124,17 @@
     }
     (event.currentTarget as Element).setPointerCapture(event.pointerId);
   }
+
+  /** The topmost free text under a point (its reference). */
+  function freeTextAt(p: Point): [number, number] | null {
+    const hit = [...editor.annotations]
+      .reverse()
+      .find((a) => a.subtype === 'FreeText' && a.editable && a.ref && inside(p, a.rect, 2));
+    return hit?.ref ?? null;
+  }
+
+  /** The height of one line of free text in its box (the engine's layout: 1.2 × the size, 2 points around). */
+  const lineBox = (size: number) => size * 1.2 + 4;
 
   function move(event: PointerEvent, page: PageText) {
     if (!drag) return;
@@ -143,10 +168,18 @@
       if (tool === 'line') {
         if (Math.hypot(x1 - x0, y1 - y0) > 3)
           editor.annotate({ kind: 'line', from: done.start, to: done.current, color, width: 2 });
+      } else if (tool === 'freetext') {
+        const line = lineBox(editor.fontSize);
+        if (x1 - x0 > 6) {
+          // A rectangle: its width, at least one line high.
+          editor.startTyping([x0, y0, x1, Math.max(y1, y0 + line)], 'wrap');
+        } else {
+          // A click: one line, the cursor where the click was, widening as typed.
+          const [x, y] = done.start;
+          editor.startTyping([x - 2, y - line / 2, x + editor.fontSize, y + line / 2], 'grow');
+        }
       } else if (x1 - x0 > 3 && y1 - y0 > 3) {
-        if (tool === 'freetext')
-          editor.annotate({ kind: 'freetext', rect: [x0, y0, x1, y1], color, contents: 'Testo', fontSize: 12 });
-        else if (tool === 'square' || tool === 'circle')
+        if (tool === 'square' || tool === 'circle')
           editor.annotate({ kind: tool, rect: [x0, y0, x1, y1], color, width: 2 });
       }
     }
@@ -256,6 +289,11 @@
           onpointermove={(e) => move(e, page)}
           onpointerup={() => up(page)}
           onpointercancel={() => (drag = null)}
+          ondblclick={(e) => {
+            // A double click on a free text writes it again, in place (with any tool but the form's).
+            const text = editor.tool !== 'form' && !editor.typing ? freeTextAt(pointOf(e)) : null;
+            if (text) editor.retype(text);
+          }}
         >
           {#each editor.annotations as a, i (a.ref ? `${a.ref[0]} ${a.ref[1]}` : `d${i}`)}
             {#if a.editable && !a.hidden}
@@ -333,6 +371,11 @@
             {/if}
           {/if}
         </svg>
+        {#if editor.typing}
+          {#key editor.typing}
+            <TextBoxEditor typing={editor.typing} width={page.width} height={page.height} />
+          {/key}
+        {/if}
         {#if editor.tool === 'form'}
           <FormLayer width={page.width} height={page.height} />
         {/if}

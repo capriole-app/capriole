@@ -40,6 +40,9 @@
     { tool: 'freetext', label: 'Testo', icon: Type },
   ];
   const tools = $derived(hasForm ? all : all.filter((t) => t.tool !== 'form'));
+  // The size of the next free text, or of the free text selected.
+  const sizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72];
+  const selectedText = $derived(editor.annotation?.subtype === 'FreeText' ? editor.annotation : null);
   const button =
     'flex items-center justify-center rounded-md border hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
 </script>
@@ -97,6 +100,24 @@
       ></button>
     {/each}
   </div>
+
+  <label class="flex items-center gap-1.5 text-sm" title="Dimensione del testo">
+    <Type class="size-4 text-muted-foreground" aria-hidden="true" />
+    <select
+      class="rounded-md border bg-background px-1.5 py-1"
+      aria-label="Dimensione del testo"
+      value={selectedText?.fontSize ? Math.round(selectedText.fontSize) : editor.fontSize}
+      onchange={(e) => {
+        const size = Number(e.currentTarget.value);
+        editor.fontSize = size;
+        if (selectedText?.ref) editor.changeAnnotation(selectedText.ref, { fontSize: size });
+      }}
+    >
+      {#each sizes as size (size)}
+        <option value={size}>{size} pt</option>
+      {/each}
+    </select>
+  </label>
 
   <div class="ms-auto flex items-center gap-2">
     <button

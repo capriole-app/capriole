@@ -22,6 +22,20 @@ export type Tool = 'form' | 'select' | AnnotationSpec['kind'];
 
 export type Rgb = [number, number, number];
 
+/**
+ * Free text being written on the page shown: a new one, or one of its own (ref). grow: the box widens as
+ * the text is typed (made by a click); wrap: its width is fixed, lines wrap and it grows downwards
+ * (made by dragging a rectangle, or an existing one). rect: the page as shown, points.
+ */
+export interface Typing {
+  ref: [number, number] | null;
+  rect: [number, number, number, number];
+  mode: 'grow' | 'wrap';
+  text: string;
+  fontSize: number;
+  color: Rgb;
+}
+
 /** Undo keeps full copies of the document before each edit, within this many bytes (oldest dropped). */
 const kHistoryBytes = 256 * 1024 * 1024;
 
@@ -59,6 +73,12 @@ export class Editor {
   selectedAnnotation = $state.raw<[number, number] | null>(null);
   tool = $state<Tool>('select');
   color = $state.raw<Rgb>([1, 0.82, 0]);
+  /** The size of the next free text (points). */
+  fontSize = $state(12);
+  /** The free text being written on the page (null: none). */
+  typing = $state.raw<Typing | null>(null);
+  /** An existing free text being written again: the document before (for undo) and its text then. */
+  #retyping: { before: ArrayBuffer; text: string; rect: Typing['rect'] } | null = null;
 
   #source: PickedFile | null = null;
   /** Browser with file access: the file the document is saved to ("Save" writes it again). */
@@ -278,10 +298,20 @@ export class Editor {
    */
   async save(asNew = false): Promise<void> {
     if (!this.name) return;
+    // Not awaited before the dialog (the browser shows it only right after the click): the bytes are
+    // made after the edits being written.
+    const pending = this.#queue;
     const name = this.name;
     const target = asNew ? null : { path: this.path, handle: this.#handle };
     await this.#run(async () => {
-      const saved = await savePdf(() => this.engine.saveCompact(pdfDateNow()), name, target);
+      const saved = await savePdf(
+        async () => {
+          await pending;
+          return this.engine.saveCompact(pdfDateNow());
+        },
+        name,
+        target,
+      );
       if (!saved) return; // cancelled
       if (saved.path !== null || saved.handle !== null) {
         this.path = saved.path;
@@ -294,6 +324,7 @@ export class Editor {
 
   /** Back to the document as it was before the last edit. */
   async undo(): Promise<void> {
+    await this.#queue; // an edit being written (a text box just left) first
     const previous = this.#history.pop();
     this.canUndo = this.#history.length > 0;
     if (!previous) return;
@@ -356,6 +387,8 @@ export class Editor {
     this.viewing = null;
     this.annotations = [];
     this.fields = [];
+    this.typing = null;
+    this.#retyping = null;
     this.selectedAnnotation = null;
     this.tool = 'select';
   }
@@ -390,6 +423,84 @@ export class Editor {
     });
   }
 
+  /** Starts writing a new free text on the page shown: a box at rect (grow: widening as typed). */
+  startTyping(rect: Typing['rect'], mode: Typing['mode']): void {
+    if (this.viewing === null || this.typing) return;
+    this.selectedAnnotation = null;
+    this.typing = { ref: null, rect, mode, text: '', fontSize: this.fontSize, color: [...this.color] as Rgb };
+  }
+
+  /**
+   * Writes again a free text of the page shown, in place: its drawn text is taken away while it is
+   * written (the box shows it), and the whole writing is one step of undo.
+   */
+  async retype(ref: [number, number]): Promise<void> {
+    const a = this.annotations.find((x) => x.ref?.[0] === ref[0] && x.ref?.[1] === ref[1]);
+    const page = this.viewing;
+    if (!a || a.subtype !== 'FreeText' || page === null || this.typing) return;
+    await this.#serial(() =>
+      this.#run(async () => {
+        const before = await this.engine.save(false, null);
+        await this.engine.annotationUpdate(page, ref, { contents: '' });
+        this.#retyping = { before, text: a.contents, rect: a.rect };
+        this.selectedAnnotation = ref;
+        this.typing = {
+          ref,
+          rect: a.rect,
+          mode: 'wrap',
+          text: a.contents,
+          fontSize: a.fontSize ?? 12,
+          color: (a.color ?? [0, 0, 0]) as Rgb,
+        };
+        this.#forget(this.#refs[page]);
+        this.version++;
+      }),
+    );
+  }
+
+  /**
+   * Ends the writing: the text in its box (rect, as measured on the page) becomes the free text — a new
+   * one, or the one written again; an empty text makes none (or removes it).
+   */
+  async finishTyping(text: string, rect: Typing['rect']): Promise<void> {
+    const typing = this.typing;
+    const page = this.viewing;
+    this.typing = null;
+    if (!typing || page === null) return;
+    const empty = text.trim() === '';
+    if (typing.ref === null) {
+      if (!empty) {
+        await this.annotate({ kind: 'freetext', rect, contents: text, fontSize: typing.fontSize, color: typing.color });
+      }
+      return;
+    }
+    const ref = typing.ref;
+    const retyping = this.#retyping;
+    this.#retyping = null;
+    if (!retyping) return;
+    const same = text === retyping.text && rect.every((v, i) => Math.abs(v - retyping.rect[i]!) < 0.5);
+    await this.#serial(() =>
+      this.#run(async () => {
+        if (same) {
+          // Nothing changed: the text back as it was, and no step of undo.
+          await this.engine.annotationUpdate(page, ref, { contents: retyping.text });
+        } else {
+          if (empty) {
+            await this.engine.annotationRemove(page, ref);
+            this.selectedAnnotation = null;
+          } else {
+            await this.engine.annotationUpdate(page, ref, { contents: text, rect, date: pdfDateNow() });
+          }
+          this.#remember(retyping.before);
+          this.modified = true;
+        }
+        this.#forget(this.#refs[page]);
+        this.version++;
+        await this.#loadAnnotations();
+      }),
+    );
+  }
+
   /** Fills a form field (a string, several for a list box, null to clear it). */
   fillField(field: FieldInfo, value: string | string[] | null): Promise<void> {
     const pages = new Set(field.widgets.map((w) => w.page).filter((p): p is number => p !== null));
@@ -409,14 +520,21 @@ export class Editor {
    * thumbnails of those pages drawn again, the annotations and fields listed again.
    */
   async #editPage(change: () => Promise<void>, pages: Set<number> = new Set()): Promise<void> {
-    // One after the other: an edit made while the last is being written (a field left for the next)
-    // waits, so that each keeps for undo the document as the one before left it.
+    await this.#serial(() => this.#editPageNow(change, pages));
+  }
+
+  /**
+   * One after the other: an edit made while the last is being written (a field left for the next, a
+   * text box left by clicking "Annulla") waits, so that each keeps for undo the document as the one
+   * before left it.
+   */
+  async #serial(task: () => Promise<void>): Promise<void> {
     const previous = this.#queue;
     let done = () => {};
     this.#queue = new Promise<void>((resolve) => (done = resolve));
     await previous;
     try {
-      await this.#editPageNow(change, pages);
+      await task();
     } finally {
       done();
     }

@@ -15,8 +15,12 @@
    * large: Delete removes the selected annotation, Escape lets it go, then goes back to the pages.
    */
   function shortcut(e: KeyboardEvent) {
-    if (!editor.name || editor.busy || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
-      return;
+    const typing =
+      e.target instanceof HTMLInputElement ||
+      e.target instanceof HTMLTextAreaElement ||
+      e.target instanceof HTMLSelectElement ||
+      (e.target instanceof HTMLElement && e.target.isContentEditable);
+    if (!editor.name || editor.busy || typing || editor.typing) return;
     const command = e.ctrlKey || e.metaKey;
     if (editor.viewing !== null) {
       const selected = editor.selectedAnnotation;

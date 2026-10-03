@@ -127,13 +127,14 @@ their parent):
 
 ```json
 [{"ref":[12,0], "subtype":"Highlight", "rect":[x0,y0,x1,y1], "contents":"…", "author":"…",
-  "color":[1.000,0.820,0.000] | null, "hidden":false, "editable":true}, …]
+  "color":[1.000,0.820,0.000] | null, "fontSize":12.00 | null, "hidden":false, "editable":true}, …]
 ```
 
 `ref` is `null` for an annotation written directly in `/Annots` (listed, not editable); `editable` is
 false for those and for form widgets (they change with their fields: see Forms). Coordinates are those of the page as shown, as for
 text (points, top-left origin, /Rotate applied); a note (NoRotate) is given where it is shown, upright.
-`contents` and `author` are Unicode (`\u` escapes).
+`contents` and `author` are Unicode (`\u` escapes). For free text, `color` and `fontSize` are its
+text's (from `/DA`); `fontSize` is null for the other kinds.
 
 `capriole_document_annotation_add` takes a specification in JSON (UTF-8 text; unknown keys ignored, a
 known key with a value of the wrong shape is an error, as is malformed JSON — nested at most 32 deep):
@@ -153,9 +154,10 @@ The annotation gets its appearance (/AP), made by the engine, so that every read
 Capriole does: markup from its geometry, a note's icon (NoZoom and NoRotate, as Acrobat writes notes),
 free text in Helvetica wrapped to its rectangle, line breaks kept (Latin text: characters outside WinAnsi
 become `?`).
-`capriole_document_annotation_update` takes `{"moveBy":[dx,dy], "contents":"…", "color":[r,g,b],
-"opacity":n, "date":"…"}` (any of them); a new colour or text makes the appearance again (for the kinds
-the engine makes; another kind's colour is `CAPRIOLE_ERROR_UNSUPPORTED`). `capriole_document_annotation_remove`
+`capriole_document_annotation_update` takes `{"moveBy":[dx,dy], "rect":[x0,y0,x1,y1], "contents":"…",
+"color":[r,g,b], "opacity":n, "fontSize":n, "date":"…"}` (any of them); a new rectangle (free text,
+square, circle), colour, text or text size (free text) makes the appearance again (for the kinds the
+engine makes; another kind's colour, rectangle or size is `CAPRIOLE_ERROR_UNSUPPORTED`). `capriole_document_annotation_remove`
 removes it with its popup. Documents whose structure needed repairs are edited after a full save
 (`CAPRIOLE_ERROR_UNSUPPORTED` until then); listing works on any document.
 

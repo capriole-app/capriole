@@ -809,6 +809,19 @@ capriole::Result<capriole::edit::AnnotationChange> change_of(const capriole::cap
     }
     change.move_by = *p;
   }
+  if (const auto* rect = json.get("rect")) {
+    auto r = rect_in(rect, "rect");
+    if (!r) {
+      return std::unexpected(std::move(r.error()));
+    }
+    change.rect = *r;
+  }
+  if (const auto* size = json.get("fontSize")) {
+    if (!size->number()) {
+      return make_error(ErrorCode::kSyntax, "fontSize: a number expected");
+    }
+    change.font_size = size->number();
+  }
   if (const auto* color = json.get("color")) {
     auto c = rgb_in(color, "color");
     if (!c) {
@@ -860,6 +873,7 @@ capriole_status capriole_document_page_annotations_json(capriole_document* docum
       out += R"(,"author":)";
       capriole::capi::append_json_text(out, capriole::model::from_utf8(a.author));
       out += a.color ? std::format(R"(,"color":[{:.3f},{:.3f},{:.3f}])", (*a.color)[0], (*a.color)[1], (*a.color)[2]) : std::string(R"(,"color":null)");
+      out += a.font_size ? std::format(R"(,"fontSize":{:.2f})", *a.font_size) : std::string(R"(,"fontSize":null)");
       out += std::format(R"(,"hidden":{},"editable":{}}})", a.hidden, a.editable);
     }
     out += "]";

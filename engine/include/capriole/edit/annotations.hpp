@@ -64,7 +64,8 @@ struct AnnotationInfo {
   graphics::Rect rect;                  // as shown (see above)
   std::string contents;                 // UTF-8
   std::string author;                   // UTF-8
-  std::optional<Rgb> color;             // /C when it has three components
+  std::optional<Rgb> color;             // /C when it has three components; free text: the text's (/DA)
+  std::optional<double> font_size;      // free text: the text's size (/DA)
   bool hidden = false;                  // /F Hidden or NoView
   bool editable = false;                // the editor can move it, change its text and colour, remove it
 };
@@ -80,14 +81,17 @@ struct AnnotationInfo {
 
 struct AnnotationChange {
   std::optional<graphics::Point> move_by;  // in page coordinates as shown
+  std::optional<graphics::Rect> rect;      // a new rectangle as shown: free text, square, circle
   std::optional<std::string> contents;     // UTF-8
   std::optional<Rgb> color;
   std::optional<double> opacity;
-  std::string date;  // for /M; none when empty
+  std::optional<double> font_size;  // free text
+  std::string date;                 // for /M; none when empty
 };
 
-// Changes annotation ref of page page_index: moves it (its appearance with it), changes its text or its colour (the
-// appearance is generated again for the kinds the editor makes; kUnsupported for another kind's colour).
+// Changes annotation ref of page page_index: moves it (its appearance with it), gives it another rectangle (free
+// text, square, circle; kUnsupported for the others), changes its text, its colour or its text size (free text)
+// — the appearance is generated again for the kinds the editor makes; kUnsupported for another kind's colour.
 // Form widgets are fields' (phase 8e): kUnsupported.
 [[nodiscard]] Result<void> update_annotation(Document& document, std::uint32_t page_index, model::ObjectRef ref, const AnnotationChange& change);
 

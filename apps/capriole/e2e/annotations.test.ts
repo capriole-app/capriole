@@ -99,10 +99,13 @@ test('annotates a page: highlight, note, rectangle; moves, deletes, undoes, save
   expect(saved).toMatch(/\/Subtype \/Square[^]*?\/Rect \[70 80 170 150\]/); // moved: x +20 (page space: y from the bottom)
   expect(saved.match(/\/AP <</g)?.length).toBe(3);
 
-  // Free text: what is typed in the panel is written (and drawn) after a pause, without leaving the box.
+  // Free text: the panel's box writes the text as it is typed (after a pause, without leaving it).
   await page.getByRole('button', { name: 'Testo' }).click();
   await dragOnPage(page, [150, 340], [280, 380]);
-  await expect(list).toContainText('Testo — Testo');
+  await page.keyboard.type('Primo');
+  await page.keyboard.press('Escape');
+  await expect(list).toContainText('Testo — Primo');
+  await list.getByText('Testo — Primo').click();
   const box = page.getByTestId('annotation-panel').getByRole('textbox');
   await box.fill('Scritto mentre digito');
   await expect(box).toBeFocused();

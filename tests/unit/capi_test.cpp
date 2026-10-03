@@ -273,6 +273,11 @@ TEST(CApiDocument, Annotations) {
   EXPECT_EQ(capriole_document_annotation_update(document, 0, number, generation, R"({"moveBy":[5,0],"color":[1,0,0]})"), CAPRIOLE_OK);
   ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
   EXPECT_NE(take_json(json).find(R"("rect":[15.00,10.00,65.00,40.00])"), std::string::npos);
+  EXPECT_EQ(capriole_document_annotation_update(document, 0, number, generation, R"({"rect":[20,10,90,60]})"), CAPRIOLE_OK);
+  ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("rect":[20.00,10.00,90.00,60.00])"), std::string::npos);
+  EXPECT_EQ(capriole_document_annotation_update(document, 0, number, generation, R"({"fontSize":"big"})"), CAPRIOLE_ERROR_SYNTAX);
+  EXPECT_EQ(capriole_document_annotation_update(document, 0, number, generation, R"({"fontSize":14})"), CAPRIOLE_ERROR_UNSUPPORTED);  // a square
   EXPECT_EQ(capriole_document_annotation_remove(document, 0, number, generation), CAPRIOLE_OK);
   ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
   EXPECT_EQ(take_json(json), "[]");

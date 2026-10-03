@@ -260,6 +260,44 @@ TEST(AnnotationEditing, MoveRecolourRewordRemove) {
   EXPECT_EQ(after->front().contents, "Città perché");
 }
 
+TEST(AnnotationEditing, FreeTextTakesARectangleAndASize) {
+  Document document = open(page_pdf());
+  const auto text = add_annotation(document, 0, spec(AnnotationKind::kFreeText, [](AnnotationSpec& x) {
+                                     x.rect = Rect{10, 10, 60, 30};
+                                     x.contents = "Ciao";
+                                     x.color = {0, 0, 1};
+                                   }));
+  ASSERT_TRUE(text.has_value());
+  // A wider box, a larger text: the colour stays, the appearance is made again in the new rectangle.
+  ASSERT_TRUE(update_annotation(document, 0, *text, change([](AnnotationChange& c) {
+                                  c.rect = Rect{10, 10, 150, 50};
+                                  c.font_size = 18;
+                                }))
+                  .has_value());
+  const auto listed = list_annotations(document, 0);
+  ASSERT_TRUE(listed.has_value());
+  EXPECT_EQ(listed->front().rect, (Rect{10, 10, 150, 50}));
+  EXPECT_EQ(listed->front().font_size, 18);
+  EXPECT_EQ(listed->front().color, (Rgb{0, 0, 1}));  // the text's colour
+  const Dict& a = dict_of(document, *text);
+  EXPECT_EQ(a.find("DA")->as_string()->bytes, "/Helv 18 Tf 0 0 1 rg");
+  auto ap = document.resolve(*a.find("AP")->as_dict()->find("N"));
+  ASSERT_TRUE(ap && ap->as_stream() != nullptr);
+  EXPECT_EQ(numbers(document, ap->as_stream()->dict, "BBox"), (std::vector<double>{10, 50, 150, 90}));  // page space: y up
+
+  // A new size alone keeps the colour; a colour alone keeps the size.
+  ASSERT_TRUE(update_annotation(document, 0, *text, change([](AnnotationChange& c) { c.color = Rgb{1, 0, 0}; })).has_value());
+  EXPECT_EQ(dict_of(document, *text).find("DA")->as_string()->bytes, "/Helv 18 Tf 1 0 0 rg");
+
+  // Other kinds: no new rectangle (ink, lines: their geometry is points), no size.
+  const auto ink = add_annotation(document, 0, spec(AnnotationKind::kInk, [](AnnotationSpec& x) { x.strokes = {{Point{10, 60}, Point{30, 80}}}; }));
+  ASSERT_TRUE(ink.has_value());
+  EXPECT_EQ(update_annotation(document, 0, *ink, change([](AnnotationChange& c) { c.rect = Rect{0, 0, 50, 50}; })).error().code, ErrorCode::kUnsupported);
+  EXPECT_EQ(update_annotation(document, 0, *ink, change([](AnnotationChange& c) { c.font_size = 10; })).error().code, ErrorCode::kUnsupported);
+  EXPECT_EQ(update_annotation(document, 0, *text, change([](AnnotationChange& c) { c.rect = Rect{10, 10, 10, 50}; })).error().code,
+            ErrorCode::kUnsupported);  // empty
+}
+
 TEST(AnnotationEditing, PopupsWidgetsAndDirectAnnotations) {
   // An indirect note with its popup, a direct square, a widget.
   Document document = open(page_pdf("/Annots[10 0 R 11 0 R <</Subtype/Square/Rect[0 0 5 5]>> 12 0 R]",

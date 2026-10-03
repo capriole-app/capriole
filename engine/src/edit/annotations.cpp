@@ -284,6 +284,16 @@ Result<std::vector<AnnotationInfo>> list_annotations(Document& document, std::ui
       continue;
     }
     const std::vector<double> c = content::numbers(document, *dict, "C");
+    // Free text: the text's colour and size are in its default appearance.
+    struct {
+      std::optional<Rgb> color;
+      std::optional<double> size;
+    } da;
+    if (const Object* written = dict->find("DA"); subtype == "FreeText" && written != nullptr && written->as_string() != nullptr) {
+      const auto parsed = detail::parse_da(written->as_string()->bytes);
+      da.color = parsed.rgb;
+      da.size = parsed.size > 0 ? parsed.size : 12;
+    }
     const Object* flags = dict->find("F");
     const std::int64_t f = flags != nullptr ? flags->as_integer().value_or(0) : 0;
     Rect shown = page->view(Rect{r[0], r[1], r[2], r[3]}.normalized());
@@ -299,7 +309,8 @@ Result<std::vector<AnnotationInfo>> list_annotations(Document& document, std::ui
         .rect = shown,
         .contents = utf8_of(*dict, "Contents"),
         .author = utf8_of(*dict, "T"),
-        .color = c.size() == 3 ? std::optional<Rgb>(Rgb{c[0], c[1], c[2]}) : std::nullopt,
+        .color = c.size() == 3 ? std::optional<Rgb>(Rgb{c[0], c[1], c[2]}) : da.color,
+        .font_size = da.size,
         .hidden = (f & (kHiddenFlag | kNoViewFlag)) != 0,
         .editable = entry.as_ref().has_value() && subtype != "Widget",
     });
@@ -477,6 +488,26 @@ Result<void> update_annotation(Document& document, std::uint32_t page_index, mod
     shift(document, a, dx, dy);
     // The appearance follows /Rect; one of the editor's own, drawn in page space, is made again there.
     regenerate = generated_kind(subtype) && a.contains("AP");
+  }
+  if (change.rect) {
+    if (subtype != "FreeText" && subtype != "Square" && subtype != "Circle") {
+      return make_error(ErrorCode::kUnsupported, "only free text, squares and circles take a new rectangle, not /" + subtype);
+    }
+    if (!valid(*change.rect)) {
+      return make_error(ErrorCode::kUnsupported, "a rectangle needs a width and a height");
+    }
+    a.set("Rect", rect_array(page->user(*change.rect)));
+    regenerate = true;
+  }
+  if (change.font_size) {
+    if (subtype != "FreeText") {
+      return make_error(ErrorCode::kUnsupported, "only free text has a text size, not /" + subtype);
+    }
+    const double size = std::isfinite(*change.font_size) ? std::clamp(*change.font_size, 1.0, 500.0) : 12;
+    const Object* da = a.find("DA");
+    const Rgb color = detail::parse_da(da != nullptr && da->as_string() != nullptr ? da->as_string()->bytes : std::string()).rgb;
+    a.set("DA", model::String{.bytes = std::format("/Helv {} Tf {} rg", num(size), rgb_operands(clamp(color)))});
+    regenerate = true;
   }
   if (change.contents) {
     if (change.contents->empty()) {

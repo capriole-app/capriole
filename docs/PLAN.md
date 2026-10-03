@@ -892,6 +892,16 @@ mentre si digita (dopo una pausa di 0,4 s, e lasciando la casella), senza riport
 si sta digitando; nei browser con File System Access (Chrome, Edge) aprire e salvare passano dalle
 finestre di sistema — «Salva» riscrive il file aperto (prima finiva tra i download, con «(6)» nel nome),
 «Salva con nome» chiede dove —; Firefox e Safari scaricano. Test e2e per entrambi (le finestre simulate).
+Poi, sempre su richiesta dell'utente, il testo libero si scrive sulla pagina, come in LibreOffice: col
+cursore in una casella impaginata come la disegnerà il motore (Helvetica, 2 pt di margine, interlinea
+1,2); un clic apre una casella alta una riga della dimensione scelta che si allarga mentre si scrive, un
+rettangolo trascinato tiene la larghezza, va a capo al bordo e cresce in basso; doppio clic (o clic con
+lo strumento) riscrive un testo esistente — il motore ne toglie il disegno intanto — e svuotato lo
+elimina; lasciare la casella (clic fuori, Esc) ne fa l'annotazione, un solo passo di «Annulla».
+Dimensione del testo nella barra (8–72 pt). Il motore ha ora `rect` (testo libero, rettangolo, ellisse) e
+`font_size` tra le modifiche, ed elenca colore e dimensione del testo libero (dal `/DA`). Le modifiche,
+la scrittura, «Annulla» e «Salva» passano da un'unica coda. Test unitari e e2e (clic che si allarga,
+rettangolo che va a capo e cresce, riscrittura e annulla, svuotato eliminato, file salvato riletto).
 
 ---
 

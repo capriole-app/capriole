@@ -137,7 +137,10 @@ export interface AnnotationInfo {
   rect: [number, number, number, number];
   contents: string;
   author: string;
+  /** /C; for free text, its text's colour. */
   color: [number, number, number] | null;
+  /** Free text: its text's size (points); null for the other kinds. */
+  fontSize: number | null;
   hidden: boolean;
   editable: boolean;
 }
@@ -165,6 +168,10 @@ export interface AnnotationSpec {
 
 export interface AnnotationChange {
   moveBy?: [number, number];
+  /** A new rectangle (the page as shown): free text, square, circle. */
+  rect?: [number, number, number, number];
+  /** Free text: its text's size. */
+  fontSize?: number;
   contents?: string;
   color?: [number, number, number];
   opacity?: number;
