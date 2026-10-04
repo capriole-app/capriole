@@ -19,6 +19,10 @@ namespace capriole::filters {
 // instead of an error.
 [[nodiscard]] Result<std::vector<std::byte>> flate_decode(std::span<const std::byte> input, std::size_t max_output, bool lenient = false);
 
+// Deflates data as zlib (what the writer stores with /Filter /FlateDecode). kLimitExceeded for input
+// beyond what zlib takes in one call (4 GB) or when the compressor cannot start.
+[[nodiscard]] Result<std::vector<std::byte>> flate_encode(std::span<const std::byte> input);
+
 struct PredictorParams {
   int predictor = 1;  // 1 none, 2 TIFF, 10..15 PNG
   int colors = 1;

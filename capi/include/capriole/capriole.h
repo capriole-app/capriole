@@ -214,6 +214,47 @@ capriole_status capriole_document_form_fields_json(capriole_document* document, 
  */
 capriole_status capriole_document_form_field_fill(capriole_document* document, uint32_t number, uint32_t generation, const char* value_json);
 
+/* ── Attachments and Factur-X (edit/attachments.hpp, edit/facturx.hpp) ────────────────────── */
+
+/*
+ * The document's attachments as JSON (an array): for each its file specification's reference, its name
+ * in /EmbeddedFiles, file name, description, MIME type, size, dates, relationship, page (for a file
+ * attachment annotation; null for the document's), and whether it is associated (/AF). Format in
+ * capi/README.md.
+ */
+capriole_status capriole_document_attachments_json(capriole_document* document, char** json);
+
+/*
+ * The bytes of an attachment (*data freed with capriole_free; may be null for an empty file). checksum
+ * (may be null) receives 1 when they match /CheckSum, 0 when they do not, -1 when there is none.
+ */
+capriole_status capriole_document_attachment_data(capriole_document* document, uint32_t number, uint32_t generation, uint8_t** data, size_t* size,
+                                                  int* checksum);
+
+/*
+ * Embeds a file (data, size bytes) described by spec_json ({"fileName", "description", "mimeType",
+ * "relationship", "creationDate", "modificationDate"}; fileName required); *number and *generation
+ * receive its file specification.
+ */
+capriole_status capriole_document_attachment_add(capriole_document* document, const char* spec_json, const uint8_t* data, size_t size, uint32_t* number,
+                                                 uint32_t* generation);
+
+/* Removes one of the document's attachments (not an annotation's: CAPRIOLE_ERROR_UNSUPPORTED). */
+capriole_status capriole_document_attachment_remove(capriole_document* document, uint32_t number, uint32_t generation);
+
+/*
+ * The document's Factur-X invoice as JSON: null when it has none, else {"ref", "fileName",
+ * "conformanceLevel", "version", "pdfa3"}.
+ */
+capriole_status capriole_document_facturx_json(capriole_document* document, char** json);
+
+/*
+ * Embeds an invoice's XML (a Cross Industry Invoice) as the document's Factur-X invoice, with its XMP
+ * metadata; date (required: PDF/A-3 asks for it) for the file's dates. *json receives {"ref", "conformanceLevel",
+ * "pdfa3"}: pdfa3 false means the document is not PDF/A-3, so not yet a conforming Factur-X.
+ */
+capriole_status capriole_document_facturx_embed(capriole_document* document, const uint8_t* xml, size_t size, const char* date, char** json);
+
 /*
  * A full save that leaves out the objects nothing references any more (after deleting or extracting
  * pages); otherwise as capriole_document_save with incremental = 0.

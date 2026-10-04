@@ -111,3 +111,23 @@ MuPDF) must show the change in each visible widget (≥ 1% of its pixels; a butt
 they turn on or off); `qpdf --check` no worse than the original. Forms with nothing to fill (signatures,
 push buttons, read-only fields) and files that do not open are reported apart. Exit criterion of phase
 8e (engine): every field of every form passes.
+
+## Attachments and Factur-X (PLAN.md phase 8f, exit criterion)
+
+```sh
+nice -n 10 corpus-tools/check_attachments.py ../CORPORA/safedocs/0000 ../CORPORA/unsafe/x002 ../CORPORA/unsafe/x008 \
+    --cpdf build/release/tools/cpdf/cpdf --jobs 3 --report-dir ../CORPORA/reports --name attachments-all \
+    [--facturx-python ../CORPORA/tools/venv/bin/python] [--verapdf ../CORPORA/tools/verapdf/verapdf]
+```
+
+Three checks. **Reading**: every file whose attachments `pdfdetach` lists — Capriole lists the same
+names, and extracts each byte for byte as `pdfdetach -saveall`. **Adding and removing**: on 100 files a
+file with a name beyond ASCII is attached (incremental save); Poppler, qpdf (`--list-attachments`,
+`--show-attachment`) and MuPDF (the name tree walked by `mutool run`) list it and give its bytes back,
+`qpdf --check` is no worse; removed, none lists it. **Factur-X**: an invoice of each profile embedded in
+a blank page and in 20 files; Poppler extracts `factur-x.xml` identical; MuPDF finds it in `/AF` with
+the relationship of its profile, `text/xml` and `/ModDate`; the XMP (lxml) is well-formed with the fx
+properties and one extension schema, PDF/A-3 declared only if it was. With `--facturx-python` (a
+Python with the `factur-x` package) the reference library reads each invoice back; with `--verapdf`,
+veraPDF validates as PDF/A-3B the outputs whose input was PDF/A-3. Exit criterion of phase 8f
+(engine): every check passes.

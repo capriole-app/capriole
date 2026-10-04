@@ -51,6 +51,20 @@ std::string zlib_message(const z_stream& stream, const char* fallback) { return 
 
 }  // namespace
 
+Result<std::vector<std::byte>> flate_encode(std::span<const std::byte> input) {
+  if (input.size() > UINT_MAX) {
+    return make_error(ErrorCode::kLimitExceeded, "data too large to compress in one piece");
+  }
+  uLongf size = compressBound(static_cast<uLong>(input.size()));
+  std::vector<std::byte> out(size);
+  const int status = compress2(as_zlib(out.data()), &size, as_zlib(input.data()), static_cast<uLong>(input.size()), Z_DEFAULT_COMPRESSION);
+  if (status != Z_OK) {
+    return make_error(ErrorCode::kLimitExceeded, "compression failed");
+  }
+  out.resize(size);
+  return out;
+}
+
 Result<std::vector<std::byte>> flate_decode(std::span<const std::byte> input, std::size_t max_output, bool lenient) {
   InflateStream inflater;
   if (!inflater.init()) {

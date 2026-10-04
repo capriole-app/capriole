@@ -23,6 +23,8 @@ add_library(capriole_engine STATIC
   src/render/blend.cpp
   src/render/png.cpp
   src/edit/annotations.cpp
+  src/edit/attachments.cpp
+  src/edit/facturx.cpp
   src/edit/common.cpp
   src/edit/forms.cpp
   src/edit/pages.cpp

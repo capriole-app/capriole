@@ -25,6 +25,8 @@
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
 #include "capriole/edit/annotations.hpp"
+#include "capriole/edit/attachments.hpp"
+#include "capriole/edit/facturx.hpp"
 #include "capriole/edit/forms.hpp"
 #include "capriole/edit/pages.hpp"
 #include "capriole/font/resources.hpp"
@@ -1026,6 +1028,170 @@ capriole_status capriole_document_form_field_fill(capriole_document* document, u
     const capriole::model::ObjectRef ref{.number = number, .generation = static_cast<std::uint16_t>(generation)};
     auto done = capriole::edit::fill_field(document->document, ref, value);
     return done ? CAPRIOLE_OK : fail(done.error());
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_attachments_json(capriole_document* document, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto list = capriole::edit::list_attachments(document->document);
+    if (!list) {
+      return fail(list.error());
+    }
+    const auto text = [](std::string& out, const std::string& utf8) { capriole::capi::append_json_text(out, capriole::model::from_utf8(utf8)); };
+    std::string out = "[";
+    for (std::size_t i = 0; i < list->size(); ++i) {
+      const auto& a = (*list)[i];
+      out += std::format(R"({}{{"ref":[{},{}],"name":)", i == 0 ? "" : ",", a.spec.number, a.spec.generation);
+      text(out, a.name);
+      out += R"(,"fileName":)";
+      text(out, a.file_name);
+      out += R"(,"description":)";
+      text(out, a.description);
+      out += R"(,"mimeType":)";
+      capriole::capi::append_json_string(out, a.mime_type);
+      out += a.size ? std::format(R"(,"size":{})", *a.size) : std::string(R"(,"size":null)");
+      out += R"(,"creationDate":)";
+      capriole::capi::append_json_string(out, a.creation_date);
+      out += R"(,"modificationDate":)";
+      capriole::capi::append_json_string(out, a.modification_date);
+      out += R"(,"relationship":)";
+      capriole::capi::append_json_string(out, a.relationship);
+      out += a.page ? std::format(R"(,"page":{})", *a.page) : std::string(R"(,"page":null)");
+      out += std::format(R"(,"associated":{}}})", a.associated);
+    }
+    out += "]";
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_attachment_data(capriole_document* document, uint32_t number, uint32_t generation, uint8_t** data, size_t* size,
+                                                  int* checksum) {
+  g_last_error.clear();
+  if (document == nullptr || data == nullptr || size == nullptr || generation > 65535) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument or generation out of range");
+  }
+  try {
+    const capriole::model::ObjectRef ref{.number = number, .generation = static_cast<std::uint16_t>(generation)};
+    auto read = capriole::edit::attachment_data(document->document, ref);
+    if (!read) {
+      return fail(read.error());
+    }
+    if (checksum != nullptr) {
+      *checksum = -1;
+      if (read->checksum_matches) {
+        *checksum = *read->checksum_matches ? 1 : 0;
+      }
+    }
+    return hand_over(read->bytes, data, size);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_attachment_add(capriole_document* document, const char* spec_json, const uint8_t* data, size_t size, uint32_t* number,
+                                                 uint32_t* generation) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || (data == nullptr && size > 0) || number == nullptr || generation == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto json = capriole::capi::parse_json(spec_json);
+    if (!json) {
+      return fail(json.error());
+    }
+    if (json->object() == nullptr) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "the specification is not an object");
+    }
+    capriole::edit::AttachmentSpec spec;
+    for (const auto& [key, target] : {std::pair<std::string_view, std::string*>{"fileName", &spec.file_name},
+                                      {"description", &spec.description},
+                                      {"mimeType", &spec.mime_type},
+                                      {"relationship", &spec.relationship},
+                                      {"creationDate", &spec.creation_date},
+                                      {"modificationDate", &spec.modification_date}}) {
+      if (const auto* value = json->get(key)) {
+        if (value->string() == nullptr) {
+          return fail(CAPRIOLE_ERROR_SYNTAX, std::format("{}: a string expected", key));
+        }
+        *target = *value->string();
+      }
+    }
+    const auto bytes = size == 0 ? std::span<const std::byte>() : std::as_bytes(std::span(data, size));
+    auto ref = capriole::edit::add_attachment(document->document, spec, bytes);
+    if (!ref) {
+      return fail(ref.error());
+    }
+    *number = ref->number;
+    *generation = ref->generation;
+    return CAPRIOLE_OK;
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_attachment_remove(capriole_document* document, uint32_t number, uint32_t generation) {
+  g_last_error.clear();
+  if (document == nullptr || generation > 65535) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument or generation out of range");
+  }
+  try {
+    const capriole::model::ObjectRef ref{.number = number, .generation = static_cast<std::uint16_t>(generation)};
+    auto done = capriole::edit::remove_attachment(document->document, ref);
+    return done ? CAPRIOLE_OK : fail(done.error());
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_facturx_json(capriole_document* document, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto found = capriole::edit::find_facturx(document->document);
+    if (!found) {
+      return fail(found.error());
+    }
+    if (!*found) {
+      return hand_over(std::string("null"), json);
+    }
+    const auto& f = **found;
+    std::string out = std::format(R"({{"ref":[{},{}],"fileName":)", f.spec.number, f.spec.generation);
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(f.file_name));
+    out += R"(,"conformanceLevel":)";
+    capriole::capi::append_json_string(out, f.conformance_level);
+    out += R"(,"version":)";
+    capriole::capi::append_json_string(out, f.version);
+    out += std::format(R"(,"pdfa3":{}}})", f.pdfa3);
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_facturx_embed(capriole_document* document, const uint8_t* xml, size_t size, const char* date, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || xml == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto result = capriole::edit::embed_facturx(document->document, std::as_bytes(std::span(xml, size)), date != nullptr ? date : "");
+    if (!result) {
+      return fail(result.error());
+    }
+    std::string out = std::format(R"({{"ref":[{},{}],"conformanceLevel":)", result->spec.number, result->spec.generation);
+    capriole::capi::append_json_string(out, result->conformance_level);
+    out += std::format(R"(,"pdfa3":{}}})", result->pdfa3);
+    return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

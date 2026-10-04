@@ -298,6 +298,21 @@ TEST(AnnotationEditing, FreeTextTakesARectangleAndASize) {
             ErrorCode::kUnsupported);  // empty
 }
 
+TEST(AnnotationEditing, AnAnnotsReferenceThatReachesNothingIsReplaced) {
+  // /Annots 10 0 R, object 10 of generation 1: null (§7.3.10). Written there, the annotation would be
+  // out of reach; the page gets the array itself.
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]/Annots 10 0 R>>");
+  b.add_object(10, "[]", 1);
+  b.finish_table("/Size 11/Root 1 0 R");
+  Document document = open(b.str());
+  const auto added = add_annotation(document, 0, spec(AnnotationKind::kSquare, [](AnnotationSpec& x) { x.rect = Rect{10, 10, 50, 50}; }));
+  ASSERT_TRUE(added.has_value());
+  EXPECT_EQ(list_annotations(document, 0)->size(), 1U);
+}
+
 TEST(AnnotationEditing, PopupsWidgetsAndDirectAnnotations) {
   // An indirect note with its popup, a direct square, a widget.
   Document document = open(page_pdf("/Annots[10 0 R 11 0 R <</Subtype/Square/Rect[0 0 5 5]>> 12 0 R]",

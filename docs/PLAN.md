@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · 8f allegati e Factur-X · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app) · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -902,6 +902,37 @@ Dimensione del testo nella barra (8–72 pt). Il motore ha ora `rect` (testo lib
 `font_size` tra le modifiche, ed elenca colore e dimensione del testo libero (dal `/DA`). Le modifiche,
 la scrittura, «Annulla» e «Salva» passano da un'unica coda. Test unitari e e2e (clic che si allarga,
 rettangolo che va a capo e cresce, riscrittura e annulla, svuotato eliminato, file salvato riletto).
+
+**8f-1 (2026-10-03) — allegati e Factur-X nel motore: uscita raggiunta.**
+`edit/attachments.hpp`: elencare gli allegati (l'albero `/EmbeddedFiles`, letto con limiti di profondità,
+voci e cicli, e le annotazioni `/FileAttachment` con la loro pagina: nome, file, descrizione, tipo MIME,
+dimensione, date, `/AFRelationship`, se associati), leggerne i byte (con la verifica MD5 di
+`/CheckSum`), aggiungerne (compressi, con dimensione, checksum, date, associati al documento in `/AF` —
+come chiede PDF/A-3 —, sotto un nome reso unico; l'albero cambiato è riscritto piatto e ordinato),
+toglierne. `edit/facturx.hpp`: riconoscere la fattura incorporata (`factur-x.xml`,
+`zugferd-invoice.xml`, `xrechnung.xml`, `order-x.xml`) e il profilo dichiarato nell'XMP; incorporare un
+Cross Industry Invoice come `factur-x.xml` (relazione Data per MINIMUM e BASIC WL, Alternative per gli
+altri; `text/xml`; la data è obbligatoria: PDF/A-3 chiede `/ModDate`, e il motore non legge orologi),
+il profilo letto dalla linea guida dell'XML, con i metadati XMP fx (DocumentType, DocumentFileName,
+Version, ConformanceLevel) e lo schema di estensione PDF/A che li dichiara (una volta sola; una seconda
+fattura sostituisce la prima). Un PDF/A-3 resta tale; un documento che non lo è **non** viene dichiarato
+PDF/A-3 (non lo è): la conversione è la fase 8i. Il motore legge dell'XML solo radice e linea guida, con
+ricerche delimitate; non lo valida. `filters::flate_encode` (zlib). API C (sei funzioni, anche WASM),
+`cpdf attach list|extract|add|remove`, `cpdf facturx [embed]`, fuzz target `fuzz_attachments`, test.
+Criterio: `corpus-tools/check_attachments.py` sui tre corpora — **lettura 6/6 file** (tutti gli allegati
+del corpus: stessi nomi di `pdfdetach`, byte identici), **aggiunta e rimozione 100/100 file** (Poppler,
+qpdf e MuPDF lo elencano e ne restituiscono i byte; `qpdf --check` mai peggiore; rimosso, nessuno lo
+elenca; 2 file di `x008` senza un catalogo leggibile rifiutati e contati a parte), **Factur-X 105/105** (cinque profili, XML d'esempio validi per l'XSD ufficiale di ciascuno, in una pagina
+vuota e in 20 file: Poppler estrae `factur-x.xml` identico, MuPDF lo trova in `/AF` con relazione, tipo
+e `/ModDate`, l'XMP letto da lxml ha le proprietà fx e uno schema di estensione; la libreria di
+riferimento `factur-x` 7.2 lo trova nel PDF, lo valida con l'XSD del profilo e riconosce il profilo);
+rapporto in `CORPORA/reports/attachments-all-20261003-221905/`. Resta per la fase 8i la validazione
+PDF/A-3B con veraPDF (nei corpora non c'è un PDF/A-3 di partenza; lo strumento ha già l'opzione).
+Corretti strada facendo: il primo Factur-X di `cpdf` era senza `/ModDate`; e, trovato dal fuzzing, un
+riferimento con la generazione sbagliata (che vale null, §7.3.10) veniva scritto lo stesso — l'allegato
+aggiunto restava irraggiungibile —: ora si scrive nell'oggetto solo se il riferimento lo raggiunge,
+altrimenti lo si sostituisce; lo stesso in `/AF`, nei metadati e in `/Annots` delle annotazioni (8d),
+ciascuno con il suo test.
 
 ---
 

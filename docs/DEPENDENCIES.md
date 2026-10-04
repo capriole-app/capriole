@@ -45,7 +45,9 @@ Scaricato da `scripts/fetch_resources.sh` con hash fissati, registrato a run-tim
 
 MuPDF/mutool (AGPL), Poppler (GPL), PDFium (BSD, ma API da viewer), pdf.js (Apache-2.0), qpdf (Apache-2.0),
 jbig2dec (AGPL: oracolo delle fixture JBIG2, `tests/data/jbig2/make_fixtures.py`), libtiff tramite Pillow
-(generazione delle fixture CCITT e MMR).
+(generazione delle fixture CCITT e MMR). Per la verifica degli allegati e di Factur-X (fase 8f, facoltativi, fuori dal
+repo in `CORPORA/tools/`): la libreria Python `factur-x` (BSD, con gli XSD Factur-X) e veraPDF (GPL/MPL,
+Java); `lxml` (BSD) per leggere gli XMP nella verifica.
 
 ## Apps (`apps/inspector`, `apps/capriole`) — npm, devDependencies only
 

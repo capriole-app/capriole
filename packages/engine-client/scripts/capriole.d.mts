@@ -57,6 +57,26 @@ export interface CaprioleModule {
   _capriole_document_annotation_remove(document: number, pageIndex: number, num: number, generation: number): number;
   _capriole_document_form_fields_json(document: number, out: number): number;
   _capriole_document_form_field_fill(document: number, num: number, generation: number, value: number): number;
+  _capriole_document_attachments_json(document: number, out: number): number;
+  _capriole_document_attachment_data(
+    document: number,
+    num: number,
+    generation: number,
+    outData: number,
+    outSize: number,
+    outChecksum: number,
+  ): number;
+  _capriole_document_attachment_add(
+    document: number,
+    spec: number,
+    data: number,
+    size: number,
+    outNumber: number,
+    outGeneration: number,
+  ): number;
+  _capriole_document_attachment_remove(document: number, num: number, generation: number): number;
+  _capriole_document_facturx_json(document: number, out: number): number;
+  _capriole_document_facturx_embed(document: number, xml: number, size: number, date: number, out: number): number;
   _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,

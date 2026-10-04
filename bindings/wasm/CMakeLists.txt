@@ -35,6 +35,12 @@ set(_capriole_exports
   _capriole_document_annotation_remove
   _capriole_document_form_fields_json
   _capriole_document_form_field_fill
+  _capriole_document_attachments_json
+  _capriole_document_attachment_data
+  _capriole_document_attachment_add
+  _capriole_document_attachment_remove
+  _capriole_document_facturx_json
+  _capriole_document_facturx_embed
   _capriole_resource_add
   _capriole_last_missing_resources_json
   _malloc

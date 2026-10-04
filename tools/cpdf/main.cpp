@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
@@ -95,6 +96,14 @@ void print_usage() {
                "                  coordinates as the page is shown), saved incrementally (fully if it needed repairs)\n"
                "  annot remove <file> <page> <object number> <output>\n"
                "  form list <file>               the form's fields, as JSON\n"
+               "  attach list <file>             the attachments, as JSON\n"
+               "  attach extract <file> <number> <output>\n"
+               "  attach add <file> <data file> <output> [mime type [relationship [description]]]\n"
+               "                  embed a file (associated with the document: /AF), saved incrementally\n"
+               "  attach remove <file> <number> <output>\n"
+               "  facturx <file>                 the Factur-X invoice embedded, as JSON (null: none)\n"
+               "  facturx embed <file> <invoice.xml> <output>\n"
+               "                  embed a Cross Industry Invoice as factur-x.xml, with its XMP metadata\n"
                "  form fill <file> <output> <number>=<json>...\n"
                "                  fill fields by object number: a string, an array of strings (list boxes), or null;\n"
                "                  their appearances are generated; saved incrementally (fully if it needed repairs)\n"
@@ -640,6 +649,153 @@ int cmd_form(std::span<char* const> args) {
   return save_capi(document, args[2]);
 }
 
+// Text as the inside of a JSON string (UTF-8 passes as it is).
+std::string json_escape(std::string_view text) {
+  std::string out;
+  for (const char c : text) {
+    if (c == '"' || c == '\\') {
+      out += '\\';
+      out += c;
+    } else if (static_cast<unsigned char>(c) < 0x20) {
+      out += std::format("\\u{:04x}", static_cast<unsigned char>(c));
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
+// The bytes of a file on disk; nullopt after a message.
+std::optional<std::vector<char>> read_file(std::string_view path) {
+  std::ifstream in{std::string(path), std::ios::binary};
+  std::vector<char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  if (!in && !in.eof()) {
+    std::cerr << std::format("cpdf: cannot read {}\n", path);
+    return std::nullopt;
+  }
+  return bytes;
+}
+
+// attach list <file> | extract <file> <number> <output> | add <file> <data> <output> [mime [relationship [description]]] |
+// remove <file> <number> <output>: attachments through the C API.
+int cmd_attach(std::span<char* const> args) {
+  const std::string_view action = args[0];
+  const std::string_view path = args[1];
+  capriole_document* document = open_capi(path);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  const auto failed = [&](std::string_view what) {
+    std::cerr << std::format("cpdf: {}: {}: {}\n", path, what, capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  };
+  if (action == "list") {
+    char* json = nullptr;
+    if (capriole_document_attachments_json(document, &json) != CAPRIOLE_OK) {
+      return failed("list");
+    }
+    std::cout << json << '\n';
+    capriole_free(json);
+    capriole_document_close(document);
+    return kExitOk;
+  }
+  if (action == "extract") {
+    const auto number = parse_uint(args[2]);
+    std::uint8_t* data = nullptr;
+    std::size_t size = 0;
+    int checksum = -1;
+    if (!number || *number > 0xFFFFFFFFULL ||
+        capriole_document_attachment_data(document, static_cast<std::uint32_t>(*number), 0, &data, &size, &checksum) != CAPRIOLE_OK) {
+      return failed("extract");
+    }
+    std::ofstream out{std::string(args[3]), std::ios::binary};
+    out.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    capriole_free(data);
+    capriole_document_close(document);
+    if (!out) {
+      std::cerr << std::format("cpdf: cannot write {}\n", args[3]);
+      return kExitFailure;
+    }
+    std::string_view verdict = "absent";
+    if (checksum >= 0) {
+      verdict = checksum == 1 ? "matches" : "DOES NOT MATCH";
+    }
+    std::cout << std::format("{}: {} bytes, checksum {}\n", args[3], size, verdict);
+    return kExitOk;
+  }
+  if (action == "add") {
+    const auto bytes = read_file(args[2]);
+    if (!bytes) {
+      capriole_document_close(document);
+      return kExitFailure;
+    }
+    const std::string file = std::filesystem::path(std::string(args[2])).filename().string();
+    std::string spec = R"({"fileName":")" + json_escape(file) + "\"";
+    if (args.size() > 4) {
+      spec += R"(,"mimeType":")" + json_escape(args[4]) + "\"";
+    }
+    if (args.size() > 5) {
+      spec += R"(,"relationship":")" + json_escape(args[5]) + "\"";
+    }
+    if (args.size() > 6) {
+      spec += R"(,"description":")" + json_escape(args[6]) + "\"";
+    }
+    spec += "}";
+    std::uint32_t number = 0;
+    std::uint32_t generation = 0;
+    const auto* input = reinterpret_cast<const std::uint8_t*>(bytes->data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes as bytes
+    if (capriole_document_attachment_add(document, spec.c_str(), input, bytes->size(), &number, &generation) != CAPRIOLE_OK) {
+      return failed("add");
+    }
+    std::cout << std::format("added {} {} R\n", number, generation);
+    return save_capi(document, args[3]);
+  }
+  const auto number = parse_uint(args[2]);
+  if (!number || *number > 0xFFFFFFFFULL || capriole_document_attachment_remove(document, static_cast<std::uint32_t>(*number), 0) != CAPRIOLE_OK) {
+    return failed("remove");
+  }
+  return save_capi(document, args[3]);
+}
+
+// facturx <file> | facturx embed <file> <xml> <output>: the document's Factur-X invoice.
+int cmd_facturx(std::span<char* const> args) {
+  const bool embed = args.size() == 4;
+  const std::string_view path = embed ? args[1] : args[0];
+  capriole_document* document = open_capi(path);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  char* json = nullptr;
+  if (!embed) {
+    if (capriole_document_facturx_json(document, &json) != CAPRIOLE_OK) {
+      std::cerr << std::format("cpdf: {}: {}\n", path, capriole_last_error_message());
+      capriole_document_close(document);
+      return kExitFailure;
+    }
+    std::cout << json << '\n';
+    capriole_free(json);
+    capriole_document_close(document);
+    return kExitOk;
+  }
+  const auto xml = read_file(args[2]);
+  if (!xml) {
+    capriole_document_close(document);
+    return kExitFailure;
+  }
+  const auto* input = reinterpret_cast<const std::uint8_t*>(xml->data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes as bytes
+  // Now, as a PDF date in UTC (the engine reads no clock).
+  const std::string now = std::format("D:{:%Y%m%d%H%M%S}Z", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+  if (capriole_document_facturx_embed(document, input, xml->size(), now.c_str(), &json) != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: embed: {}\n", path, capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  return save_capi(document, args[3]);
+}
+
 int cmd_pages(std::string_view path) {
   auto document = open_document(path);
   if (!document) {
@@ -950,6 +1106,16 @@ int run(std::span<char*> args) {
     if ((action == "list" && args.size() == 5) || ((action == "add" || action == "remove") && args.size() == 7)) {
       return cmd_annot(args.subspan(2));
     }
+  }
+  if (command == "attach" && args.size() >= 4) {
+    const std::string_view action = args[2];
+    if ((action == "list" && args.size() == 4) || ((action == "extract" || action == "remove") && args.size() == 6) ||
+        (action == "add" && args.size() >= 6 && args.size() <= 9)) {
+      return cmd_attach(args.subspan(2));
+    }
+  }
+  if (command == "facturx" && (args.size() == 3 || (args.size() == 6 && std::string_view(args[2]) == "embed"))) {
+    return cmd_facturx(args.subspan(2));
   }
   if (command == "form" && args.size() >= 4) {
     const std::string_view action = args[2];

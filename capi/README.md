@@ -161,6 +161,42 @@ engine makes; another kind's colour, rectangle or size is `CAPRIOLE_ERROR_UNSUPP
 removes it with its popup. Documents whose structure needed repairs are edited after a full save
 (`CAPRIOLE_ERROR_UNSUPPORTED` until then); listing works on any document.
 
+## Attachments and Factur-X
+
+`capriole_document_attachments_json` lists the document's attachments — the `/EmbeddedFiles` name
+tree in key order, then the file attachment annotations in page order (file specifications without
+an embedded file left out):
+
+```json
+[{"ref":[47,0], "name":"nota.txt", "fileName":"nota.txt", "description":"…", "mimeType":"text/plain",
+  "size":4 | null, "creationDate":"D:…", "modificationDate":"D:…", "relationship":"Source",
+  "page":null | 0, "associated":true}, …]
+```
+
+`ref` is the file specification (for an annotation whose specification is not its own object, the
+annotation); `page` is the annotation's page, null for the document's attachments; `associated`: in
+the catalog's `/AF`. `capriole_document_attachment_data` gives the bytes, and whether they match
+`/Params /CheckSum` (MD5; -1 when there is none). `capriole_document_attachment_add` takes
+`{"fileName", "description", "mimeType", "relationship", "creationDate", "modificationDate"}` and the
+bytes: the file is compressed, given its size and checksum, associated with the document (`/AF`, its
+`/AFRelationship`: Source, Data, Alternative, Supplement, EncryptedPayload, FormData, Schema or
+Unspecified), and added to `/EmbeddedFiles` under its name (made unique: `name (2)`); the tree, when
+changed, is written flat and sorted. `capriole_document_attachment_remove` takes one of the document's
+attachments out (an annotation's goes with its annotation: `CAPRIOLE_ERROR_UNSUPPORTED`).
+
+`capriole_document_facturx_json` gives the document's Factur-X / ZUGFeRD invoice (`factur-x.xml`,
+`zugferd-invoice.xml`, `xrechnung.xml`, `order-x.xml` among its attachments) — `null`, or
+`{"ref", "fileName", "conformanceLevel", "version", "pdfa3"}` from its XMP metadata.
+`capriole_document_facturx_embed` embeds a Cross Industry Invoice's XML as `factur-x.xml` (one there
+already is replaced): relationship Data for MINIMUM and BASIC WL, Alternative for the others, MIME
+type `text/xml`, the date given (required: PDF/A-3 asks for `/ModDate`); and writes the XMP metadata
+(fx: DocumentType, DocumentFileName, Version, ConformanceLevel — the profile read from the XML's
+guideline —, with the PDF/A extension schema that declares them). It answers
+`{"ref", "conformanceLevel", "pdfa3"}`: `pdfa3` false means the document is not PDF/A-3 — it is not
+declared so, as it is not one — and so not yet a conforming Factur-X (conversion: phase 8i). An XML
+that is not a Cross Industry Invoice, or whose guideline is not a Factur-X profile, is
+`CAPRIOLE_ERROR_UNSUPPORTED`; the engine does not otherwise validate it.
+
 ## Forms
 
 `capriole_document_form_fields_json` lists the terminal fields of the document's form (AcroForm), in

@@ -21,6 +21,10 @@ sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld
 - `qpdf`, `mupdf-tools` (`mutool`), `poppler-utils` (`pdftoppm`, `pdfinfo`): **motori di riferimento
   per i test differenziali**, usati come programmi esterni. Non si linkano mai (licenze, spec §7.3).
   PDFium e pdf.js arrivano alla fase 4 (binario precompilato / Node).
+- Facoltativi, per la verifica di Factur-X (`corpus-tools/check_attachments.py`), fuori dal repo:
+  `python3 -m venv ../CORPORA/tools/venv && ../CORPORA/tools/venv/bin/pip install factur-x`
+  (opzione `--facturx-python ../CORPORA/tools/venv/bin/python`), e veraPDF (Java 11+), installato in
+  `../CORPORA/tools/verapdf` dal suo installer (opzione `--verapdf ../CORPORA/tools/verapdf/verapdf`).
 
 ## Node, per le app (`apps/inspector`, `apps/capriole`, `apps/desktop`)
 

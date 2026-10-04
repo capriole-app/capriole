@@ -172,7 +172,10 @@ Annots annots_of(Document& document, const Page& page) {
     return {};
   }
   auto resolved = document.resolve(*entry);
-  return {.list = resolved && resolved->as_array() != nullptr ? *resolved->as_array() : Array{}, .ref = entry->as_ref()};
+  const bool array = resolved && resolved->as_array() != nullptr;
+  // The array's own object, when the page's reference reaches it (a reference whose generation does not
+  // match reads as null, §7.3.10: written there, the change would be out of reach).
+  return {.list = array ? *resolved->as_array() : Array{}, .ref = array ? entry->as_ref() : std::nullopt};
 }
 
 Result<void> write_annots(Document& document, const Page& page, Annots annots) {

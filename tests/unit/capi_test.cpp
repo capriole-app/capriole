@@ -344,6 +344,54 @@ TEST(CApiDocument, Forms) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, AttachmentsAndFacturx) {
+  capriole_document* document = open_document(sample_pdf());
+  const std::string data = "ciao";
+  std::uint32_t number = 0;
+  std::uint32_t generation = 0;
+  ASSERT_EQ(capriole_document_attachment_add(document, R"({"fileName":"nota \u00e8.txt","mimeType":"text/plain","relationship":"Source"})", bytes_of(data),
+                                             data.size(), &number, &generation),
+            CAPRIOLE_OK)
+      << capriole_last_error_message();
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_attachments_json(document, &json), CAPRIOLE_OK);
+  const std::string listed = take_json(json);
+  EXPECT_NE(listed.find(std::format(R"({{"ref":[{},0],"name":"nota \u00e8.txt","fileName":"nota \u00e8.txt","description":"","mimeType":"text/plain",)"
+                                    R"("size":4,"creationDate":"","modificationDate":"","relationship":"Source","page":null,"associated":true}})",
+                                    number)),
+            std::string::npos)
+      << listed;
+  std::uint8_t* out = nullptr;
+  std::size_t size = 0;
+  int checksum = -2;
+  ASSERT_EQ(capriole_document_attachment_data(document, number, generation, &out, &size, &checksum), CAPRIOLE_OK);
+  EXPECT_EQ(std::string(reinterpret_cast<const char*>(out), size), "ciao");  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  EXPECT_EQ(checksum, 1);
+  capriole_free(out);
+
+  ASSERT_EQ(capriole_document_facturx_json(document, &json), CAPRIOLE_OK);
+  EXPECT_EQ(take_json(json), "null");
+  const std::string invoice =
+      R"(<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"><rsm:ExchangedDocumentContext>)"
+      R"(<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:factur-x.eu:1p0:minimum</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>)"
+      R"(</rsm:ExchangedDocumentContext></rsm:CrossIndustryInvoice>)";
+  EXPECT_EQ(capriole_document_facturx_embed(document, bytes_of(invoice), invoice.size(), nullptr, &json), CAPRIOLE_ERROR_UNSUPPORTED);  // no date
+  ASSERT_EQ(capriole_document_facturx_embed(document, bytes_of(invoice), invoice.size(), "D:20261003120000Z", &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("conformanceLevel":"MINIMUM","pdfa3":false})"), std::string::npos);
+  ASSERT_EQ(capriole_document_facturx_json(document, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("fileName":"factur-x.xml","conformanceLevel":"MINIMUM","version":"1.0","pdfa3":false})"), std::string::npos);
+
+  EXPECT_EQ(capriole_document_attachment_remove(document, number, generation), CAPRIOLE_OK);
+  EXPECT_EQ(capriole_document_attachment_remove(document, number, generation), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  for (const char* bad : {"", "[]", R"({"fileName":1})", R"({"description":"no name"})"}) {
+    SCOPED_TRACE(bad);
+    EXPECT_NE(capriole_document_attachment_add(document, bad, bytes_of(data), data.size(), &number, &generation), CAPRIOLE_OK);
+  }
+  EXPECT_EQ(capriole_document_attachment_add(document, R"({"fileName":"x"})", nullptr, 3, &number, &generation), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_attachment_add(document, R"({"fileName":"vuoto"})", nullptr, 0, &number, &generation), CAPRIOLE_OK);  // an empty file
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {
   // A Japanese font that is not embedded, with a predefined CMap: both come from the resource pack.
   capriole::test::PdfBuilder b;
