@@ -1,5 +1,6 @@
 <script lang="ts">
   // The open file and what can be done to its pages. Actions on pages apply to the selection.
+  import Archive from '@lucide/svelte/icons/archive';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import ArrowRight from '@lucide/svelte/icons/arrow-right';
   import Copy from '@lucide/svelte/icons/copy';
@@ -160,6 +161,16 @@
       {#if editor.attachments.length > 0}<span class="min-[1900px]:hidden" aria-hidden="true"
           >{editor.attachments.length}</span
         >{/if}
+    </button>
+    <button
+      type="button"
+      class={button}
+      disabled={editor.busy}
+      title={editor.pdfa ? `Il documento è PDF/A-${editor.pdfa}` : 'Converti in PDF/A (formato d’archivio)'}
+      onclick={() => editor.openPdfa()}
+    >
+      <Archive class="size-4" />
+      <span class="sr-only min-[1900px]:not-sr-only">{editor.pdfa ? `PDF/A-${editor.pdfa}` : 'PDF/A'}</span>
     </button>
     <button
       type="button"

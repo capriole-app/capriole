@@ -1,0 +1,118 @@
+<script lang="ts">
+  // The conversion to PDF/A: what it is, then "Converti" — what was put right, or why it cannot be done —,
+  // then the converted document saved as a new file. The conversion is one step of undo.
+  import Archive from '@lucide/svelte/icons/archive';
+  import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import FileDown from '@lucide/svelte/icons/file-down';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+  import { getEditor } from '$lib/editor.svelte';
+  import { pdfaChange, pdfaReason } from '$lib/pdfa';
+
+  const editor = getEditor();
+  const open = $derived(editor.pdfaDialog !== null);
+  const invoice = $derived(editor.pdfaDialog === 3);
+  const reasons = $derived([...new Set((editor.pdfaRefusal ?? []).map(pdfaReason))]);
+
+  // A modal dialog while it is open (showModal: focus trapped, Escape closes).
+  function modal(dialog: HTMLDialogElement) {
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }
+</script>
+
+<dialog
+  {@attach modal}
+  class="m-auto w-full max-w-lg rounded-xl border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  aria-labelledby="pdfa-title"
+  data-testid="pdfa-dialog"
+  oncancel={(e) => {
+    e.preventDefault();
+    if (!editor.busy) editor.closePdfa();
+  }}
+>
+  <div class="flex flex-col gap-4 text-sm">
+    <h2 id="pdfa-title" class="flex items-center gap-2 text-base font-semibold">
+      <Archive class="size-4" />
+      {invoice ? 'Converti in PDF/A-3' : 'Converti in PDF/A'}
+    </h2>
+
+    {#if editor.pdfaReport}
+      {@const report = editor.pdfaReport}
+      <p
+        class="flex items-center gap-2 rounded-md bg-success-background px-3 py-2 font-medium text-success"
+        role="status"
+      >
+        <CircleCheck class="size-4 shrink-0" /> Il documento ora è PDF/A-{report.part}b.
+      </p>
+      {#if report.changes.length > 0}
+        <div class="flex flex-col gap-1">
+          <span class="font-medium">Cosa è stato sistemato</span>
+          <ul class="list-disc ps-5 text-muted-foreground" data-testid="pdfa-changes">
+            {#each report.changes as change, i (i)}
+              <li>{pdfaChange(change)}</li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+      <p class="text-xs text-muted-foreground">
+        Salvalo come nuovo file. Le modifiche successive si aggiungono senza riscriverlo; firmalo, se serve, dopo la
+        conversione.
+      </p>
+    {:else if editor.pdfaRefusal}
+      <div class="flex flex-col gap-2 rounded-md bg-danger-background px-3 py-2 text-danger" role="alert">
+        <span class="flex items-center gap-2 font-medium"
+          ><TriangleAlert class="size-4 shrink-0" /> Il documento non può diventare PDF/A:</span
+        >
+        <ul class="list-disc ps-5" data-testid="pdfa-reasons">
+          {#each reasons as reason (reason)}
+            <li>{reason}</li>
+          {/each}
+        </ul>
+      </div>
+      <p class="text-xs text-muted-foreground">Il documento non è stato cambiato.</p>
+    {:else}
+      <p class="text-muted-foreground">
+        PDF/A è il formato d'archivio: il documento resta leggibile e uguale nel tempo, con i font incorporati, un
+        profilo colore e i metadati. {invoice
+          ? 'Una fattura Factur-X è conforme quando il PDF è PDF/A-3.'
+          : 'Diventa PDF/A-2b, o PDF/A-3b se ha allegati.'}
+      </p>
+      <p class="text-xs text-muted-foreground">
+        La conversione corregge ciò che può (font standard, annotazioni, azioni, metadati) e, se qualcosa lo impedisce,
+        spiega cosa, senza toccare il documento.
+      </p>
+    {/if}
+
+    {#if editor.error && open}
+      <p class="rounded-md bg-danger-background px-3 py-2 text-danger" role="alert">{editor.error}</p>
+    {/if}
+
+    <div class="flex justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-md border px-3 py-1.5 hover:bg-muted"
+        disabled={editor.busy}
+        onclick={() => editor.closePdfa()}>{editor.pdfaReport ? 'Chiudi' : 'Annulla'}</button
+      >
+      {#if editor.pdfaReport}
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60"
+          disabled={editor.busy}
+          onclick={() => editor.savePdfa()}
+        >
+          <FileDown class="size-4" /> Salva il PDF/A
+        </button>
+      {:else if !editor.pdfaRefusal}
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60"
+          disabled={editor.busy}
+          onclick={() => editor.convertToPdfa()}
+        >
+          <Archive class="size-4" /> Converti
+        </button>
+      {/if}
+    </div>
+  </div>
+</dialog>

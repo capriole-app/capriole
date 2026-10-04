@@ -35,6 +35,13 @@ text or colour or remove it, drag it to move it; the panel also lists the page's
 keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
 annotation gets its appearance from the engine, so other readers show it the same.
 
+**PDF/A** (phase 8i): "PDF/A" (in the pages' toolbar; it shows the part when the document declares one)
+opens a dialog that says what PDF/A is and converts: what was put right is listed (in Italian), or why it
+cannot be done, the document left as it was; "Salva il PDF/A" saves the converted document as a new file
+("…-pdfa.pdf"). The conversion is one step of undo. A Factur-X invoice whose PDF is not PDF/A-3 has
+"Converti in PDF/A-3…" in its panel. A PDF/A document, like a signed one, is saved by appending (a full
+save would change /ModDate apart from the XMP).
+
 **Digital signatures** (phase 8h): "Firme" (beside the pages) lists the document's signatures as the
 engine verifies them — valid or not, made before later changes or covering the whole file, signer,
 time (the time stamp's, else the one the signer claims), PAdES level — and signs: invisibly from there,

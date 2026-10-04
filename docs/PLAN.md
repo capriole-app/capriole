@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app ✅) · **8i** PDF/A (8i-1 motore ✅, 8i-2 app) · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app ✅) · **8i** PDF/A (8i-1 motore ✅, 8i-2 app ✅) · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -1121,6 +1121,19 @@ carattere perso per Poppler, `qpdf --check` mai peggiore; 37 rifiutati, ognuno c
 incorporati senza sostituto: 36 casi; CMYK 7; firmati 7; operatori non definiti 5; …); fatture Factur-X
 incorporate e convertite in PDF/A-3b: **11/11** valide per veraPDF e per la libreria factur-x. Rapporto:
 `CORPORA/reports/pdfa-all-20261004-194739/`. Il PDF/A-3 dei Factur-X, in sospeso dalla 8f, è verificato.
+
+**8i-2 (2026-10-04) — PDF/A nell'app.** `apps/capriole`: «PDF/A» nella barra delle pagine (con la parte,
+quando il documento ne dichiara una: il sommario dell'API C ha ora `pdfa`, letto dall'XMP) apre un
+dialogo che spiega il formato e converte; elenca ciò che è stato sistemato, oppure i motivi del rifiuto —
+tradotti in italiano (`src/lib/pdfa.ts`; ciò che non riconosce, com'è) —, il documento lasciato com'era.
+«Salva il PDF/A» lo salva come nuovo file («…-pdfa.pdf»); la conversione è un passo di «Annulla». Nel
+pannello Factur-X l'avviso «non è PDF/A-3» ha «Converti in PDF/A-3…». Un documento PDF/A, come uno firmato,
+si salva accodando (un salvataggio completo cambierebbe `/ModDate` separandola dall'XMP), anche nelle
+istantanee dell'«Annulla». Client del motore: `convertPdfa`. Corretto il commento della fattura di prova
+degli e2e, che si diceva valida per lo schema XSD e non lo è (non ha righe).
+Criterio: test e2e (conversione e salvataggio con identificazione PDF/A, output intent e font incorporato;
+annullata; rifiuto con il motivo in italiano; fattura resa PDF/A-3 dal suo pannello) verdi; file convertiti
+dall'app validati a parte con veraPDF: **PASS 2b** e **PASS 3b**.
 
 ---
 

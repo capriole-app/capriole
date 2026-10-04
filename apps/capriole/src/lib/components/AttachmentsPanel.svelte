@@ -121,10 +121,20 @@
         <p class="text-muted-foreground">L'XML della fattura non si legge come un Cross Industry Invoice.</p>
       {/if}
       {#if !editor.facturx.pdfa3}
-        <p class="rounded-md bg-warning-background px-2 py-1.5 text-warning" role="note">
-          Il PDF non è PDF/A-3: la fattura è incorporata, ma il file diventa un Factur-X conforme solo convertito in
-          PDF/A-3 (in arrivo).
-        </p>
+        <div class="flex flex-col gap-2 rounded-md bg-warning-background px-2 py-1.5 text-warning" role="note">
+          <p>
+            Il PDF non è PDF/A-3: la fattura è incorporata, ma il file diventa un Factur-X conforme solo convertito in
+            PDF/A-3.
+          </p>
+          <button
+            type="button"
+            class={[button, 'self-start bg-card text-foreground']}
+            disabled={editor.busy}
+            onclick={() => editor.openPdfa(3)}
+          >
+            Converti in PDF/A-3…
+          </button>
+        </div>
       {/if}
     </section>
   {:else}

@@ -13,6 +13,7 @@ import {
   type FacturxInfo,
   type FieldInfo,
   type PageRaster,
+  type PdfaReport,
   type Repair,
   type SignatureInfo,
   type Summary,
@@ -100,6 +101,13 @@ export class Editor {
   signaturesOpen = $state(false);
   /** The signature being made (the dialog is open); null: none. */
   signRequest = $state.raw<SignRequest | null>(null);
+  /** The PDF/A part the document declares (null: none): it is then saved by appending, like a signed one. */
+  pdfa = $state<number | null>(null);
+  /** The PDF/A dialog: the part asked for (0: 2, or 3 with attachments) while it is open, null when closed. */
+  pdfaDialog = $state<number | null>(null);
+  /** What the last conversion put right, or why it was refused (the engine's reasons). */
+  pdfaReport = $state.raw<PdfaReport | null>(null);
+  pdfaRefusal = $state.raw<string[] | null>(null);
   /** The size of the next free text (points). */
   fontSize = $state(12);
   /** The free text being written on the page (null: none). */
@@ -350,6 +358,79 @@ export class Editor {
     });
   }
 
+  // ── PDF/A ──────────────────────────────────────────────────────────────────────────────────
+
+  /** Opens the PDF/A dialog (part: 3 for an invoice's PDF/A-3; 0: as the document needs). */
+  openPdfa(part = 0): void {
+    this.pdfaReport = null;
+    this.pdfaRefusal = null;
+    this.pdfaDialog = part;
+  }
+
+  closePdfa(): void {
+    this.pdfaDialog = null;
+    this.pdfaReport = null;
+    this.pdfaRefusal = null;
+  }
+
+  /**
+   * Converts the document to PDF/A (one step of undo): what was put right goes to pdfaReport; a refusal
+   * (the document unchanged) to pdfaRefusal, its reasons one each.
+   */
+  convertToPdfa(): Promise<void> {
+    const part = this.pdfaDialog ?? 0;
+    return this.#serial(() =>
+      this.#run(async () => {
+        this.pdfaReport = null;
+        this.pdfaRefusal = null;
+        const before = await this.#snapshot();
+        try {
+          this.pdfaReport = await this.engine.convertPdfa(part, pdfDateNow());
+        } catch (error) {
+          if (error instanceof EngineError && error.status === Status.unsupported) {
+            const text = error.message.replace(/^.*?cannot be made PDF\/A: /, '');
+            this.pdfaRefusal = text.split('; ');
+            return;
+          }
+          throw error;
+        }
+        this.#remember(before);
+        this.#show(await this.engine.summary(), this.selection);
+        this.modified = true;
+        await this.#loadAttachments();
+        if (this.viewing !== null) {
+          await this.#loadAnnotations();
+          await this.#loadFields();
+        }
+      }),
+    );
+  }
+
+  /** Saves the document converted to PDF/A as a new file ("…-pdfa.pdf"): where the save dialog says, or downloaded. */
+  async savePdfa(): Promise<void> {
+    if (!this.name) return;
+    const name = this.name;
+    const pending = this.#queue;
+    await this.#run(async () => {
+      const saved = await savePdf(
+        async () => {
+          await pending;
+          return this.#bytes();
+        },
+        `${baseName(name).replace(/-pdfa$/, '')}-pdfa.pdf`,
+        null,
+      );
+      if (!saved) return;
+      if (saved.path !== null || saved.handle !== null) {
+        this.path = saved.path;
+        this.#handle = saved.handle;
+      }
+      this.name = saved.name;
+      this.modified = false;
+      this.closePdfa();
+    });
+  }
+
   /** Whether the document carries signatures: it is then saved by appending, never written anew. */
   get signed(): boolean {
     return this.signatures.length > 0;
@@ -361,7 +442,7 @@ export class Editor {
    * document that cannot be appended to (redacted) is written anew: its signatures no longer hold.
    */
   async #bytes(): Promise<ArrayBuffer> {
-    if (this.signed) {
+    if (this.signed || this.pdfa !== null) {
       try {
         return await this.engine.save(true, null);
       } catch {
@@ -373,7 +454,7 @@ export class Editor {
 
   /** The document before an edit, for undo: appended when it is signed (see #bytes), else in full. */
   async #snapshot(): Promise<ArrayBuffer> {
-    if (this.signed) {
+    if (this.signed || this.pdfa !== null) {
       try {
         return await this.engine.save(true, null);
       } catch {
@@ -553,6 +634,8 @@ export class Editor {
     this.signatures = [];
     this.signaturesOpen = false;
     this.signRequest = null;
+    this.pdfa = null;
+    this.closePdfa();
     this.#refs = [];
     this.#thumbnails.clear();
     this.closeView();
@@ -799,6 +882,7 @@ export class Editor {
       if (changed === null || changed.has(ref) || !live.has(ref)) this.#thumbnails.delete(key);
     }
     this.pages = summary.pages?.length ?? 0;
+    this.pdfa = summary.pdfa ?? null;
     this.selected.clear();
     for (const p of select) if (p < this.pages) this.selected.add(p);
     this.anchor = select[0] ?? null;

@@ -23,6 +23,7 @@
 #include "capriole/core/error.hpp"
 #include "capriole/core/version_config.hpp"
 #include "capriole/crypto/cms.hpp"
+#include "capriole/crypto/der.hpp"
 #include "capriole/crypto/pkcs12.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
@@ -186,6 +187,30 @@ char entry_letter(capriole::parser::XrefEntryType type) {
   return 'f';
 }
 
+// The PDF/A part the catalog's XMP declares (pdfaid:part, as an element or an attribute); 0 when none.
+int pdfa_part(capriole::Document& document) {
+  auto catalog = document.catalog();
+  const capriole::model::Object* entry = catalog ? (*catalog)->find("Metadata") : nullptr;
+  auto stream = entry != nullptr ? document.resolve(*entry) : capriole::Result<capriole::model::Object>(capriole::model::Object());
+  if (!stream || stream->as_stream() == nullptr) {
+    return 0;
+  }
+  auto data = document.decode_stream(*stream->as_stream());
+  if (!data || data->size() > std::size_t{4} * 1024 * 1024) {
+    return 0;
+  }
+  const std::string_view xmp = capriole::crypto::der::chars_of(*data);
+  for (const std::string_view marker : {"pdfaid:part>", "pdfaid:part=\"", "pdfaid:part='"}) {
+    if (const std::size_t at = xmp.find(marker); at != std::string_view::npos && at + marker.size() < xmp.size()) {
+      const char digit = xmp[at + marker.size()];
+      if (digit >= '1' && digit <= '4') {
+        return digit - '0';
+      }
+    }
+  }
+  return 0;
+}
+
 std::string summary_json(capriole::Document& document) {
   using capriole::capi::append_json_object;
   using capriole::capi::append_json_string;
@@ -232,6 +257,8 @@ std::string summary_json(capriole::Document& document) {
     append_json_string(out, pages.error().message);
   }
 
+  const int pdfa = pdfa_part(document);
+  out += pdfa != 0 ? std::format(R"(,"pdfa":{})", pdfa) : std::string(R"(,"pdfa":null)");
   out += R"(,"repairs":[)";
   first = true;
   for (const auto& note : document.repairs()) {

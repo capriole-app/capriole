@@ -421,6 +421,23 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         m._capriole_signing_free(signing);
       }
     }
+    case 'convertPdfa': {
+      const document = requireDocument();
+      const report = withString(m, JSON.stringify({ part: request.part, date: request.date }), (spec) =>
+        withScratch(m, 12, (out) => {
+          check(m, m._capriole_document_convert_pdfa(document, spec, out, out + 4, out + 8));
+          const data = m.HEAPU32[out >> 2]!;
+          const json = m.HEAPU32[(out >> 2) + 2]!;
+          m._capriole_free(data); // the file: the document is it now, saved from it when asked
+          try {
+            return JSON.parse(m.UTF8ToString(json));
+          } finally {
+            m._capriole_free(json);
+          }
+        }),
+      );
+      return { value: report, transfer: [] };
+    }
     case 'summary':
       return { value: summaryOf(m, requireDocument()), transfer: [] };
     case 'signatures':

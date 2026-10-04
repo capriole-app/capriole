@@ -46,7 +46,15 @@ export interface Summary {
   trailer: Extract<PdfValue, { t: 'dict' }>;
   pages: [number, number][] | null;
   pagesError?: string;
+  /** The PDF/A part the document declares (its XMP); null when none. */
+  pdfa: number | null;
   repairs: Repair[];
+}
+
+/** What a conversion to PDF/A put right (capriole_document_convert_pdfa). */
+export interface PdfaReport {
+  part: number;
+  changes: string[];
 }
 
 export interface ObjectInfo {
@@ -387,6 +395,7 @@ export type Request =
   | { kind: 'sign'; spec: SignSpec; p12: ArrayBuffer; password: string }
   | { kind: 'signatures' }
   | { kind: 'summary' }
+  | { kind: 'convertPdfa'; part: number; date: string }
   | { kind: 'attachments' }
   | { kind: 'attachmentData'; ref: [number, number] }
   | { kind: 'attachmentAdd'; spec: AttachmentSpec; data: ArrayBuffer }

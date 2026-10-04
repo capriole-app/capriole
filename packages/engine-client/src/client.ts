@@ -12,6 +12,7 @@ import type {
   CertificateInfo,
   SignatureInfo,
   SignSpec,
+  PdfaReport,
   ObjectInfo,
   PageContent,
   PagePreview,
@@ -203,6 +204,15 @@ export class EngineClient {
    */
   sign(spec: SignSpec, p12: ArrayBuffer, password: string): Promise<ArrayBuffer> {
     return this.#call({ kind: 'sign', spec, p12, password }, [p12]);
+  }
+
+  /**
+   * Converts the document to PDF/A (part 2 or 3; 0: 2, or 3 with attachments; date: a PDF date): what was
+   * put right. The document is then the converted file. A document that cannot be made PDF/A is refused
+   * (Status.unsupported), every reason in the message.
+   */
+  convertPdfa(part: number, date: string): Promise<PdfaReport> {
+    return this.#call({ kind: 'convertPdfa', part, date });
   }
 
   /** The open document's summary (its pages, after it was read anew). */
