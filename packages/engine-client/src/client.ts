@@ -9,6 +9,9 @@ import type {
   FacturxResult,
   FieldInfo,
   RedactionReport,
+  CertificateInfo,
+  SignatureInfo,
+  SignSpec,
   ObjectInfo,
   PageContent,
   PagePreview,
@@ -186,6 +189,30 @@ export class EngineClient {
    */
   applyRedactions(index: number): Promise<RedactionReport> {
     return this.#call({ kind: 'applyRedactions', index });
+  }
+
+  /** The certificate of a PKCS#12 file (.p12, .pfx); Status.passwordRequired for a wrong password. The bytes are transferred. */
+  pkcs12Info(p12: ArrayBuffer, password: string): Promise<CertificateInfo> {
+    return this.#call({ kind: 'pkcs12Info', p12, password }, [p12]);
+  }
+
+  /**
+   * Signs the document with the key of a PKCS#12 file (no time stamp): the signature is a new revision.
+   * Resolves to the signed file, which the document now is (what is edited next is appended after the
+   * signature: save it incrementally). The bytes of the key file are transferred.
+   */
+  sign(spec: SignSpec, p12: ArrayBuffer, password: string): Promise<ArrayBuffer> {
+    return this.#call({ kind: 'sign', spec, p12, password }, [p12]);
+  }
+
+  /** The open document's summary (its pages, after it was read anew). */
+  summary(): Promise<Summary> {
+    return this.#call({ kind: 'summary' });
+  }
+
+  /** The document's signatures, verified (the signers' identity is not checked: no trusted roots). */
+  signatures(): Promise<SignatureInfo[]> {
+    return this.#call({ kind: 'signatures' });
   }
 
   /** The fields of the document's form (none without one). */

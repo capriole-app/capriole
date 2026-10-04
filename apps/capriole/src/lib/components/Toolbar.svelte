@@ -11,6 +11,7 @@
   import ReceiptText from '@lucide/svelte/icons/receipt-text';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
+  import Signature from '@lucide/svelte/icons/signature';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import X from '@lucide/svelte/icons/x';
@@ -143,7 +144,10 @@
       class={[button, editor.attachmentsOpen && 'border-primary bg-accent']}
       aria-pressed={editor.attachmentsOpen}
       title={editor.facturx ? 'Fattura elettronica Factur-X e allegati' : 'Allegati del documento'}
-      onclick={() => (editor.attachmentsOpen = !editor.attachmentsOpen)}
+      onclick={() => {
+        editor.attachmentsOpen = !editor.attachmentsOpen;
+        if (editor.attachmentsOpen) editor.signaturesOpen = false;
+      }}
     >
       {#if editor.facturx}
         <ReceiptText class="size-4" />
@@ -155,6 +159,24 @@
       >
       {#if editor.attachments.length > 0}<span class="min-[1900px]:hidden" aria-hidden="true"
           >{editor.attachments.length}</span
+        >{/if}
+    </button>
+    <button
+      type="button"
+      class={[button, editor.signaturesOpen && 'border-primary bg-accent']}
+      aria-pressed={editor.signaturesOpen}
+      title="Firme del documento, e firma"
+      onclick={() => {
+        editor.signaturesOpen = !editor.signaturesOpen;
+        if (editor.signaturesOpen) editor.attachmentsOpen = false;
+      }}
+    >
+      <Signature class="size-4" />
+      <span class="sr-only min-[1900px]:not-sr-only"
+        >Firme{editor.signatures.length > 0 ? ` (${editor.signatures.length})` : ''}</span
+      >
+      {#if editor.signatures.length > 0}<span class="min-[1900px]:hidden" aria-hidden="true"
+          >{editor.signatures.length}</span
         >{/if}
     </button>
     <button
@@ -171,7 +193,11 @@
       class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
       disabled={editor.busy}
       onclick={() => editor.save()}
-      title={editor.path ? `Sovrascrive ${editor.path}` : undefined}
+      title={editor.signed
+        ? 'Salva aggiungendo le modifiche dopo le firme (le firme restano valide)'
+        : editor.path
+          ? `Sovrascrive ${editor.path}`
+          : undefined}
     >
       <FileDown class="size-4" /> Salva
     </button>

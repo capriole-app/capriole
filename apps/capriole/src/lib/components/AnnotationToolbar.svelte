@@ -12,6 +12,7 @@
   import Minus from '@lucide/svelte/icons/minus';
   import MousePointer2 from '@lucide/svelte/icons/mouse-pointer-2';
   import PenLine from '@lucide/svelte/icons/pen-line';
+  import Signature from '@lucide/svelte/icons/signature';
   import Square from '@lucide/svelte/icons/square';
   import StickyNote from '@lucide/svelte/icons/sticky-note';
   import Strikethrough from '@lucide/svelte/icons/strikethrough';
@@ -40,6 +41,7 @@
     { tool: 'line', label: 'Linea', icon: Minus },
     { tool: 'freetext', label: 'Testo', icon: Type },
     { tool: 'redact', label: 'Oscura (redaction)', icon: Eraser },
+    { tool: 'sign', label: 'Firma (disegna il riquadro)', icon: Signature },
   ];
   const tools = $derived(hasForm ? all : all.filter((t) => t.tool !== 'form'));
   // The size of the next free text, or of the free text selected.
@@ -132,7 +134,8 @@
           confirm(
             `Togliere dal file ciò che sta ${n === 1 ? 'nell’area segnata' : `nelle ${n} aree segnate`} di questa pagina?\n\n` +
               'Testo, immagini e disegni lì sotto vengono eliminati dal PDF, non coperti: salvato il file, non si recuperano. ' +
-              'Il file verrà salvato per intero, senza la versione precedente.',
+              'Il file verrà salvato per intero, senza la versione precedente.' +
+              (editor.signed ? ' Le firme del documento non saranno più valide.' : ''),
           )
         )
           editor.applyRedactions();

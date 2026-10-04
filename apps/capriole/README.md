@@ -35,6 +35,16 @@ text or colour or remove it, drag it to move it; the panel also lists the page's
 keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
 annotation gets its appearance from the engine, so other readers show it the same.
 
+**Digital signatures** (phase 8h): "Firme" (beside the pages) lists the document's signatures as the
+engine verifies them — valid or not, made before later changes or covering the whole file, signer,
+time (the time stamp's, else the one the signer claims), PAdES level — and signs: invisibly from there,
+or visibly with the page view's "Firma" tool (a box drawn on the page). The dialog takes a PKCS#12 key
+file (.p12, .pfx) and its password, reads and shows its certificate first, and a reason and place; "Firma
+e salva" signs (a new revision, PAdES B-B) and saves the signed file at once ("…-firmato.pdf"): cancelled,
+nothing is signed. A signed document is saved by appending (signatures stay valid; undo snapshots too),
+never written anew. The key never leaves the browser; no time stamp (a call to an authority) and no
+trusted roots yet: signers' identity shows as not verified.
+
 **Redaction** (phase 8g): the tool "Oscura (redaction)" marks what must go — dragging over text marks
 its words, a rectangle elsewhere an area; marks are outlined in red and stay readable until applied
 (they are /Redact annotations: listed, selected, removed like the others). "Applica la redaction (n)"

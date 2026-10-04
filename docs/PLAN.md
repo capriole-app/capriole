@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app) · 8i PDF/A · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app ✅) · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -1056,6 +1056,26 @@ saltati): `pdfsig` (NSS, CA di prova) valida, documento intero, certificato fida
 valida, fidata, al livello fatto; un byte cambiato la rende non valida per tutti e tre — **100/100**. Firme
 già nei corpora (143 file, 115 firme): il verdetto di Capriole è quello di Poppler per **143/143**.
 Rapporto: `CORPORA/reports/signatures-all-20261004-141842/`.
+
+**8h-2 (2026-10-04) — firme nell'app.** `apps/capriole`: pannello «Firme» (accanto alle pagine) con lo
+stato di ogni firma come lo verifica il motore — valida, non valida, non verificabile; documento intero o
+modificato dopo la firma; firmatario e chi ha emesso il certificato; ora (della marca, altrimenti quella
+dichiarata); motivo, luogo, livello PAdES; «Vai alla pagina» per una firma visibile. Firma: invisibile dal
+pannello, visibile con lo strumento «Firma» della vista pagina (un riquadro disegnato). Il dialogo prende il
+file `.p12`/`.pfx` e la password, legge e mostra il certificato prima di firmare (password errata, scaduto o
+non ancora valido: detto), motivo e luogo; «Firma e salva» apre subito la finestra di salvataggio
+(«…-firmato.pdf») e firma solo quando si risponde: annullata, nulla è firmato; le modifiche non salvate
+fanno parte della revisione firmata. Un documento firmato si salva solo accodando (anche le istantanee
+dell'«Annulla»), mai riscritto: le firme restano valide; la conferma della redaction avvisa che le
+invaliderebbe. La chiave resta nel browser (i suoi byte azzerati nella memoria del modulo dopo l'uso).
+Client del motore: `pkcs12Info`, `sign`, `signatures`, `summary`.
+Decisioni (con l'utente): niente marca temporale nel browser (una chiamata a una TSA esterna, spesso
+bloccata da CORS: col desktop o con una TSA configurata) e identità «non verificata» (la lista europea dei
+certificati qualificati arriverà con la verifica a lungo termine, dopo la 8i).
+Criterio: test e2e (firma invisibile dopo una password sbagliata; file salvato che comincia con i byte
+originali; firma visibile disegnata, file che comincia con quello firmato prima; una nota aggiunta e
+salvata che si accoda; riaperto: due firme valide, «modificato dopo la firma») verde; un file firmato
+dall'app verificato a parte con `pdfsig`: valido, documento intero, certificato fidato (CA di prova).
 
 ---
 

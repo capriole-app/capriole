@@ -14,14 +14,27 @@ import {
   type FieldInfo,
   type PageRaster,
   type Repair,
+  type SignatureInfo,
   type Summary,
 } from '@capriole/engine-client';
-import { baseName, pdfDateNow } from './files';
+import { baseName, dateTime, pdfDateNow } from './files';
 import { parseInvoice, type Invoice } from './invoice';
 import { fromBrowser, pickPdf, saveFile, savePdf, type PickedFile } from './platform';
 
 /** What a pointer does on the page shown large: fill the form, select (and move) annotations, or make one. */
-export type Tool = 'form' | 'select' | AnnotationSpec['kind'];
+export type Tool = 'form' | 'select' | 'sign' | AnnotationSpec['kind'];
+
+/** A signature to make: on page (from 0), visible in rect (the page as shown), or invisible (null). */
+export interface SignRequest {
+  page: number;
+  rect: [number, number, number, number] | null;
+}
+
+/** What the person writes in the signature dialog. */
+export interface SignDetails {
+  reason: string;
+  location: string;
+}
 
 export type Rgb = [number, number, number];
 
@@ -82,6 +95,11 @@ export class Editor {
   invoice = $state.raw<Invoice | null>(null);
   /** The attachments' panel, beside the pages. */
   attachmentsOpen = $state(false);
+  /** The document's signatures, verified; their panel beside the pages. */
+  signatures = $state.raw<SignatureInfo[]>([]);
+  signaturesOpen = $state(false);
+  /** The signature being made (the dialog is open); null: none. */
+  signRequest = $state.raw<SignRequest | null>(null);
   /** The size of the next free text (points). */
   fontSize = $state(12);
   /** The free text being written on the page (null: none). */
@@ -317,7 +335,7 @@ export class Editor {
       const saved = await savePdf(
         async () => {
           await pending;
-          return this.engine.saveCompact(pdfDateNow());
+          return this.#bytes();
         },
         name,
         target,
@@ -330,6 +348,105 @@ export class Editor {
       }
       this.modified = false;
     });
+  }
+
+  /** Whether the document carries signatures: it is then saved by appending, never written anew. */
+  get signed(): boolean {
+    return this.signatures.length > 0;
+  }
+
+  /**
+   * The document's bytes to save. Signed: appended to the file as it was (a full save would change the
+   * bytes the signatures cover; without changes, the file itself); else a full save, compact. A signed
+   * document that cannot be appended to (redacted) is written anew: its signatures no longer hold.
+   */
+  async #bytes(): Promise<ArrayBuffer> {
+    if (this.signed) {
+      try {
+        return await this.engine.save(true, null);
+      } catch {
+        // redacted: written anew below
+      }
+    }
+    return this.engine.saveCompact(pdfDateNow());
+  }
+
+  /** The document before an edit, for undo: appended when it is signed (see #bytes), else in full. */
+  async #snapshot(): Promise<ArrayBuffer> {
+    if (this.signed) {
+      try {
+        return await this.engine.save(true, null);
+      } catch {
+        // redacted
+      }
+    }
+    return this.engine.save(false, null);
+  }
+
+  // ── Signatures ─────────────────────────────────────────────────────────────────────────────
+
+  /** Opens the signature dialog: visible in rect on page, or invisible (rect null). */
+  requestSignature(page: number, rect: SignRequest['rect']): void {
+    this.signRequest = { page, rect };
+  }
+
+  /**
+   * Signs the document with the key of a PKCS#12 file and saves the signed file — where the save
+   * dialog says (named "…-firmato.pdf"), or downloaded: the dialog comes first (the browser shows it only
+   * right after the click), the signature when it is answered; cancelled, nothing is signed. The changes
+   * not saved yet are part of the signed revision. One step of undo.
+   */
+  async sign(p12: ArrayBuffer, password: string, details: SignDetails): Promise<boolean> {
+    const request = this.signRequest;
+    if (!request || !this.name) return false;
+    const pending = this.#queue;
+    const lines = ['Firmato digitalmente da {signer}', `Data: ${dateTime(new Date())}`];
+    if (details.reason) lines.push(`Motivo: ${details.reason}`);
+    if (details.location) lines.push(`Luogo: ${details.location}`);
+    let signedAt: Summary | null = null;
+    let done = false;
+    await this.#run(async () => {
+      const saved = await savePdf(
+        async () => {
+          await pending;
+          const before = await this.#snapshot();
+          const data = await this.engine.sign(
+            {
+              date: pdfDateNow(),
+              page: request.page,
+              rect: request.rect,
+              lines,
+              reason: details.reason || undefined,
+              location: details.location || undefined,
+            },
+            p12,
+            password,
+          );
+          this.#remember(before);
+          signedAt = await this.engine.summary();
+          return data;
+        },
+        `${baseName(this.name!)}-firmato.pdf`,
+        null,
+      );
+      if (!saved) return; // cancelled: nothing signed
+      if (saved.path !== null || saved.handle !== null) {
+        this.path = saved.path;
+        this.#handle = saved.handle;
+      }
+      this.name = saved.name;
+      this.modified = false;
+      this.signRequest = null;
+      done = true;
+      // The signed file was read anew: its objects may be others.
+      if (signedAt) this.#show(signedAt, this.selection);
+      await this.#loadAttachments();
+      if (this.viewing !== null) {
+        await this.#loadAnnotations();
+        await this.#loadFields();
+      }
+    });
+    return done;
   }
 
   /** Back to the document as it was before the last edit. */
@@ -400,6 +517,7 @@ export class Editor {
   }
 
   async #loadAttachments(): Promise<void> {
+    this.signatures = await this.engine.signatures();
     this.attachments = await this.engine.attachments();
     this.facturx = await this.engine.facturx();
     this.invoice = null;
@@ -413,7 +531,7 @@ export class Editor {
   #editDocument(change: () => Promise<void>): Promise<void> {
     return this.#serial(() =>
       this.#run(async () => {
-        const before = await this.engine.save(false, null);
+        const before = await this.#snapshot();
         await change();
         this.#remember(before);
         this.modified = true;
@@ -432,6 +550,9 @@ export class Editor {
     this.facturx = null;
     this.invoice = null;
     this.attachmentsOpen = false;
+    this.signatures = [];
+    this.signaturesOpen = false;
+    this.signRequest = null;
     this.#refs = [];
     this.#thumbnails.clear();
     this.closeView();
@@ -523,7 +644,7 @@ export class Editor {
     if (!a || a.subtype !== 'FreeText' || page === null || this.typing) return;
     await this.#serial(() =>
       this.#run(async () => {
-        const before = await this.engine.save(false, null);
+        const before = await this.#snapshot();
         await this.engine.annotationUpdate(page, ref, { contents: '' });
         this.#retyping = { before, text: a.contents, rect: a.rect };
         this.selectedAnnotation = ref;
@@ -642,7 +763,7 @@ export class Editor {
     const page = this.viewing;
     if (page === null) return;
     await this.#run(async () => {
-      const before = await this.engine.save(false, null);
+      const before = await this.#snapshot();
       await change();
       this.#remember(before);
       for (const p of new Set([page, ...pages])) this.#forget(this.#refs[p]);
@@ -691,7 +812,7 @@ export class Editor {
     changed: Set<string | undefined> = new Set(),
   ): Promise<void> {
     await this.#run(async () => {
-      const before = await this.engine.save(false, null);
+      const before = await this.#snapshot();
       const summary = await change();
       this.#remember(before);
       this.#show(summary, typeof select === 'function' ? select(summary) : select, changed);

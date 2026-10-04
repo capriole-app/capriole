@@ -31,6 +31,31 @@ export function readableDate(pdf: string): string {
   return h ? `${d}/${mo}/${y} ${h}:${mi ?? '00'}` : `${d}/${mo}/${y}`;
 }
 
+/**
+ * A PDF date as a moment, in the reader's time zone ("04/10/2026 15:00"): its offset applied (Z, +hh'mm',
+ * -hh'mm'; none: taken as written). Empty when it is not one.
+ */
+export function localDateTime(pdf: string): string {
+  const m = /^D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?([Z+-])?(\d{2})?'?(\d{2})?/.exec(pdf);
+  if (!m) return '';
+  const [, y, mo = '01', d = '01', h = '00', mi = '00', se = '00', sign, oh = '00', om = '00'] = m;
+  if (!sign) return readableDate(pdf);
+  const offset = sign === 'Z' ? 0 : (sign === '-' ? -1 : 1) * (Number(oh) * 60 + Number(om));
+  const utc = Date.UTC(+y!, +mo - 1, +d, +h, +mi, +se) - offset * 60_000;
+  return dateTime(new Date(utc));
+}
+
+/** A moment in the reader's time zone, as the app shows it: "04/10/2026, 15:00". */
+export function dateTime(date: Date): string {
+  return new Intl.DateTimeFormat('it-IT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
 /** The name without its .pdf extension. */
 export function baseName(name: string): string {
   return name.replace(/\.pdf$/i, '');

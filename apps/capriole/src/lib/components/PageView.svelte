@@ -173,6 +173,8 @@
       if (tool === 'line') {
         if (Math.hypot(x1 - x0, y1 - y0) > 3)
           editor.annotate({ kind: 'line', from: done.start, to: done.current, color, width: 2 });
+      } else if (tool === 'sign') {
+        if (x1 - x0 > 10 && y1 - y0 > 10) editor.requestSignature(index, [x0, y0, x1, y1]);
       } else if (tool === 'redact') {
         if (x1 - x0 > 3 && y1 - y0 > 3)
           editor.annotate({ kind: 'redact', rect: [x0, y0, x1, y1], color: kMark, fill: [0, 0, 0] });
@@ -196,7 +198,11 @@
   /** The colour of redaction marks: their outline until applied. */
   const kMark: [number, number, number] = [0.85, 0, 0];
   /** The colour of what is being drawn. */
-  const previewColor = $derived(editor.tool === 'redact' ? kMark : editor.color);
+  /** The colour of a signature's box being drawn. */
+  const kSignatureBox: [number, number, number] = [0.18, 0.36, 0.92];
+  const previewColor = $derived(
+    editor.tool === 'redact' ? kMark : editor.tool === 'sign' ? kSignatureBox : editor.color,
+  );
 
   const names: Record<string, string> = {
     Redact: 'Da oscurare',
@@ -251,7 +257,7 @@
       case 'radio':
         return f.value[0] && f.value[0] !== 'Off' ? display(f.value[0]) : '';
       case 'signature':
-        return 'firma (non compilabile qui)';
+        return 'campo firma';
       case 'pushbutton':
         return 'pulsante';
       default:
@@ -448,13 +454,15 @@
       </section>
     {:else}
       <p class="text-muted-foreground">
-        {editor.tool === 'redact'
-          ? 'Segna ciò che va tolto: trascina sul testo, o un rettangolo altrove. Le aree segnate restano leggibili finché non applichi la redaction.'
-          : editor.tool === 'form'
-            ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
-            : editor.tool === 'select'
-              ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
-              : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
+        {editor.tool === 'sign'
+          ? 'Disegna il riquadro in cui comparirà la firma; poi scegli il certificato. Per una firma invisibile: Pagine › Firme.'
+          : editor.tool === 'redact'
+            ? 'Segna ciò che va tolto: trascina sul testo, o un rettangolo altrove. Le aree segnate restano leggibili finché non applichi la redaction.'
+            : editor.tool === 'form'
+              ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
+              : editor.tool === 'select'
+                ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
+                : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
       </p>
     {/if}
     {#if pageFields.length > 0}

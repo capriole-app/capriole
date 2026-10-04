@@ -18,6 +18,8 @@
   --warning-background: #fff4e0;
   --danger: #b42318;
   --danger-background: #fdecea;
+  --success: #12733d;
+  --success-background: #e6f6ec;
 }
 
 .dark {
@@ -34,6 +36,8 @@
   --warning-background: #3a2a0c;
   --danger: #ff8a80;
   --danger-background: #3d1512;
+  --success: #6fdc9b;
+  --success-background: #0d3320;
 }
 
 @theme inline {
@@ -50,6 +54,8 @@
   --color-warning-background: var(--warning-background);
   --color-danger: var(--danger);
   --color-danger-background: var(--danger-background);
+  --color-success: var(--success);
+  --color-success-background: var(--success-background);
 }
 
 @layer base {

@@ -33,6 +33,19 @@ function withScratch<T>(m: CaprioleModule, size: number, fn: (pointer: number) =
   }
 }
 
+/** Runs fn with a key file's bytes in the module's memory, wiped before it is freed. */
+function withSecret<T>(m: CaprioleModule, bytes: Uint8Array, fn: (pointer: number, size: number) => T): T {
+  return withScratch(m, Math.max(bytes.length, 1), (pointer) => {
+    m.HEAPU8.set(bytes, pointer);
+    bytes.fill(0);
+    try {
+      return fn(pointer, bytes.length);
+    } finally {
+      m.HEAPU8.fill(0, pointer, pointer + bytes.length);
+    }
+  });
+}
+
 function withString<T>(m: CaprioleModule, text: string, fn: (pointer: number) => T): T {
   const size = m.lengthBytesUTF8(text) + 1;
   return withScratch(m, size, (pointer) => {
@@ -375,6 +388,44 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
     case 'applyRedactions':
       return {
         value: takeJson(m, (out) => m._capriole_document_page_apply_redactions(requireDocument(), request.index, out)),
+        transfer: [],
+      };
+    case 'pkcs12Info':
+      return {
+        value: withSecret(m, new Uint8Array(request.p12), (p12, size) =>
+          withString(m, request.password, (password) =>
+            takeJson(m, (out) => m._capriole_pkcs12_info(p12, size, password, out)),
+          ),
+        ),
+        transfer: [],
+      };
+    case 'sign': {
+      const document = requireDocument();
+      const signing = withSecret(m, new Uint8Array(request.p12), (p12, size) =>
+        withString(m, JSON.stringify(request.spec), (spec) =>
+          withString(m, request.password, (password) =>
+            withScratch(m, 4, (out) => {
+              check(m, m._capriole_document_sign_begin(document, spec, p12, size, password, out));
+              return m.HEAPU32[out >> 2]!;
+            }),
+          ),
+        ),
+      );
+      try {
+        // The C API reopens the document from the signed file: the handle stays.
+        const data = takeBytes(m, (outData, outSize) =>
+          m._capriole_document_sign_finish(document, signing, 0, 0, outData, outSize),
+        );
+        return { value: data, transfer: [data] };
+      } finally {
+        m._capriole_signing_free(signing);
+      }
+    }
+    case 'summary':
+      return { value: summaryOf(m, requireDocument()), transfer: [] };
+    case 'signatures':
+      return {
+        value: takeJson(m, (out) => m._capriole_document_signatures_json(requireDocument(), 0, 0, out)),
         transfer: [],
       };
     case 'formFields':

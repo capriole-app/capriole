@@ -159,6 +159,67 @@ export type AnnotationKind =
   /** A redaction mark: rect, or quads of text; fill: what the area becomes once applied. */
   | 'redact';
 
+/** A certificate, as the engine reads it (dates are PDF dates, UTC). */
+export interface CertificateInfo {
+  name: string;
+  subject: string;
+  issuer: string;
+  serial: string;
+  notBefore: string;
+  notAfter: string;
+  key: string;
+  ca: boolean;
+  /** pkcs12Info: how many other certificates the file has. */
+  chain?: number;
+}
+
+/** A signature of the document, verified (capi/README.md). */
+export interface SignatureInfo {
+  field: [number, number];
+  fieldName: string;
+  subFilter: string;
+  documentTimestamp: boolean;
+  name: string;
+  reason: string;
+  location: string;
+  contactInfo: string;
+  /** /M, as written. */
+  date: string;
+  integrity: 'valid' | 'invalid' | 'unsupported';
+  problem: string;
+  digest: string | null;
+  /** False: revisions were added after it (later changes, or other signatures). */
+  coversWholeFile: boolean;
+  signedBytes: number;
+  signer: CertificateInfo | null;
+  level: string;
+  timestamp: string;
+  timestampInvalid: boolean;
+  /** The time stamp's time when there is one, else /M (what the signer claims). */
+  signingTime: string;
+  certificateValidAtSigning: boolean;
+  trust: 'trusted' | 'untrusted' | 'notChecked';
+  trustProblem: string;
+  page: number | null;
+  rect: [number, number, number, number] | null;
+}
+
+/** What a signature is made with (capriole_document_sign_begin). */
+export interface SignSpec {
+  /** /M, a PDF date. */
+  date: string;
+  page?: number;
+  /** As shown; null: an invisible signature. */
+  rect?: [number, number, number, number] | null;
+  /** A visible signature's text, one line each ("{signer}": the certificate's name). */
+  lines?: string[];
+  fieldName?: string;
+  name?: string;
+  reason?: string;
+  location?: string;
+  contactInfo?: string;
+}
+
 /** What a redaction took out of a page. */
 export interface RedactionReport {
   glyphs: number;
@@ -322,6 +383,10 @@ export type Request =
   | { kind: 'annotationRemove'; index: number; ref: [number, number] }
   | { kind: 'formFields' }
   | { kind: 'applyRedactions'; index: number }
+  | { kind: 'pkcs12Info'; p12: ArrayBuffer; password: string }
+  | { kind: 'sign'; spec: SignSpec; p12: ArrayBuffer; password: string }
+  | { kind: 'signatures' }
+  | { kind: 'summary' }
   | { kind: 'attachments' }
   | { kind: 'attachmentData'; ref: [number, number] }
   | { kind: 'attachmentAdd'; spec: AttachmentSpec; data: ArrayBuffer }
