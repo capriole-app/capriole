@@ -584,6 +584,21 @@ export class Editor {
     );
   }
 
+  /** The redaction marks of the page shown. */
+  get redactionMarks(): AnnotationInfo[] {
+    return this.annotations.filter((a) => a.subtype === 'Redact');
+  }
+
+  /** Applies the page's redaction marks: what lies in them leaves the file (one step of undo, until saved). */
+  applyRedactions(): Promise<void> {
+    const page = this.viewing;
+    if (page === null) return Promise.resolve();
+    return this.#editPage(async () => {
+      await this.engine.applyRedactions(page);
+      this.selectedAnnotation = null;
+    });
+  }
+
   /** Fills a form field (a string, several for a list box, null to clear it). */
   fillField(field: FieldInfo, value: string | string[] | null): Promise<void> {
     const pages = new Set(field.widgets.map((w) => w.page).filter((p): p is number => p !== null));

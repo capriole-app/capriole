@@ -90,7 +90,6 @@
   ];
 
   function down(event: PointerEvent, page: PageText) {
-    console.log('down', event.button, editor.busy, editor.tool);
     // While a text is written, a click elsewhere only ends it (the box's blur).
     if (event.button !== 0 || editor.tool === 'form' || editor.typing) return;
     // Text can be started while the last edit is written (the box does not touch the engine, and its
@@ -114,6 +113,10 @@
     } else if (tool === 'highlight' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly') {
       const word = wordAt(page, p);
       if (word !== null) drag = { kind: 'markup', from: word, to: word };
+    } else if (tool === 'redact') {
+      // On text: the words dragged over; elsewhere: a rectangle.
+      const word = wordAt(page, p);
+      drag = word !== null ? { kind: 'markup', from: word, to: word } : { kind: 'shape', start: p, current: p };
     } else if (tool === 'ink') {
       drag = { kind: 'ink', points: [p] };
     } else if (tool === 'note') {
@@ -149,7 +152,6 @@
 
   function up(page: PageText) {
     const done = drag;
-    console.log('up', JSON.stringify(done), editor.tool, editor.busy);
     drag = null;
     if (!done) return;
     const color = editor.color;
@@ -158,6 +160,9 @@
       const dx = done.current[0] - done.start[0];
       const dy = done.current[1] - done.start[1];
       if (Math.hypot(dx, dy) > 0.5) editor.changeAnnotation(done.ref, { moveBy: [dx, dy] });
+    } else if (done.kind === 'markup' && tool === 'redact') {
+      const quads = quadsOf(page, done.from, done.to);
+      if (quads.length > 0) editor.annotate({ kind: 'redact', quads, color: kMark, fill: [0, 0, 0] });
     } else if (done.kind === 'markup' && tool !== 'select' && tool !== 'note') {
       const quads = quadsOf(page, done.from, done.to);
       if (quads.length > 0) editor.annotate({ kind: tool as 'highlight', quads, color });
@@ -168,6 +173,9 @@
       if (tool === 'line') {
         if (Math.hypot(x1 - x0, y1 - y0) > 3)
           editor.annotate({ kind: 'line', from: done.start, to: done.current, color, width: 2 });
+      } else if (tool === 'redact') {
+        if (x1 - x0 > 3 && y1 - y0 > 3)
+          editor.annotate({ kind: 'redact', rect: [x0, y0, x1, y1], color: kMark, fill: [0, 0, 0] });
       } else if (tool === 'freetext') {
         const line = lineBox(editor.fontSize);
         if (x1 - x0 > 6) {
@@ -185,7 +193,13 @@
     }
   }
 
+  /** The colour of redaction marks: their outline until applied. */
+  const kMark: [number, number, number] = [0.85, 0, 0];
+  /** The colour of what is being drawn. */
+  const previewColor = $derived(editor.tool === 'redact' ? kMark : editor.color);
+
   const names: Record<string, string> = {
+    Redact: 'Da oscurare',
     Highlight: 'Evidenziazione',
     Underline: 'Sottolineatura',
     StrikeOut: 'Barrato',
@@ -256,7 +270,7 @@
   const cursor = $derived(
     editor.tool === 'select'
       ? 'default'
-      : ['highlight', 'underline', 'strikeout', 'squiggly'].includes(editor.tool)
+      : ['highlight', 'underline', 'strikeout', 'squiggly', 'redact'].includes(editor.tool)
         ? 'text'
         : 'crosshair',
   );
@@ -324,7 +338,7 @@
                 y={q[1]}
                 width={q[2] - q[0]}
                 height={q[3] - q[1]}
-                fill={css(editor.color)}
+                fill={css(previewColor)}
                 opacity="0.35"
               />
             {/each}
@@ -332,7 +346,7 @@
             <polyline
               points={drag.points.map((p) => p.join(',')).join(' ')}
               fill="none"
-              stroke={css(editor.color)}
+              stroke={css(previewColor)}
               stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -345,7 +359,7 @@
                 y1={drag.start[1]}
                 x2={drag.current[0]}
                 y2={drag.current[1]}
-                stroke={css(editor.color)}
+                stroke={css(previewColor)}
                 stroke-width="2"
               />
             {:else if editor.tool === 'circle'}
@@ -355,7 +369,7 @@
                 rx={(r[2] - r[0]) / 2}
                 ry={(r[3] - r[1]) / 2}
                 fill="none"
-                stroke={css(editor.color)}
+                stroke={css(previewColor)}
                 stroke-width="2"
               />
             {:else}
@@ -365,7 +379,7 @@
                 width={r[2] - r[0]}
                 height={r[3] - r[1]}
                 fill="none"
-                stroke={css(editor.color)}
+                stroke={css(previewColor)}
                 stroke-width="2"
               />
             {/if}
@@ -434,11 +448,13 @@
       </section>
     {:else}
       <p class="text-muted-foreground">
-        {editor.tool === 'form'
-          ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
-          : editor.tool === 'select'
-            ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
-            : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
+        {editor.tool === 'redact'
+          ? 'Segna ciò che va tolto: trascina sul testo, o un rettangolo altrove. Le aree segnate restano leggibili finché non applichi la redaction.'
+          : editor.tool === 'form'
+            ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
+            : editor.tool === 'select'
+              ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
+              : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
       </p>
     {/if}
     {#if pageFields.length > 0}

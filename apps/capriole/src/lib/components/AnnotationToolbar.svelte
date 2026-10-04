@@ -4,6 +4,7 @@
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Circle from '@lucide/svelte/icons/circle';
+  import Eraser from '@lucide/svelte/icons/eraser';
   import FileDown from '@lucide/svelte/icons/file-down';
   import FormInput from '@lucide/svelte/icons/form-input';
   import Highlighter from '@lucide/svelte/icons/highlighter';
@@ -38,6 +39,7 @@
     { tool: 'circle', label: 'Ellisse', icon: Circle },
     { tool: 'line', label: 'Linea', icon: Minus },
     { tool: 'freetext', label: 'Testo', icon: Type },
+    { tool: 'redact', label: 'Oscura (redaction)', icon: Eraser },
   ];
   const tools = $derived(hasForm ? all : all.filter((t) => t.tool !== 'form'));
   // The size of the next free text, or of the free text selected.
@@ -118,6 +120,27 @@
       {/each}
     </select>
   </label>
+
+  {#if editor.redactionMarks.length > 0}
+    <button
+      type="button"
+      class="flex items-center gap-1.5 rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+      disabled={editor.busy}
+      onclick={() => {
+        const n = editor.redactionMarks.length;
+        if (
+          confirm(
+            `Togliere dal file ciò che sta ${n === 1 ? 'nell’area segnata' : `nelle ${n} aree segnate`} di questa pagina?\n\n` +
+              'Testo, immagini e disegni lì sotto vengono eliminati dal PDF, non coperti: salvato il file, non si recuperano. ' +
+              'Il file verrà salvato per intero, senza la versione precedente.',
+          )
+        )
+          editor.applyRedactions();
+      }}
+    >
+      <Eraser class="size-4" /> Applica la redaction ({editor.redactionMarks.length})
+    </button>
+  {/if}
 
   <div class="ms-auto flex items-center gap-2">
     <button

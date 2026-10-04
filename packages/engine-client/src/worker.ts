@@ -372,6 +372,11 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
       });
       return { value: result, transfer: [] };
     }
+    case 'applyRedactions':
+      return {
+        value: takeJson(m, (out) => m._capriole_document_page_apply_redactions(requireDocument(), request.index, out)),
+        transfer: [],
+      };
     case 'formFields':
       return {
         value: takeJson(m, (out) => m._capriole_document_form_fields_json(requireDocument(), out)),

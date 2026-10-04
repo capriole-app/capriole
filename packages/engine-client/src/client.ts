@@ -8,6 +8,7 @@ import type {
   FacturxInfo,
   FacturxResult,
   FieldInfo,
+  RedactionReport,
   ObjectInfo,
   PageContent,
   PagePreview,
@@ -177,6 +178,14 @@ export class EngineClient {
   /** Embeds an invoice's XML as the document's Factur-X invoice (date: a PDF date). The bytes are transferred. */
   facturxEmbed(xml: ArrayBuffer, date: string): Promise<FacturxResult> {
     return this.#call({ kind: 'facturxEmbed', xml, date }, [xml]);
+  }
+
+  /**
+   * Applies the redaction marks of page index: what lies in them is taken out of the file. The document
+   * is then saved fully only (saveCompact, save with incremental false).
+   */
+  applyRedactions(index: number): Promise<RedactionReport> {
+    return this.#call({ kind: 'applyRedactions', index });
   }
 
   /** The fields of the document's form (none without one). */

@@ -146,7 +146,27 @@ export interface AnnotationInfo {
 }
 
 export type AnnotationKind =
-  'highlight' | 'underline' | 'strikeout' | 'squiggly' | 'note' | 'ink' | 'square' | 'circle' | 'line' | 'freetext';
+  | 'highlight'
+  | 'underline'
+  | 'strikeout'
+  | 'squiggly'
+  | 'note'
+  | 'ink'
+  | 'square'
+  | 'circle'
+  | 'line'
+  | 'freetext'
+  /** A redaction mark: rect, or quads of text; fill: what the area becomes once applied. */
+  | 'redact';
+
+/** What a redaction took out of a page. */
+export interface RedactionReport {
+  glyphs: number;
+  paths: number;
+  imagesRemoved: number;
+  imagesCleared: number;
+  annotations: number;
+}
 
 /** What capriole_document_annotation_add takes (capi/README.md). */
 export interface AnnotationSpec {
@@ -301,6 +321,7 @@ export type Request =
   | { kind: 'annotationUpdate'; index: number; ref: [number, number]; change: AnnotationChange }
   | { kind: 'annotationRemove'; index: number; ref: [number, number] }
   | { kind: 'formFields' }
+  | { kind: 'applyRedactions'; index: number }
   | { kind: 'attachments' }
   | { kind: 'attachmentData'; ref: [number, number] }
   | { kind: 'attachmentAdd'; spec: AttachmentSpec; data: ArrayBuffer }

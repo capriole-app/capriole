@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app) · 8h firma PAdES · 8i PDF/A · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -991,6 +991,17 @@ dell'immagine dipinta come la estrae Poppler; il disegno fuori dalle aree uguale
 `qpdf --check` mai peggiore — **100/100**. Dove un motore di riferimento leggeva già le aree diversamente
 (file malformati di `x008`, una pagina di `safedocs`), le sue righe che toccano le aree non si confrontano:
 note nel rapporto `CORPORA/reports/redaction-all-20261004-115135/`.
+
+**8g-2 (2026-10-04) — redaction nell'app.** `apps/capriole`: lo strumento «Oscura (redaction)» della vista
+pagina segna ciò che va tolto — trascinando sul testo le sue parole, altrove un rettangolo —: marcature
+`/Redact` contornate di rosso, leggibili finché non si applicano (si elencano, selezionano, eliminano come
+le altre annotazioni). «Applica la redaction (n)» chiede conferma (spiega che è irreversibile una volta
+salvato, e che il salvataggio sarà completo, senza la versione precedente), poi toglie dal file ciò che sta
+nelle marcature della pagina e riempie le aree di nero; fino al salvataggio è un passo di «Annulla». Client
+del motore: `applyRedactions`, il tipo `redact`. Tolti due `console.log` di debug rimasti in
+`PageView.svelte` dalla fase 8d-2 (un ripristino interrotto).
+Criterio: test e2e (segna testo e un'area, applica dopo la conferma, annulla e riapplica, salva — nel file
+salvato, flussi decompressi, la parola tolta non c'è, le altre sì, nessuna marcatura) verde.
 
 ---
 

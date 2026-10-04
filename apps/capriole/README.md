@@ -35,6 +35,13 @@ text or colour or remove it, drag it to move it; the panel also lists the page's
 keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
 annotation gets its appearance from the engine, so other readers show it the same.
 
+**Redaction** (phase 8g): the tool "Oscura (redaction)" marks what must go — dragging over text marks
+its words, a rectangle elsewhere an area; marks are outlined in red and stay readable until applied
+(they are /Redact annotations: listed, selected, removed like the others). "Applica la redaction (n)"
+asks for confirmation, then takes what lies in the page's marks out of the file — text, images, drawings,
+annotations — and fills the areas black; it is one step of undo until the file is saved, which is a full
+save without the previous version.
+
 **Forms** (phase 8e): a page with form fields opens in the page view ready to fill them ("Compila il
 modulo"): over each widget the control that fills it — text (one or several lines, password, maximum
 length), check box, radio button, menu (with suggestions when the field takes any text), list (several
