@@ -28,6 +28,7 @@ add_library(capriole_engine STATIC
   src/edit/common.cpp
   src/edit/forms.cpp
   src/edit/pages.cpp
+  src/edit/redact.cpp
   src/render/raster.cpp
   src/text/extract.cpp
   src/filters/basic.cpp

@@ -393,11 +393,30 @@ template <typename T>
   }
 }
 
+// Where a command comes from, for edits that rewrite content (edit/redact.hpp). An invocation is a run of
+// a content stream: the page's (invocation 0), a form XObject's drawn by a Do — its parent invocation
+// and the Do's ordinal there tell which —, or another (a Type 3 glyph, a soft mask, an annotation's
+// appearance), whose content an edit of the page does not rewrite.
+struct Invocation {
+  enum class Kind : std::uint8_t { kPage, kForm, kOther };
+  Kind kind = Kind::kPage;
+  std::uint32_t parent = 0;
+  std::optional<model::ObjectRef> form;  // kForm: the form XObject
+  std::uint32_t operation = 0;           // kForm: the Do's ordinal among the parent's operators
+};
+
+struct Origin {
+  std::uint32_t invocation = 0;
+  std::uint32_t operation = 0;  // the operator's ordinal among its content stream's operators
+};
+
 struct DisplayList {
   Rect media_box;  // the page boxes (§14.11.2), in default user space
   Rect crop_box;
   std::int32_t rotate = 0;  // /Rotate, normalized to 0, 90, 180, 270
   std::vector<Command> commands;
+  std::vector<Origin> origins;  // one per command
+  std::vector<Invocation> invocations{Invocation{}};
   std::vector<Color> colors;        // referred to by ColorIndex
   std::vector<StrokeStyle> styles;  // referred to by StyleIndex
   // What the interpreter could not do or had to guess: shown to a person, not a failure.

@@ -78,6 +78,8 @@ export interface CaprioleModule {
   _capriole_document_attachment_remove(document: number, num: number, generation: number): number;
   _capriole_document_facturx_json(document: number, out: number): number;
   _capriole_document_facturx_embed(document: number, xml: number, size: number, date: number, out: number): number;
+  _capriole_document_page_redact(document: number, pageIndex: number, spec: number, out: number): number;
+  _capriole_document_page_apply_redactions(document: number, pageIndex: number, out: number): number;
   _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,

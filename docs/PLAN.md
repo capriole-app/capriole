@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app) · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -947,6 +947,50 @@ Client del motore: `attachments`, `attachmentData`, `attachmentAdd|Remove`, `fac
 Criterio: test e2e (allega, scarica identico, crea Factur-X — riepilogo e avviso —, rimuove e annulla,
 salva — i byte salvati riletti: `/AFRelationship`, `factur-x.xml`, `text/xml`, l'XMP fx —, riapre e
 ritrova la fattura) verde.
+
+**8g-1 (2026-10-04) — redaction nel motore: uscita raggiunta.** `edit/redact.hpp`: `redact` toglie dal file
+ciò che sta in aree di una pagina (coordinate della pagina come la si vede), non lo copre.
+- **Testo:** i glifi nell'area (il centro, o un quinto del riquadro: quelli della riga accanto che la
+  sfiorano restano) escono dalle stringhe di `Tj`/`TJ`/`'`/`"`, il resto della riga resta dov'era (uno
+  spostamento `TJ` al posto di ogni glifo), anche il testo invisibile; il contenuto marcato che perde glifi
+  perde `/ActualText`, `/Alt`, `/E`, e così l'elemento di struttura del suo `/MCID` con i suoi antenati
+  (`/StructParents` → `/ParentTree`).
+- **Immagini:** dentro un'area se ne vanno; attraversate, si riscrivono senza perdita (Flate) con l'area
+  dipinta — nel loro spazio colore quando hanno campioni a 8 bit grigi, RGB, CMYK o ICC senza `/Decode` o
+  `/Mask` (la `/SMask` riscritta allo stesso modo, opaca nell'area), altrimenti in RGB.
+- **Tracciati:** quasi tutti nell'area (90%), o per metà se non più grandi di essa (un glifo disegnato, un
+  segno), non si dipingono più (`n`); quelli più grandi che l'area attraversa (sfondi, righe, velature) si
+  dipingono ritagliati fuori dalle aree.
+- **Form XObject** che cambiano: copiati (le altre pagine tengono i loro); ciò che la pagina non disegna
+  più esce dalle sue risorse (altrimenti il salvataggio compatto lo terrebbe).
+- **Annotazioni** che toccano un'area: tolte (i widget anche dal modulo). Riempimento facoltativo.
+- **Marcature `/Redact`**: nuovo tipo di annotazione (`kRedact`: rettangolo o riquadri di testo, `/IC`),
+  `apply_redactions` le applica e le toglie.
+- **Salvataggio:** un documento oscurato si salva solo per intero e senza gli oggetti non più raggiunti
+  (`Document::redacted()`: l'incrementale è rifiutato, terrebbe i byte originali).
+
+Per farlo la display list sa ora da dove viene ogni comando (`Origin`: invocazione — la pagina, o un form
+richiamato da un `Do` — e indice dell'operatore). API C `capriole_document_page_redact` e
+`capriole_document_page_apply_redactions` (anche WASM), `cpdf redact [apply]`, fuzz target `fuzz_redact`
+(15 minuti, pulito: lento sui file reali), test.
+
+Corretti strada facendo, emersi dalla verifica:
+- i glifi della riga accanto sfiorati dall'area se ne andavano;
+- un'immagine o un form sostituiti restavano nelle risorse della pagina, quindi nel file;
+- `/ActualText` degli elementi di struttura teneva il testo tolto;
+- le immagini CMYK riscritte in RGB cambiavano colore anche fuori dall'area;
+- una velatura grande per metà nell'area spariva tutta.
+
+Limiti dichiarati: il contenuto delle maschere di trasparenza (gruppi di luminosità) non si riscrive; la
+geometria dei tracciati grandi ritagliati resta nel file.
+
+Criterio: `corpus-tools/check_redaction.py` su 100 pagine dei tre corpora (tre parole per pagina, e la
+metà di un'immagine in 27): nessun testo nelle aree per Capriole, Poppler e MuPDF; il testo fuori uguale;
+le parole tolte da ciò che la pagina mostra e dice (contenuto, form, struttura, letti con pikepdf); la metà
+dell'immagine dipinta come la estrae Poppler; il disegno fuori dalle aree uguale nei tre motori;
+`qpdf --check` mai peggiore — **100/100**. Dove un motore di riferimento leggeva già le aree diversamente
+(file malformati di `x008`, una pagina di `safedocs`), le sue righe che toccano le aree non si confrontano:
+note nel rapporto `CORPORA/reports/redaction-all-20261004-115135/`.
 
 ---
 

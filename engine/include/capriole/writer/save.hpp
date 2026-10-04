@@ -38,7 +38,8 @@ struct SaveOptions {
   // When set, written as /Info /ModDate (a PDF date string, e.g. "D:20260926213000Z", §7.9.4).
   std::optional<std::string> modification_date;
   // Full save only: write just the objects reachable from the trailer (/Root, /Info, /Encrypt), as
-  // after deleting or extracting pages, whose objects would otherwise stay in the file unused.
+  // after deleting or extracting pages, whose objects would otherwise stay in the file unused. Always
+  // so for a redacted document (Document::redacted()): what was removed must not stay in the file.
   bool drop_unreachable = false;
 };
 
@@ -62,8 +63,9 @@ struct SaveReport {
 // Without changes (and without SaveOptions::modification_date) the output is the original file.
 //
 // Encrypted documents: what is appended is encrypted like the rest of the file (see above).
-// Refused with ErrorCode::kUnsupported: documents that needed repairs (Document::repairs() not empty, after reading the page tree) — appending to a structure
-// that only reads with repairs would carry them over unrepaired; save_full writes the repaired document instead.
+// Refused with ErrorCode::kUnsupported: redacted documents (Document::redacted(): the original bytes,
+// kept by an incremental save, hold what was removed); documents that needed repairs (Document::repairs() not empty, after reading the page tree) — appending
+// to a structure that only reads with repairs would carry them over unrepaired; save_full writes the repaired document instead.
 [[nodiscard]] Result<SaveReport> save_incremental(Document& document, ByteSink& output, const SaveOptions& options = {});
 
 }  // namespace capriole::writer

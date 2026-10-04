@@ -29,6 +29,7 @@
 #include "capriole/edit/facturx.hpp"
 #include "capriole/edit/forms.hpp"
 #include "capriole/edit/pages.hpp"
+#include "capriole/edit/redact.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
 #include "capriole/model/text_string.hpp"
@@ -714,11 +715,11 @@ capriole::Result<capriole::edit::AnnotationSpec> spec_of(const capriole::capi::J
   }
   const auto* kind = json.get("kind");
   const std::string* kind_name = kind != nullptr ? kind->string() : nullptr;
-  static const std::map<std::string_view, AnnotationKind> kKinds = {{"highlight", AnnotationKind::kHighlight}, {"underline", AnnotationKind::kUnderline},
-                                                                    {"strikeout", AnnotationKind::kStrikeOut}, {"squiggly", AnnotationKind::kSquiggly},
-                                                                    {"note", AnnotationKind::kNote},           {"ink", AnnotationKind::kInk},
-                                                                    {"square", AnnotationKind::kSquare},       {"circle", AnnotationKind::kCircle},
-                                                                    {"line", AnnotationKind::kLine},           {"freetext", AnnotationKind::kFreeText}};
+  static const std::map<std::string_view, AnnotationKind> kKinds = {
+      {"highlight", AnnotationKind::kHighlight}, {"underline", AnnotationKind::kUnderline}, {"strikeout", AnnotationKind::kStrikeOut},
+      {"squiggly", AnnotationKind::kSquiggly},   {"note", AnnotationKind::kNote},           {"ink", AnnotationKind::kInk},
+      {"square", AnnotationKind::kSquare},       {"circle", AnnotationKind::kCircle},       {"line", AnnotationKind::kLine},
+      {"freetext", AnnotationKind::kFreeText},   {"redact", AnnotationKind::kRedact}};
   const auto found = kind_name != nullptr ? kKinds.find(*kind_name) : kKinds.end();
   if (found == kKinds.end()) {
     return make_error(ErrorCode::kSyntax, "unknown or missing \"kind\"");
@@ -795,6 +796,11 @@ capriole::Result<capriole::edit::AnnotationSpec> spec_of(const capriole::capi::J
     }
   }
   return spec;
+}
+
+std::string redaction_json(const capriole::edit::RedactionReport& r) {
+  return std::format(R"({{"glyphs":{},"paths":{},"imagesRemoved":{},"imagesCleared":{},"annotations":{}}})", r.glyphs, r.paths, r.images_removed,
+                     r.images_cleared, r.annotations);
 }
 
 capriole::Result<capriole::edit::AnnotationChange> change_of(const capriole::capi::JsonValue& json) {
@@ -1192,6 +1198,66 @@ capriole_status capriole_document_facturx_embed(capriole_document* document, con
     capriole::capi::append_json_string(out, result->conformance_level);
     out += std::format(R"(,"pdfa3":{}}})", result->pdfa3);
     return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_redact(capriole_document* document, uint32_t page_index, const char* spec_json, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto spec = capriole::capi::parse_json(spec_json);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    const auto* areas = spec->get("areas");
+    if (spec->object() == nullptr || areas == nullptr || areas->array() == nullptr) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "areas: an array of rectangles expected");
+    }
+    std::vector<capriole::graphics::Rect> rects;
+    for (const auto& area : *areas->array()) {
+      auto r = rect_in(&area, "areas");
+      if (!r) {
+        return fail(r.error());
+      }
+      rects.push_back(*r);
+    }
+    capriole::edit::RedactionOptions options;
+    if (const auto* fill = spec->get("fill")) {
+      if (std::holds_alternative<std::nullptr_t>(fill->value)) {
+        options.fill.reset();
+      } else {
+        auto c = rgb_in(fill, "fill");
+        if (!c) {
+          return fail(c.error());
+        }
+        options.fill = *c;
+      }
+    }
+    auto report = capriole::edit::redact(document->document, page_index, rects, options);
+    if (!report) {
+      return fail(report.error());
+    }
+    return hand_over(redaction_json(*report), json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_apply_redactions(capriole_document* document, uint32_t page_index, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto report = capriole::edit::apply_redactions(document->document, page_index);
+    if (!report) {
+      return fail(report.error());
+    }
+    return hand_over(redaction_json(*report), json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

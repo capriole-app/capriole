@@ -102,6 +102,10 @@ void print_usage() {
                "                  embed a file (associated with the document: /AF), saved incrementally\n"
                "  attach remove <file> <number> <output>\n"
                "  facturx <file>                 the Factur-X invoice embedded, as JSON (null: none)\n"
+               "  redact <file> <page> <json> <output>\n"
+               "                  take what lies in areas out of the file ({\"areas\":[[x0,y0,x1,y1]],\"fill\":[0,0,0]};\n"
+               "                  the page as shown); saved fully\n"
+               "  redact apply <file> <page> <output>   apply the page's redaction marks (/Redact)\n"
                "  facturx embed <file> <invoice.xml> <output>\n"
                "                  embed a Cross Industry Invoice as factur-x.xml, with its XMP metadata\n"
                "  form fill <file> <output> <number>=<json>...\n"
@@ -560,7 +564,7 @@ int save_capi(capriole_document* document, std::string_view output) {
     std::cerr << std::format("cpdf: cannot write {}\n", output);
     return kExitFailure;
   }
-  std::cout << std::format("{}: {} bytes ({})\n", output, size, incremental ? "incremental" : "full: the file needed repairs");
+  std::cout << std::format("{}: {} bytes ({})\n", output, size, incremental ? "incremental" : "full");
   return kExitOk;
 }
 
@@ -755,6 +759,34 @@ int cmd_attach(std::span<char* const> args) {
   if (!number || *number > 0xFFFFFFFFULL || capriole_document_attachment_remove(document, static_cast<std::uint32_t>(*number), 0) != CAPRIOLE_OK) {
     return failed("remove");
   }
+  return save_capi(document, args[3]);
+}
+
+// redact <file> <page> <json> <output> | redact apply <file> <page> <output>: a page's areas taken out of
+// the file (the redaction marks, with apply). The output is a full save (incremental is refused).
+int cmd_redact(std::span<char* const> args) {
+  const bool apply = std::string_view(args[0]) == "apply";
+  const std::string_view path = apply ? args[1] : args[0];
+  const auto page = parse_uint(apply ? args[2] : args[1]);
+  if (!page || *page == 0 || *page > 0xFFFFFFFFULL) {
+    print_usage();
+    return kExitUsage;
+  }
+  capriole_document* document = open_capi(path);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  char* json = nullptr;
+  const auto index = static_cast<std::uint32_t>(*page - 1);
+  const capriole_status status =
+      apply ? capriole_document_page_apply_redactions(document, index, &json) : capriole_document_page_redact(document, index, args[2], &json);
+  if (status != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: redact: {}\n", path, capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
   return save_capi(document, args[3]);
 }
 
@@ -1113,6 +1145,9 @@ int run(std::span<char*> args) {
         (action == "add" && args.size() >= 6 && args.size() <= 9)) {
       return cmd_attach(args.subspan(2));
     }
+  }
+  if (command == "redact" && (args.size() == 6)) {
+    return cmd_redact(args.subspan(2));
   }
   if (command == "facturx" && (args.size() == 3 || (args.size() == 6 && std::string_view(args[2]) == "embed"))) {
     return cmd_facturx(args.subspan(2));

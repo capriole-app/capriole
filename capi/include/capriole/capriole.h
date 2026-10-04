@@ -214,6 +214,20 @@ capriole_status capriole_document_form_fields_json(capriole_document* document, 
  */
 capriole_status capriole_document_form_field_fill(capriole_document* document, uint32_t number, uint32_t generation, const char* value_json);
 
+/* ── Redaction (edit/redact.hpp) ───────────────────────────────────────────────────────────── */
+
+/*
+ * Redacts areas of page page_index — what lies there is taken out of the file —: spec_json
+ * {"areas":[[x0,y0,x1,y1], …], "fill":[r,g,b] | null} (the page as shown; fill: the colour the areas are
+ * filled with afterwards, null for none; black when left out). *json receives what was taken out:
+ * {"glyphs", "paths", "imagesRemoved", "imagesCleared", "annotations"}. The document is then saved
+ * fully only (an incremental save is refused: it would keep the original bytes).
+ */
+capriole_status capriole_document_page_redact(capriole_document* document, uint32_t page_index, const char* spec_json, char** json);
+
+/* Applies the page's redaction marks (/Redact annotations: annotation_add with kind "redact") and removes them. */
+capriole_status capriole_document_page_apply_redactions(capriole_document* document, uint32_t page_index, char** json);
+
 /* ── Attachments and Factur-X (edit/attachments.hpp, edit/facturx.hpp) ────────────────────── */
 
 /*

@@ -40,6 +40,9 @@ target_link_libraries(fuzz_forms PRIVATE capriole::capi)
 # Through the C API, as the apps handle attachments and Factur-X.
 capriole_add_fuzzer(fuzz_attachments fuzz_attachments.cpp)
 target_link_libraries(fuzz_attachments PRIVATE capriole::capi)
+# Through the C API, as the apps redact.
+capriole_add_fuzzer(fuzz_redact fuzz_redact.cpp)
+target_link_libraries(fuzz_redact PRIVATE capriole::capi)
 capriole_add_fuzzer(fuzz_icc fuzz_icc.cpp)
 target_include_directories(fuzz_icc PRIVATE ${PROJECT_SOURCE_DIR}/engine/src)
 # These two exercise the engine's internals (font/): its sources are their include path.

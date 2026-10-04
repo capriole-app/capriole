@@ -131,3 +131,20 @@ properties and one extension schema, PDF/A-3 declared only if it was. With `--fa
 Python with the `factur-x` package) the reference library reads each invoice back; with `--verapdf`,
 veraPDF validates as PDF/A-3B the outputs whose input was PDF/A-3. Exit criterion of phase 8f
 (engine): every check passes.
+
+## Redaction (PLAN.md phase 8g, exit criterion)
+
+```sh
+nice -n 10 corpus-tools/check_redaction.py ../CORPORA/safedocs/0000 ../CORPORA/unsafe/x002 ../CORPORA/unsafe/x008 \
+    --cpdf build/release/tools/cpdf/cpdf --jobs 3 --report-dir ../CORPORA/reports --name redaction-all
+```
+
+On 100 pages (one per file with text), three words of the page are redacted (their boxes from
+`cpdf text --words`, filled black) and, when the page draws an image of at least 40 × 40 points
+(`pdftohtml -xml`), its left half. Then: no text with its centre in an area for Capriole, Poppler
+(`pdftotext -bbox`) and MuPDF (`-F stext`); the text clear of the areas as before for all three (pieces
+of words cut at an area's edge excepted); the page alone (`qpdf --pages`), decompressed, has each word
+it showed once — when written as it reads — at least once fewer (whole words: not in names like
+`/question`); the image, as Poppler extracts it, has a half of one colour it did not have; the page
+outside the areas draws as before in all three engines (similarity ≥ 0.99, areas whitened); `qpdf --check`
+no worse. Exit criterion of phase 8g (engine): every page passes.

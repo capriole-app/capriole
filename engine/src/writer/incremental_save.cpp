@@ -102,6 +102,9 @@ int bytes_for(std::uint64_t value) {
 Result<SaveReport> save_incremental(Document& document, ByteSink& output, const SaveOptions& options) {
   // Page tree repairs are found when the pages are first read: read them now, so that the decision
   // does not depend on what the caller did before. (A tree that cannot be read at all is left as it is.)
+  if (document.redacted()) {
+    return make_error(ErrorCode::kUnsupported, "the document was redacted: an incremental save would keep what was removed (use a full save)");
+  }
   [[maybe_unused]] const auto pages = document.page_refs();
   if (!document.repairs().empty()) {
     return make_error(ErrorCode::kUnsupported, "the document needed repairs: an incremental save would keep them unrepaired (use a full save)");

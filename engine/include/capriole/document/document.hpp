@@ -113,6 +113,10 @@ class Document {
   [[nodiscard]] std::vector<std::uint32_t> changed_objects() const;
   [[nodiscard]] bool trailer_modified() const noexcept { return trailer_modified_; }
   [[nodiscard]] bool has_changes() const { return trailer_modified_ || !changed_objects().empty(); }
+  // Content was redacted (edit/redact.hpp): what was removed must not stay in the file, so saves are
+  // full and leave out the objects nothing references any more (writer/save.hpp).
+  void mark_redacted() noexcept { redacted_ = true; }
+  [[nodiscard]] bool redacted() const noexcept { return redacted_; }
   // One past the highest object number in use or ever assigned (the next /Size).
   [[nodiscard]] std::uint32_t next_object_number() const noexcept { return next_number_; }
 
@@ -174,6 +178,7 @@ class Document {
   parser::PdfHeader header_;
   model::Dict trailer_;
   bool trailer_modified_ = false;
+  bool redacted_ = false;
   std::map<std::uint32_t, Slot> slots_;
   std::uint32_t next_number_ = 1;
 };

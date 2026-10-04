@@ -140,7 +140,7 @@ text's (from `/DA`); `fontSize` is null for the other kinds.
 known key with a value of the wrong shape is an error, as is malformed JSON — nested at most 32 deep):
 
 ```json
-{"kind":"highlight"|"underline"|"strikeout"|"squiggly"|"note"|"ink"|"square"|"circle"|"line"|"freetext",
+{"kind":"highlight"|"underline"|"strikeout"|"squiggly"|"note"|"ink"|"square"|"circle"|"line"|"freetext"|"redact",
  "quads":[[x0,y0,x1,y1], …],          // text markup: boxes of horizontal text (e.g. words of the page's text)
  "strokes":[[[x,y], …], …],           // ink
  "rect":[x0,y0,x1,y1],                // note (its icon), square, circle, free text
@@ -160,6 +160,24 @@ square, circle), colour, text or text size (free text) makes the appearance agai
 engine makes; another kind's colour, rectangle or size is `CAPRIOLE_ERROR_UNSUPPORTED`). `capriole_document_annotation_remove`
 removes it with its popup. Documents whose structure needed repairs are edited after a full save
 (`CAPRIOLE_ERROR_UNSUPPORTED` until then); listing works on any document.
+
+## Redaction
+
+`capriole_document_page_redact(document, page, spec_json, &json)` takes what lies in areas of a page out
+of the file — not covered: `{"areas":[[x0,y0,x1,y1], …], "fill":[r,g,b] | null}` (the page as shown, as
+for annotations; the areas are filled with the colour afterwards, black when left out, not at all with
+null). Glyphs in an area leave their strings (the rest of the line keeps its place); images inside an
+area go, images an area crosses are written anew with those pixels painted over (in their own colour
+space when they can); paths lying at least half in an area are not painted; annotations meeting an area
+go; marked content that lost glyphs loses its `/ActualText`, `/Alt`, `/E`, and so do its structure
+elements (tagged documents); a form XObject that changes is copied (other pages keep theirs), and what
+the page no longer draws leaves its resources. The answer counts what went:
+`{"glyphs", "paths", "imagesRemoved", "imagesCleared", "annotations"}`. Redaction marks are annotations
+of kind `"redact"` (`capriole_document_annotation_add`: `rect`, or `quads` of text; `fill`: the colour of
+the area once applied, `/IC`); `capriole_document_page_apply_redactions` applies a page's marks and
+removes them. A redacted document is saved fully, leaving out what nothing references any more;
+`capriole_document_save` with `incremental` is then `CAPRIOLE_ERROR_UNSUPPORTED` (it would keep the
+original bytes).
 
 ## Attachments and Factur-X
 

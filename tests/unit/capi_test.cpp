@@ -392,6 +392,44 @@ TEST(CApiDocument, AttachmentsAndFacturx) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, Redaction) {
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R/Resources<</Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>>>");
+  b.add_stream(4, "BT /F1 12 Tf 20 150 Td (Hello secret) Tj ET");
+  b.finish_table("/Size 5/Root 1 0 R");
+  capriole_document* document = open_document(b.str());
+  char* json = nullptr;
+  for (const char* bad : {"", "{}", R"({"areas":1})", R"({"areas":[[1,2,3]]})", R"({"areas":[[0,0,10,10]],"fill":"red"})"}) {
+    SCOPED_TRACE(bad);
+    EXPECT_NE(capriole_document_page_redact(document, 0, bad, &json), CAPRIOLE_OK);
+  }
+  EXPECT_EQ(capriole_document_page_redact(document, 0, R"({"areas":[]})", &json), CAPRIOLE_ERROR_UNSUPPORTED);
+  ASSERT_EQ(capriole_document_page_redact(document, 0, R"({"areas":[[50,35,100,55]],"fill":null})", &json), CAPRIOLE_OK) << capriole_last_error_message();
+  const std::string report = take_json(json);
+  EXPECT_TRUE(report.starts_with(R"({"glyphs":)")) << report;  // the word (and the space at its edge)
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  EXPECT_EQ(capriole_document_save(document, 1, nullptr, &data, &size), CAPRIOLE_ERROR_UNSUPPORTED);  // redacted: full saves only
+  ASSERT_EQ(capriole_document_save(document, 0, nullptr, &data, &size), CAPRIOLE_OK);
+  EXPECT_EQ(std::string(reinterpret_cast<const char*>(data), size).find("secret"), std::string::npos);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  capriole_free(data);
+
+  // A mark, then applied.
+  std::uint32_t number = 0;
+  std::uint32_t generation = 0;
+  ASSERT_EQ(capriole_document_annotation_add(document, 0, R"({"kind":"redact","rect":[10,35,40,55]})", &number, &generation), CAPRIOLE_OK);
+  ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("subtype":"Redact")"), std::string::npos);
+  ASSERT_EQ(capriole_document_page_apply_redactions(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("glyphs":)"), std::string::npos);
+  ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_EQ(take_json(json), "[]");
+  EXPECT_EQ(capriole_document_page_apply_redactions(document, 0, &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {
   // A Japanese font that is not embedded, with a predefined CMap: both come from the resource pack.
   capriole::test::PdfBuilder b;

@@ -47,7 +47,8 @@ MuPDF/mutool (AGPL), Poppler (GPL), PDFium (BSD, ma API da viewer), pdf.js (Apac
 jbig2dec (AGPL: oracolo delle fixture JBIG2, `tests/data/jbig2/make_fixtures.py`), libtiff tramite Pillow
 (generazione delle fixture CCITT e MMR). Per la verifica degli allegati e di Factur-X (fase 8f, facoltativi, fuori dal
 repo in `CORPORA/tools/`): la libreria Python `factur-x` (BSD, con gli XSD Factur-X) e veraPDF (GPL/MPL,
-Java); `lxml` (BSD) per leggere gli XMP nella verifica.
+Java); `lxml` (BSD) per leggere gli XMP nella verifica. Per la verifica della redaction (fase 8g):
+`pikepdf` (MPL-2.0, su qpdf) per leggere i flussi di una pagina e i testi della sua struttura.
 
 ## Apps (`apps/inspector`, `apps/capriole`) — npm, devDependencies only
 

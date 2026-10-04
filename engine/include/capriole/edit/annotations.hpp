@@ -36,6 +36,7 @@ enum class AnnotationKind : std::uint8_t {
   kCircle,    // an ellipse in rect (/Circle)
   kLine,      // from → to
   kFreeText,  // text written on the page in rect, wrapped to its width
+  kRedact,    // a redaction mark (edit/redact.hpp): rect, or boxes of text (quads); fill: what the area becomes
 };
 
 using Rgb = std::array<double, 3>;  // each 0..1
@@ -49,7 +50,7 @@ struct AnnotationSpec {
   graphics::Point from;                               // line
   graphics::Point to;
   Rgb color{1, 0.82, 0};    // the colour (/C; the text's colour for free text)
-  std::optional<Rgb> fill;  // the interior of a square or circle (/IC)
+  std::optional<Rgb> fill;  // the interior of a square or circle; what a redaction mark's area is filled with (/IC)
   double width = 1;         // border or pen, in points
   double opacity = 1;       // /CA
   double font_size = 12;    // free text

@@ -252,7 +252,8 @@ Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOpt
   }
   report.page_tree_rewritten = !overrides->empty();
   std::optional<std::set<std::uint32_t>> kept;
-  if (options.drop_unreachable) {
+  // After a redaction, what it removed must not stay in the file (Document::redacted()).
+  if (options.drop_unreachable || document.redacted()) {
     kept = reachable(document, trailer, *overrides);
   }
   // What the output has: the live objects (all, or those kept) and the ones the page tree adds.

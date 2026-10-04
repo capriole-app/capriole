@@ -95,8 +95,8 @@ std::string free_text(const Rect& r, std::u32string_view text, double size, cons
 }
 
 bool generated_kind(std::string_view subtype) {
-  constexpr std::array<std::string_view, 12> kKinds = {"Highlight", "Underline", "StrikeOut", "Squiggly", "Text",    "FreeText",
-                                                       "Ink",       "Square",    "Circle",    "Line",     "Polygon", "PolyLine"};
+  constexpr std::array<std::string_view, 13> kKinds = {"Highlight", "Underline", "StrikeOut", "Squiggly", "Text",     "FreeText", "Ink",
+                                                       "Square",    "Circle",    "Line",      "Polygon",  "PolyLine", "Redact"};
   return std::ranges::find(kKinds, subtype) != kKinds.end();
 }
 
@@ -116,6 +116,21 @@ std::optional<model::Stream> appearance_for(Document& document, const Page& page
     const std::vector<double> c = content::numbers(document, annotation, "C");
     const std::string icon = note_icon(Rect{0, 0, rect.width(), rect.height()}, c.size() == 3 ? Rgb{c[0], c[1], c[2]} : Rgb{1, 0.82, 0});
     content = std::format("q 1 0 0 -1 {} {} cm\n{}Q\n", num(rect.x0), num(rect.y1), icon);
+  } else if (subtype == "Redact") {
+    // A mark: its boxes (or its rectangle) outlined in its colour; what it covers stays readable until the
+    // redaction is applied (edit/redact.hpp).
+    const std::vector<double> c = content::numbers(document, annotation, "C");
+    content = rgb_operands(c.size() == 3 ? Rgb{c[0], c[1], c[2]} : Rgb{1, 0, 0}) + " RG 1 w\n";
+    const std::vector<double> q = content::numbers(document, annotation, "QuadPoints");
+    if (q.size() >= 8) {
+      for (std::size_t i = 0; i + 8 <= q.size(); i += 8) {
+        const std::array<Point, 4> corners = {Point{q[i], q[i + 1]}, Point{q[i + 2], q[i + 3]}, Point{q[i + 4], q[i + 5]}, Point{q[i + 6], q[i + 7]}};
+        const Rect b = bounds(corners);
+        content += std::format("{} {} {} {} re S\n", num(b.x0 + 0.5), num(b.y0 + 0.5), num(b.width() - 1), num(b.height() - 1));
+      }
+    } else {
+      content += std::format("{} {} {} {} re S\n", num(rect.x0 + 0.5), num(rect.y0 + 0.5), num(rect.width() - 1), num(rect.height() - 1));
+    }
   } else if (subtype == "FreeText") {
     const Object* da = annotation.find("DA");
     const auto parsed = detail::parse_da(da != nullptr && da->as_string() != nullptr ? da->as_string()->bytes : std::string());
@@ -257,6 +272,8 @@ std::string_view subtype_name(AnnotationKind kind) {
       return "Line";
     case AnnotationKind::kFreeText:
       return "FreeText";
+    case AnnotationKind::kRedact:
+      return "Redact";
   }
   return "Text";
 }
@@ -334,6 +351,15 @@ Result<model::ObjectRef> add_annotation(Document& document, std::uint32_t page_i
   std::int64_t flags = kPrintFlag;
   Rect rect;
   switch (spec.kind) {
+    case AnnotationKind::kRedact:
+      if (spec.quads.empty()) {
+        if (!valid(spec.rect)) {
+          return make_error(ErrorCode::kUnsupported, "a redaction mark needs a rectangle or boxes of text");
+        }
+        rect = page->user(spec.rect);
+        break;
+      }
+      [[fallthrough]];
     case AnnotationKind::kHighlight:
     case AnnotationKind::kUnderline:
     case AnnotationKind::kStrikeOut:
@@ -422,7 +448,7 @@ Result<model::ObjectRef> add_annotation(Document& document, std::uint32_t page_i
   } else {
     a.set("C", rgb_array(clamp(spec.color)));
   }
-  if (spec.fill && (spec.kind == AnnotationKind::kSquare || spec.kind == AnnotationKind::kCircle)) {
+  if (spec.fill && (spec.kind == AnnotationKind::kSquare || spec.kind == AnnotationKind::kCircle || spec.kind == AnnotationKind::kRedact)) {
     a.set("IC", rgb_array(clamp(*spec.fill)));
   }
   if (spec.kind == AnnotationKind::kInk || spec.kind == AnnotationKind::kLine || spec.kind == AnnotationKind::kSquare || spec.kind == AnnotationKind::kCircle) {

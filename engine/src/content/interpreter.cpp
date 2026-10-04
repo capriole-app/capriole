@@ -144,6 +144,9 @@ class Interpreter {
   // markup annotations that come without one, an appearance made here from their dictionary (§12.5.6).
   // Hidden and NoView annotations, and popups (a viewer's windows), are not drawn.
   void draw_annotations(const Object& annots, const model::Dict* page_resources) {
+    // Annotations are drawn after the page's content, which they are not part of.
+    in_annotations_ = true;
+    static_cast<void>(enter(graphics::Invocation::Kind::kOther, std::nullopt));
     auto list = document_->resolve(annots);
     if (!list || list->as_array() == nullptr) {
       return;
@@ -200,6 +203,16 @@ class Interpreter {
       return;
     }
     out_->commands.emplace_back(std::move(command));
+    out_->origins.push_back(graphics::Origin{.invocation = invocation_, .operation = op_index_});
+  }
+
+  // Runs what follows as a new invocation (graphics::Invocation): the content of a form drawn by the
+  // current operator (kForm), or another. Returns the invocation to go back to.
+  std::uint32_t enter(graphics::Invocation::Kind kind, std::optional<model::ObjectRef> form) {
+    const std::uint32_t parent = invocation_;
+    invocation_ = static_cast<std::uint32_t>(out_->invocations.size());
+    out_->invocations.push_back(graphics::Invocation{.kind = kind, .parent = parent, .form = form, .operation = op_index_});
+    return parent;
   }
 
   // Operands as numbers; nullopt (and a warning) when there are too few or they are not numbers.
@@ -761,7 +774,9 @@ class Interpreter {
       graphics::Path saved_clip = std::exchange(text_clip_, {});
       const bool saved_uncolored = std::exchange(uncolored_glyph_, cell_uncoloured_);
       ++type3_depth_;
+      const std::uint32_t outer = enter(graphics::Invocation::Kind::kOther, ref);
       run(*content, resources, form_depth + 1, ref);
+      invocation_ = outer;
       --type3_depth_;
       uncolored_glyph_ = saved_uncolored;
       text_clip_ = std::move(saved_clip);
@@ -899,7 +914,12 @@ class Interpreter {
     // The form's content runs with its own path and text state.
     const graphics::Path saved_path = std::exchange(path_, {});
     const bool saved_in_text = std::exchange(in_text_, false);
+    // A form drawn by a Do of page content is its own invocation; a soft mask's, or one drawn for an
+    // annotation, is not content the page's edits rewrite.
+    const bool content_form = role == FormRole::kDo && !in_annotations_;
+    const std::uint32_t outer = enter(content_form ? graphics::Invocation::Kind::kForm : graphics::Invocation::Kind::kOther, ref);
     run(*content, resources, form_depth + 1, ref);
+    invocation_ = outer;
     path_ = saved_path;
     in_text_ = saved_in_text;
     if (group) {
@@ -1176,6 +1196,7 @@ class Interpreter {
     clip.line_to({bbox.x0, bbox.y1});
     clip.close();
     cell->commands.emplace_back(graphics::ClipPath{.path = std::move(clip), .ctm = {}, .rule = graphics::FillRule::kNonZero});
+    cell->origins.emplace_back();
     InterpreterLimits limits = *limits_;
     limits.max_operations = limits_->max_operations > operations_ ? limits_->max_operations - operations_ : 0;
     Interpreter inner(*document_, limits, fonts_.resources(), *cell, text_ ? Purpose::kText : Purpose::kDraw);
@@ -1666,6 +1687,8 @@ class Interpreter {
   std::optional<model::ObjectRef> stream_;
   std::uint64_t op_offset_ = 0;
   std::uint32_t op_index_ = 0;
+  std::uint32_t invocation_ = 0;  // of the commands emitted now (graphics::Invocation)
+  bool in_annotations_ = false;
   std::vector<std::int32_t> marked_;
   bool text_ = false;  // Purpose::kText
   bool uncolored_glyph_ = false;
