@@ -9,13 +9,16 @@ import {
   type AnnotationChange,
   type AnnotationInfo,
   type AnnotationSpec,
+  type AttachmentInfo,
+  type FacturxInfo,
   type FieldInfo,
   type PageRaster,
   type Repair,
   type Summary,
 } from '@capriole/engine-client';
 import { baseName, pdfDateNow } from './files';
-import { fromBrowser, pickPdf, savePdf, type PickedFile } from './platform';
+import { parseInvoice, type Invoice } from './invoice';
+import { fromBrowser, pickPdf, saveFile, savePdf, type PickedFile } from './platform';
 
 /** What a pointer does on the page shown large: fill the form, select (and move) annotations, or make one. */
 export type Tool = 'form' | 'select' | AnnotationSpec['kind'];
@@ -73,6 +76,12 @@ export class Editor {
   selectedAnnotation = $state.raw<[number, number] | null>(null);
   tool = $state<Tool>('select');
   color = $state.raw<Rgb>([1, 0.82, 0]);
+  /** The document's attachments, its Factur-X invoice (null: none) and what its XML says. */
+  attachments = $state.raw<AttachmentInfo[]>([]);
+  facturx = $state.raw<FacturxInfo | null>(null);
+  invoice = $state.raw<Invoice | null>(null);
+  /** The attachments' panel, beside the pages. */
+  attachmentsOpen = $state(false);
   /** The size of the next free text (points). */
   fontSize = $state(12);
   /** The free text being written on the page (null: none). */
@@ -135,6 +144,7 @@ export class Editor {
         this.passwordRejected = false;
         this.#show(opened.summary, []);
         this.modified = false;
+        await this.#loadAttachments();
       } catch (error) {
         if (error instanceof EngineError && error.status === Status.passwordRequired) {
           this.passwordRejected = this.passwordNeeded && password !== '';
@@ -332,6 +342,7 @@ export class Editor {
       const opened = await this.engine.openForEditing(previous, this.#password);
       this.#show(opened.summary, []);
       this.modified = true;
+      await this.#loadAttachments();
       if (this.viewing !== null) {
         if (this.viewing >= this.pages) this.closeView();
         else {
@@ -343,12 +354,84 @@ export class Editor {
     });
   }
 
+  // ── Attachments and Factur-X ────────────────────────────────────────────────────────────────
+
+  /** Attaches files to the document (associated with it); one step of undo for them all. */
+  addAttachments(files: File[]): Promise<void> {
+    if (files.length === 0) return Promise.resolve();
+    return this.#editDocument(async () => {
+      for (const file of files) {
+        const date = pdfDateNow();
+        await this.engine.attachmentAdd(
+          {
+            fileName: file.name,
+            mimeType: file.type,
+            relationship: 'Supplement',
+            creationDate: date,
+            modificationDate: date,
+          },
+          await file.arrayBuffer(),
+        );
+      }
+    });
+  }
+
+  removeAttachment(ref: [number, number]): Promise<void> {
+    return this.#editDocument(() => this.engine.attachmentRemove(ref));
+  }
+
+  /** An attachment saved to disk (where the save dialog says), or downloaded. */
+  async saveAttachment(a: AttachmentInfo): Promise<void> {
+    await this.#run(async () => {
+      await saveFile(
+        async () => (await this.engine.attachmentData(a.ref)).data,
+        a.fileName || a.name || 'allegato',
+        null,
+        a.mimeType || 'application/octet-stream',
+      );
+    });
+  }
+
+  /** Makes the document a Factur-X invoice with the XML of one (a Cross Industry Invoice). */
+  embedInvoice(xml: File): Promise<void> {
+    return this.#editDocument(async () => {
+      await this.engine.facturxEmbed(await xml.arrayBuffer(), pdfDateNow());
+    });
+  }
+
+  async #loadAttachments(): Promise<void> {
+    this.attachments = await this.engine.attachments();
+    this.facturx = await this.engine.facturx();
+    this.invoice = null;
+    if (this.facturx) {
+      const { data } = await this.engine.attachmentData(this.facturx.ref);
+      this.invoice = parseInvoice(new TextDecoder().decode(data));
+    }
+  }
+
+  /** An edit of the document as a whole (not of a page): kept for undo, the attachments listed again. */
+  #editDocument(change: () => Promise<void>): Promise<void> {
+    return this.#serial(() =>
+      this.#run(async () => {
+        const before = await this.engine.save(false, null);
+        await change();
+        this.#remember(before);
+        this.modified = true;
+        await this.#loadAttachments();
+      }),
+    );
+  }
+
   async close(): Promise<void> {
     await this.engine.close().catch(() => {});
     this.name = null;
     this.path = null;
     this.#handle = null;
     this.pages = 0;
+    this.attachments = [];
+    this.facturx = null;
+    this.invoice = null;
+    this.attachmentsOpen = false;
     this.#refs = [];
     this.#thumbnails.clear();
     this.closeView();
@@ -598,6 +681,7 @@ export class Editor {
       this.#remember(before);
       this.#show(summary, typeof select === 'function' ? select(summary) : select, changed);
       this.modified = true;
+      await this.#loadAttachments();
     });
   }
 

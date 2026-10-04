@@ -98,11 +98,26 @@ export async function savePdf(
   name: string,
   target: SaveTarget | null,
 ): Promise<(SaveTarget & { name: string }) | null> {
+  return saveFile(make, name, target, null);
+}
+
+/**
+ * As savePdf, for a file of any type (mime: its type; null: a PDF) — an attachment saved to disk. The
+ * dialog offers every type then, and a download has the file's type.
+ */
+export async function saveFile(
+  make: () => Promise<ArrayBuffer>,
+  name: string,
+  target: SaveTarget | null,
+  mime: string | null,
+): Promise<(SaveTarget & { name: string }) | null> {
   const access = fileAccess();
   if (access) {
     let handle = target?.handle ?? null;
     try {
-      handle ??= await access.showSaveFilePicker({ suggestedName: name, types: pdfTypes });
+      handle ??= await access.showSaveFilePicker(
+        mime === null ? { suggestedName: name, types: pdfTypes } : { suggestedName: name },
+      );
       const writable = await handle.createWritable();
       try {
         await writable.write(await make());
@@ -116,13 +131,13 @@ export async function savePdf(
     return { path: null, handle, name: handle.name };
   }
   if (!isDesktop) {
-    download(await make(), name);
+    download(await make(), name, mime ?? 'application/pdf');
     return { path: null, handle: null, name };
   }
   let path = target?.path ?? null;
   if (path === null) {
     const { save } = await import('@tauri-apps/plugin-dialog');
-    path = await save({ defaultPath: name, filters: pdfFilter });
+    path = await save(mime === null ? { defaultPath: name, filters: pdfFilter } : { defaultPath: name });
     if (path === null) return null;
   }
   const { writeFile } = await import('@tauri-apps/plugin-fs');

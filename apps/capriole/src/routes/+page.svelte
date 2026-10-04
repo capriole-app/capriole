@@ -2,6 +2,7 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import OpenCard from '$lib/components/OpenCard.svelte';
   import AnnotationToolbar from '$lib/components/AnnotationToolbar.svelte';
+  import AttachmentsPanel from '$lib/components/AttachmentsPanel.svelte';
   import PageGrid from '$lib/components/PageGrid.svelte';
   import PageView from '$lib/components/PageView.svelte';
   import PasswordDialog from '$lib/components/PasswordDialog.svelte';
@@ -86,9 +87,14 @@
     {#if editor.viewing !== null}
       <PageView />
     {:else}
-      <main class="min-h-0 flex-1 overflow-y-auto bg-muted">
-        <PageGrid />
-      </main>
+      <div class="flex min-h-0 flex-1">
+        <main class="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted">
+          <PageGrid />
+        </main>
+        {#if editor.attachmentsOpen}
+          <AttachmentsPanel />
+        {/if}
+      </div>
     {/if}
   </div>
 {/if}

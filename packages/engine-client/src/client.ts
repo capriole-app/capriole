@@ -3,6 +3,10 @@ import type {
   AnnotationChange,
   AnnotationInfo,
   AnnotationSpec,
+  AttachmentInfo,
+  AttachmentSpec,
+  FacturxInfo,
+  FacturxResult,
   FieldInfo,
   ObjectInfo,
   PageContent,
@@ -144,6 +148,35 @@ export class EngineClient {
 
   annotationRemove(index: number, ref: [number, number]): Promise<void> {
     return this.#call({ kind: 'annotationRemove', index, ref });
+  }
+
+  /** The document's attachments (its own, then those of annotations). */
+  attachments(): Promise<AttachmentInfo[]> {
+    return this.#call({ kind: 'attachments' });
+  }
+
+  /** An attachment's bytes, and whether they match its checksum (null: it has none). */
+  attachmentData(ref: [number, number]): Promise<{ data: ArrayBuffer; checksum: boolean | null }> {
+    return this.#call({ kind: 'attachmentData', ref });
+  }
+
+  /** Attaches a file to the document (associated with it); resolves to its file specification. The bytes are transferred. */
+  attachmentAdd(spec: AttachmentSpec, data: ArrayBuffer): Promise<[number, number]> {
+    return this.#call({ kind: 'attachmentAdd', spec, data }, [data]);
+  }
+
+  attachmentRemove(ref: [number, number]): Promise<void> {
+    return this.#call({ kind: 'attachmentRemove', ref });
+  }
+
+  /** The document's Factur-X invoice; null when it has none. */
+  facturx(): Promise<FacturxInfo | null> {
+    return this.#call({ kind: 'facturx' });
+  }
+
+  /** Embeds an invoice's XML as the document's Factur-X invoice (date: a PDF date). The bytes are transferred. */
+  facturxEmbed(xml: ArrayBuffer, date: string): Promise<FacturxResult> {
+    return this.#call({ kind: 'facturxEmbed', xml, date }, [xml]);
   }
 
   /** The fields of the document's form (none without one). */

@@ -209,6 +209,49 @@ export interface FieldInfo {
   widgets: FieldWidget[];
 }
 
+/** An attachment of the document (capi/README.md). */
+export interface AttachmentInfo {
+  /** Its file specification. */
+  ref: [number, number];
+  name: string;
+  fileName: string;
+  description: string;
+  mimeType: string;
+  size: number | null;
+  creationDate: string;
+  modificationDate: string;
+  relationship: string;
+  /** A file attachment annotation's page; null for the document's own. */
+  page: number | null;
+  associated: boolean;
+}
+
+/** What capriole_document_attachment_add takes besides the bytes. */
+export interface AttachmentSpec {
+  fileName: string;
+  description?: string;
+  mimeType?: string;
+  relationship?: string;
+  creationDate?: string;
+  modificationDate?: string;
+}
+
+/** The document's Factur-X invoice, as its XMP metadata says. */
+export interface FacturxInfo {
+  ref: [number, number];
+  fileName: string;
+  conformanceLevel: string;
+  version: string;
+  pdfa3: boolean;
+}
+
+/** What embedding an invoice did: pdfa3 false — the document is not PDF/A-3, so not yet a conforming Factur-X. */
+export interface FacturxResult {
+  ref: [number, number];
+  conformanceLevel: string;
+  pdfa3: boolean;
+}
+
 /** A document opened for editing: its summary, and the repairs it needed (already written into it). */
 export interface EditableDocument {
   summary: Summary;
@@ -258,6 +301,12 @@ export type Request =
   | { kind: 'annotationUpdate'; index: number; ref: [number, number]; change: AnnotationChange }
   | { kind: 'annotationRemove'; index: number; ref: [number, number] }
   | { kind: 'formFields' }
+  | { kind: 'attachments' }
+  | { kind: 'attachmentData'; ref: [number, number] }
+  | { kind: 'attachmentAdd'; spec: AttachmentSpec; data: ArrayBuffer }
+  | { kind: 'attachmentRemove'; ref: [number, number] }
+  | { kind: 'facturx' }
+  | { kind: 'facturxEmbed'; xml: ArrayBuffer; date: string }
   | { kind: 'formFill'; ref: [number, number]; value: string | string[] | null }
   | { kind: 'save'; incremental: boolean; modificationDate: string | null }
   | { kind: 'close' };

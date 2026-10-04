@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app) · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · 8g redaction reale · 8h firma PAdES · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -933,6 +933,20 @@ riferimento con la generazione sbagliata (che vale null, §7.3.10) veniva scritt
 aggiunto restava irraggiungibile —: ora si scrive nell'oggetto solo se il riferimento lo raggiunge,
 altrimenti lo si sostituisce; lo stesso in `/AF`, nei metadati e in `/Annots` delle annotazioni (8d),
 ciascuno con il suo test.
+
+**8f-2 (2026-10-04) — allegati e Factur-X nell'app.** `apps/capriole`: «Allegati» apre un pannello accanto
+alle pagine: gli allegati del documento (i suoi e quelli delle note con allegato, con la pagina) — si
+scaricano (dove dice la finestra di salvataggio, o tra i download), si aggiungono (scelti o trascinati;
+associati al documento come supplementi), si rimuovono —, ogni modifica con «Annulla». Un documento con
+una fattura Factur-X / ZUGFeRD la mostra: profilo e riepilogo letto dall'XML con il parser del browser
+(numero e data, cedente con partita IVA, cessionario, imponibile, imposta, totale, scadenza). «Crea
+Factur-X con un XML…» incorpora l'XML di una fattura; se il PDF non è PDF/A-3 lo dice (conversione:
+8i). Sotto i 1900 pixel i pulsanti secondari della barra delle pagine mostrano solo l'icona (il nome
+resta per i lettori di schermo e come suggerimento): con «Allegati» la barra andava su tre righe.
+Client del motore: `attachments`, `attachmentData`, `attachmentAdd|Remove`, `facturx`, `facturxEmbed`.
+Criterio: test e2e (allega, scarica identico, crea Factur-X — riepilogo e avviso —, rimuove e annulla,
+salva — i byte salvati riletti: `/AFRelationship`, `factur-x.xml`, `text/xml`, l'XMP fx —, riapre e
+ritrova la fattura) verde.
 
 ---
 

@@ -7,6 +7,8 @@
   import FileOutput from '@lucide/svelte/icons/file-output';
   import FilePlus from '@lucide/svelte/icons/file-plus';
   import Highlighter from '@lucide/svelte/icons/highlighter';
+  import Paperclip from '@lucide/svelte/icons/paperclip';
+  import ReceiptText from '@lucide/svelte/icons/receipt-text';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import RotateCw from '@lucide/svelte/icons/rotate-cw';
   import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -41,11 +43,23 @@
   </div>
 
   <div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Pagine selezionate">
-    <button type="button" class={button} disabled={!some || editor.busy} onclick={() => editor.rotate(-90)}>
-      <RotateCcw class="size-4" /> Ruota a sinistra
+    <button
+      type="button"
+      class={button}
+      disabled={!some || editor.busy}
+      onclick={() => editor.rotate(-90)}
+      title="Ruota a sinistra"
+    >
+      <RotateCcw class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Ruota a sinistra</span>
     </button>
-    <button type="button" class={button} disabled={!some || editor.busy} onclick={() => editor.rotate(90)}>
-      <RotateCw class="size-4" /> Ruota a destra
+    <button
+      type="button"
+      class={button}
+      disabled={!some || editor.busy}
+      onclick={() => editor.rotate(90)}
+      title="Ruota a destra"
+    >
+      <RotateCw class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Ruota a destra</span>
     </button>
     <button
       type="button"
@@ -67,8 +81,14 @@
     >
       <ArrowRight class="size-4" />
     </button>
-    <button type="button" class={button} disabled={!some || editor.busy} onclick={() => editor.duplicate()}>
-      <Copy class="size-4" /> Duplica
+    <button
+      type="button"
+      class={button}
+      disabled={!some || editor.busy}
+      onclick={() => editor.duplicate()}
+      title="Duplica"
+    >
+      <Copy class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Duplica</span>
     </button>
     <button
       type="button"
@@ -77,7 +97,7 @@
       title={all ? 'Un documento conserva almeno una pagina' : undefined}
       onclick={() => editor.remove()}
     >
-      <Trash2 class="size-4" /> Elimina
+      <Trash2 class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Elimina</span>
     </button>
     <button
       type="button"
@@ -86,18 +106,25 @@
       title="Mostra la pagina grande per annotarla (anche: doppio clic)"
       onclick={() => editor.view(editor.selection[0]!)}
     >
-      <Highlighter class="size-4" /> Annota
+      <Highlighter class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Annota</span>
     </button>
-    <button type="button" class={button} disabled={!some || editor.busy} onclick={() => editor.extract()}>
-      <FileOutput class="size-4" /> Estrai
+    <button
+      type="button"
+      class={button}
+      disabled={!some || editor.busy}
+      onclick={() => editor.extract()}
+      title="Estrai"
+    >
+      <FileOutput class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Estrai</span>
     </button>
     <button
       type="button"
       class={button}
       disabled={editor.busy}
       onclick={() => (choosesWhere ? editor.insertFromDialog() : input?.click())}
+      title="Inserisci PDF"
     >
-      <FilePlus class="size-4" /> Inserisci PDF
+      <FilePlus class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Inserisci PDF</span>
     </button>
     <input
       bind:this={input}
@@ -111,8 +138,33 @@
         e.currentTarget.value = '';
       }}
     />
-    <button type="button" class={button} disabled={!editor.canUndo || editor.busy} onclick={() => editor.undo()}>
-      <Undo2 class="size-4" /> Annulla
+    <button
+      type="button"
+      class={[button, editor.attachmentsOpen && 'border-primary bg-accent']}
+      aria-pressed={editor.attachmentsOpen}
+      title={editor.facturx ? 'Fattura elettronica Factur-X e allegati' : 'Allegati del documento'}
+      onclick={() => (editor.attachmentsOpen = !editor.attachmentsOpen)}
+    >
+      {#if editor.facturx}
+        <ReceiptText class="size-4" />
+      {:else}
+        <Paperclip class="size-4" />
+      {/if}
+      <span class="sr-only min-[1900px]:not-sr-only"
+        >Allegati{editor.attachments.length > 0 ? ` (${editor.attachments.length})` : ''}</span
+      >
+      {#if editor.attachments.length > 0}<span class="min-[1900px]:hidden" aria-hidden="true"
+          >{editor.attachments.length}</span
+        >{/if}
+    </button>
+    <button
+      type="button"
+      class={button}
+      disabled={!editor.canUndo || editor.busy}
+      onclick={() => editor.undo()}
+      title="Annulla"
+    >
+      <Undo2 class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Annulla</span>
     </button>
     <button
       type="button"
@@ -124,8 +176,14 @@
       <FileDown class="size-4" /> Salva
     </button>
     {#if choosesWhere}
-      <button type="button" class={button} disabled={editor.busy} onclick={() => editor.save(true)}>
-        <FileDown class="size-4" /> Salva con nome
+      <button
+        type="button"
+        class={button}
+        disabled={editor.busy}
+        onclick={() => editor.save(true)}
+        title="Salva con nome"
+      >
+        <FileDown class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Salva con nome</span>
       </button>
     {/if}
   </div>

@@ -3,6 +3,7 @@
 // module by scripts/sync-engine.mjs.
 export interface CaprioleModule {
   HEAPU8: Uint8Array;
+  HEAP32: Int32Array;
   HEAPU32: Uint32Array;
   UTF8ToString(pointer: number): string;
   stringToUTF8(text: string, pointer: number, maxBytes: number): void;

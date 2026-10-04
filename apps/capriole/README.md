@@ -43,6 +43,15 @@ appearance, so that every reader shows it; every value goes through undo. The si
 page's fields with their values (a click goes to the field). Signatures, push buttons and read-only
 fields are shown by the page, not filled.
 
+**Attachments and Factur-X** (phase 8f): "Allegati" opens a panel beside the pages: the document's
+attachments (its own, and those of file attachment notes, with their page) — downloaded, added (chosen
+or dropped in; associated with the document as supplements), removed —, every change through undo. A
+document carrying a Factur-X / ZUGFeRD invoice shows it: its profile, and the invoice read from its XML
+(number and date, seller and buyer, taxable amount, tax, total, due date). "Crea Factur-X con un XML…"
+embeds an invoice's XML (a Cross Industry Invoice) with its XMP metadata; a PDF that is not PDF/A-3 is
+said not to be a conforming Factur-X yet (conversion: phase 8i). Below 1900 pixels the page toolbar's
+secondary buttons show their icons only (their names stay, for screen readers and as tooltips).
+
 Same stack as the Inspector (ADR 0008, the workspace's frontend standards). Keyboard: Ctrl/Cmd-click
 adds a page to the selection, Shift-click a range, Ctrl/Cmd+A selects all, Delete deletes, Ctrl/Cmd+Z
 undoes; the arrows in the toolbar move the selected pages. Undo keeps whole copies of the document

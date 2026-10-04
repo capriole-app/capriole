@@ -325,6 +325,53 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
       );
       return { value: null, transfer: [] };
     }
+    case 'attachments':
+      return {
+        value: takeJson(m, (out) => m._capriole_document_attachments_json(requireDocument(), out)),
+        transfer: [],
+      };
+    case 'attachmentData': {
+      const document = requireDocument();
+      let checksum = -1;
+      const data = withScratch(m, 4, (outChecksum) => {
+        const bytes = takeBytes(m, (outData, outSize) =>
+          m._capriole_document_attachment_data(document, request.ref[0], request.ref[1], outData, outSize, outChecksum),
+        );
+        checksum = m.HEAP32[outChecksum >> 2]!;
+        return bytes;
+      });
+      return { value: { data, checksum: checksum < 0 ? null : checksum === 1 }, transfer: [data] };
+    }
+    case 'attachmentAdd': {
+      const document = requireDocument();
+      const bytes = new Uint8Array(request.data);
+      const ref = withScratch(m, Math.max(bytes.length, 1), (data) => {
+        m.HEAPU8.set(bytes, data);
+        return withString(m, JSON.stringify(request.spec), (spec) =>
+          withScratch(m, 8, (out) => {
+            check(m, m._capriole_document_attachment_add(document, spec, data, bytes.length, out, out + 4));
+            return [m.HEAPU32[out >> 2]!, m.HEAPU32[(out >> 2) + 1]!] as [number, number];
+          }),
+        );
+      });
+      return { value: ref, transfer: [] };
+    }
+    case 'attachmentRemove':
+      check(m, m._capriole_document_attachment_remove(requireDocument(), request.ref[0], request.ref[1]));
+      return { value: null, transfer: [] };
+    case 'facturx':
+      return { value: takeJson(m, (out) => m._capriole_document_facturx_json(requireDocument(), out)), transfer: [] };
+    case 'facturxEmbed': {
+      const document = requireDocument();
+      const bytes = new Uint8Array(request.xml);
+      const result = withScratch(m, Math.max(bytes.length, 1), (xml) => {
+        m.HEAPU8.set(bytes, xml);
+        return withString(m, request.date, (date) =>
+          takeJson(m, (out) => m._capriole_document_facturx_embed(document, xml, bytes.length, date, out)),
+        );
+      });
+      return { value: result, transfer: [] };
+    }
     case 'formFields':
       return {
         value: takeJson(m, (out) => m._capriole_document_form_fields_json(requireDocument(), out)),
