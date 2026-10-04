@@ -430,6 +430,58 @@ TEST(CApiDocument, Redaction) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, Signing) {
+  std::ifstream in(std::string(CAPRIOLE_TEST_DATA_DIR) + "/signing/ec.p12", std::ios::binary);
+  const std::vector<char> p12_chars((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  const auto* p12 = reinterpret_cast<const std::uint8_t*>(p12_chars.data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  char* json = nullptr;
+  EXPECT_EQ(capriole_pkcs12_info(p12, p12_chars.size(), "wrong", &json), CAPRIOLE_ERROR_PASSWORD_REQUIRED);
+  ASSERT_EQ(capriole_pkcs12_info(p12, p12_chars.size(), "capriole", &json), CAPRIOLE_OK) << capriole_last_error_message();
+  EXPECT_TRUE(take_json(json).starts_with(R"x({"name":"Anna Bianchi (test)")x"));
+
+  capriole_document* document = open_document(sample_pdf());
+  ASSERT_EQ(capriole_document_signatures_json(document, nullptr, 0, &json), CAPRIOLE_OK);
+  EXPECT_EQ(take_json(json), "[]");
+  capriole_signing* signing = nullptr;
+  for (const char* bad : {"", "[]", R"({"date":"D:2026","rect":[1,2]})", R"({"date":"D:2026","lines":"x"})", R"({"date":"D:2026","page":-1})"}) {
+    SCOPED_TRACE(bad);
+    EXPECT_NE(capriole_document_sign_begin(document, bad, p12, p12_chars.size(), "capriole", &signing), CAPRIOLE_OK);
+  }
+  EXPECT_EQ(capriole_document_sign_begin(document, R"({"date":"D:2026"})", p12, p12_chars.size(), "wrong", &signing), CAPRIOLE_ERROR_PASSWORD_REQUIRED);
+  ASSERT_EQ(capriole_document_sign_begin(document, R"({"date":"D:20261004150000Z","rect":[10,10,200,60],"reason":"Prova","timestamp":true})", p12,
+                                         p12_chars.size(), "capriole", &signing),
+            CAPRIOLE_OK)
+      << capriole_last_error_message();
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  ASSERT_EQ(capriole_signing_timestamp_request(signing, &data, &size), CAPRIOLE_OK);
+  EXPECT_GT(size, 40U);
+  capriole_free(data);
+  ASSERT_EQ(capriole_document_sign_finish(document, signing, nullptr, 0, &data, &size), CAPRIOLE_OK) << capriole_last_error_message();
+  capriole_signing_free(signing);
+  capriole_free(data);
+
+  // The document goes on from the signed file: the signature is there, and an edit is appended after it.
+  ASSERT_EQ(capriole_document_signatures_json(document, nullptr, 0, &json), CAPRIOLE_OK);
+  const std::string list = take_json(json);
+  EXPECT_NE(list.find(R"("integrity":"valid")"), std::string::npos) << list;
+  EXPECT_NE(list.find(R"("reason":"Prova")"), std::string::npos) << list;
+  EXPECT_NE(list.find(R"("coversWholeFile":true)"), std::string::npos) << list;
+  std::uint32_t number = 0;
+  std::uint32_t generation = 0;
+  ASSERT_EQ(capriole_document_annotation_add(document, 0, R"({"kind":"note","rect":[250,10,270,30]})", &number, &generation), CAPRIOLE_OK);
+  ASSERT_EQ(capriole_document_save(document, 1, nullptr, &data, &size), CAPRIOLE_OK);
+  capriole_document* edited = nullptr;
+  ASSERT_EQ(capriole_document_open(data, size, nullptr, 0, &edited), CAPRIOLE_OK);
+  capriole_free(data);
+  ASSERT_EQ(capriole_document_signatures_json(edited, nullptr, 0, &json), CAPRIOLE_OK);
+  const std::string after = take_json(json);
+  EXPECT_NE(after.find(R"("integrity":"valid")"), std::string::npos) << after;
+  EXPECT_NE(after.find(R"("coversWholeFile":false)"), std::string::npos) << after;
+  capriole_document_close(edited);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {
   // A Japanese font that is not embedded, with a predefined CMap: both come from the resource pack.
   capriole::test::PdfBuilder b;

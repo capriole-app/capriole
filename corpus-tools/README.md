@@ -148,3 +148,14 @@ it showed once — when written as it reads — at least once fewer (whole words
 `/question`); the image, as Poppler extracts it, has a half of one colour it did not have; the page
 outside the areas draws as before in all three engines (similarity ≥ 0.99, areas whitened); `qpdf --check`
 no worse. Exit criterion of phase 8g (engine): every page passes.
+
+## Firme digitali
+
+`check_signatures.py` (criterio di uscita della fase 8h, motore): con la PKI di prova di
+`tests/data/signing` firma `--files` file dei corpora (RSA ed ECDSA, visibili e invisibili, uno su
+quattro con marca temporale di una TSA locale, `openssl ts -reply`) e controlla che Poppler (`pdfsig`,
+NSS con la CA di prova) e OpenSSL (`openssl cms -verify`, `openssl ts -verify`) li trovino validi, che
+la firma sia una revisione incrementale e `qpdf --check` non peggiori, che Capriole la rilegga valida e
+fidata al livello fatto, e che un byte cambiato la renda non valida per tutti e tre; su ogni file dei
+corpora con una `/ByteRange` confronta il verdetto di Capriole con quello di Poppler. Strumenti esterni:
+`pdfsig`, `certutil` (NSS), `openssl`, `qpdf`.

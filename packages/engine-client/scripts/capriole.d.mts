@@ -80,6 +80,26 @@ export interface CaprioleModule {
   _capriole_document_facturx_embed(document: number, xml: number, size: number, date: number, out: number): number;
   _capriole_document_page_redact(document: number, pageIndex: number, spec: number, out: number): number;
   _capriole_document_page_apply_redactions(document: number, pageIndex: number, out: number): number;
+  _capriole_pkcs12_info(p12: number, size: number, password: number, out: number): number;
+  _capriole_document_sign_begin(
+    document: number,
+    spec: number,
+    p12: number,
+    p12Size: number,
+    password: number,
+    outSigning: number,
+  ): number;
+  _capriole_signing_timestamp_request(signing: number, outData: number, outSize: number): number;
+  _capriole_document_sign_finish(
+    document: number,
+    signing: number,
+    response: number,
+    responseSize: number,
+    outData: number,
+    outSize: number,
+  ): number;
+  _capriole_signing_free(signing: number): void;
+  _capriole_document_signatures_json(document: number, anchors: number, anchorsSize: number, out: number): number;
   _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,

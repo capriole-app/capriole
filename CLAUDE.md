@@ -28,8 +28,9 @@ ci/          immagine della CI (Jenkinsfile alla radice)     docs/  piano, setup
 
 Aree in `engine/`: `core` (errori, ByteSource, SourceReader, limiti), `parser` (lexer, oggetti, xref,
 object stream, loader — rigoroso), `model` (Object), `document` (Document: modello basso con stato delle
-modifiche), `filters`, `crypto` (primitive + security handler). Previste: `repair` (tolleranza, SEPARATO
-da parser), `writer`, `content` (interprete), `render`, `text`, `edit`.
+modifiche), `filters`, `crypto` (primitive, security handler; ASN.1, PKCS#12, CMS sopra Mbed TLS),
+`repair` (tolleranza, SEPARATO da parser), `writer`, `content` (interprete), `render`, `text`, `edit`,
+`signature` (verifica delle firme).
 Dati di test in `tests/data/` (fixture generate da script versionati), helper in `tests/support/`.
 
 ## Comandi

@@ -231,6 +231,44 @@ capriole_status capriole_document_page_apply_redactions(capriole_document* docum
 /* ── Attachments and Factur-X (edit/attachments.hpp, edit/facturx.hpp) ────────────────────── */
 
 /*
+ * Digital signatures (PLAN.md phase 8h; format in capi/README.md).
+ *
+ * The certificate of a PKCS#12 file (.p12, .pfx) as JSON: {"name", "subject", "issuer", "serial",
+ * "notBefore", "notAfter", "key", "ca", "chain"} (chain: how many other certificates it has).
+ * CAPRIOLE_ERROR_PASSWORD_REQUIRED for a wrong password.
+ */
+capriole_status capriole_pkcs12_info(const uint8_t* p12, size_t size, const char* password, char** json);
+
+typedef struct capriole_signing capriole_signing;
+
+/*
+ * Signs the document with the key of a PKCS#12 file, in two steps. spec_json: {"date": PDF date
+ * (required), "page": index (0), "rect": [x0,y0,x1,y1] as shown | null (invisible), "lines": [text…]
+ * ("{signer}" becomes the certificate's name), "fieldName", "name", "reason", "location",
+ * "contactInfo", "timestamp": room for a time stamp (false)}. *signing holds the signed revision until
+ * capriole_document_sign_finish; release it with capriole_signing_free. An encrypted document, or one
+ * whose structure needed repairs, is refused (CAPRIOLE_ERROR_UNSUPPORTED).
+ */
+capriole_status capriole_document_sign_begin(capriole_document* document, const char* spec_json, const uint8_t* p12, size_t p12_size, const char* password,
+                                             capriole_signing** signing);
+/* The RFC 3161 request to send to a time-stamping authority (none — size 0 — without "timestamp"). */
+capriole_status capriole_signing_timestamp_request(capriole_signing* signing, uint8_t** data, size_t* size);
+/*
+ * The signed file (with the time stamp of an RFC 3161 response, when given: response may be NULL). The
+ * document is reopened from it: what comes next is appended after the signature.
+ */
+capriole_status capriole_document_sign_finish(capriole_document* document, capriole_signing* signing, const uint8_t* response, size_t response_size,
+                                              uint8_t** data, size_t* size);
+void capriole_signing_free(capriole_signing* signing);
+
+/*
+ * The document's signatures, verified, as JSON (an array; format in capi/README.md). anchors: the
+ * roots the host trusts — a PEM bundle, or DER certificates one after the other —, NULL not to check
+ * the signers' identity.
+ */
+capriole_status capriole_document_signatures_json(capriole_document* document, const uint8_t* anchors, size_t anchors_size, char** json);
+
+/*
  * The document's attachments as JSON (an array): for each its file specification's reference, its name
  * in /EmbeddedFiles, file name, description, MIME type, size, dates, relationship, page (for a file
  * attachment annotation; null for the document's), and whether it is associated (/AF). Format in

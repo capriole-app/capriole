@@ -92,6 +92,17 @@ struct DefaultAppearance {
 };
 [[nodiscard]] DefaultAppearance parse_da(std::string_view da);
 
+// Content drawn in the page's coordinates as shown (y down), placed into page space.
+[[nodiscard]] std::string in_view(const Page& page, const std::string& content);
+
+// The page's /Annots as an array, and where it lives (the page, or its own object).
+struct Annots {
+  model::Array list;
+  std::optional<model::ObjectRef> ref;
+};
+[[nodiscard]] Annots annots_of(Document& document, const Page& page);
+[[nodiscard]] Result<void> write_annots(Document& document, const Page& page, Annots annots);
+
 // A form XObject: content in the space of /BBox (through /Matrix when given).
 [[nodiscard]] model::Stream form_xobject(const graphics::Rect& bbox, model::Dict resources, std::string_view content,
                                          const std::optional<graphics::Matrix>& matrix = std::nullopt);

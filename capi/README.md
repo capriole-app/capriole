@@ -179,6 +179,52 @@ removes them. A redacted document is saved fully, leaving out what nothing refer
 `capriole_document_save` with `incremental` is then `CAPRIOLE_ERROR_UNSUPPORTED` (it would keep the
 original bytes).
 
+## Digital signatures
+
+`capriole_document_signatures_json(document, anchors, size, &json)` lists the signed signature fields,
+verified (`anchors`: the roots the host trusts, a PEM bundle or DER certificates one after the other;
+NULL: the signers' identity is not checked):
+
+```json
+[{"field":[12,0], "fieldName":"Signature1", "subFilter":"ETSI.CAdES.detached", "documentTimestamp":false,
+  "name":"…", "reason":"…", "location":"…", "contactInfo":"…", "date":"D:…",
+  "integrity":"valid" | "invalid" | "unsupported", "problem":"…", "digest":"SHA-256" | null,
+  "coversWholeFile":true, "signedBytes":10485,
+  "signer":{"name","subject","issuer","serial","notBefore","notAfter","key","ca"} | null,
+  "level":"B-B" | "B-T" | "B-LT" | "B-LTA" | "", "timestamp":"D:…" | "", "timestampInvalid":false,
+  "signingTime":"D:…", "certificateValidAtSigning":true,
+  "trust":"trusted" | "untrusted" | "notChecked", "trustProblem":"…",
+  "page":0 | null, "rect":[x0,y0,x1,y1] | null}, …]
+```
+
+`integrity`: what was signed is unchanged and the signer's key verifies it (adbe.pkcs7.detached,
+ETSI.CAdES.detached, adbe.pkcs7.sha1, adbe.x509.rsa_sha1, ETSI.RFC3161 document time stamps);
+`coversWholeFile` false: revisions were added after it (later changes, or other signatures).
+`signingTime`: the time stamp's (verified) when there is one, else `/M`, what the signer claims.
+`certificateValidAtSigning`: within the certificate's validity at that time. Revocation is not checked.
+`rect` and `page`: where a visible signature is shown (the page as shown); null for an invisible one.
+
+Signing takes a PKCS#12 file (`capriole_pkcs12_info` reads its certificate first:
+`{"name","subject","issuer","serial","notBefore","notAfter","key","ca","chain"}`;
+`CAPRIOLE_ERROR_PASSWORD_REQUIRED` for a wrong password) and is done in two steps:
+
+1. `capriole_document_sign_begin(document, spec_json, p12, size, password, &signing)` with
+   `{"date":"D:…" (required), "page":0, "rect":[x0,y0,x1,y1] | null, "lines":["Firmato da {signer}", …],
+   "fieldName", "name", "reason", "location", "contactInfo", "timestamp":false}`: a signature field on
+   the page (visible in the rectangle with the lines of text — `{signer}` the certificate's name;
+   by default "Digitally signed by …" and the date —, or invisible) and its signature dictionary
+   (PAdES baseline: `/SubFilter /ETSI.CAdES.detached`, SHA-256, signing-certificate-v2) are written as
+   a new revision and signed. Encrypted documents, and documents whose structure needed repairs (save
+   fully and reopen first), are refused (`CAPRIOLE_ERROR_UNSUPPORTED`).
+2. With `"timestamp":true`, `capriole_signing_timestamp_request` gives the RFC 3161 request, which the
+   host sends to a time-stamping authority (the engine makes no network calls);
+   `capriole_document_sign_finish(document, signing, response, size, &data, &size)` puts the response's
+   token in (checked: granted, of this signature; B-T) — or none, NULL — and gives the signed file; the
+   document is reopened from it, so what is edited next is appended after the signature.
+   `capriole_signing_free` releases the handle.
+
+The same document, key and spec give the same bytes (the date is the caller's).
+
 ## Attachments and Factur-X
 
 `capriole_document_attachments_json` lists the document's attachments — the `/EmbeddedFiles` name

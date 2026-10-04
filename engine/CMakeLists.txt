@@ -13,6 +13,13 @@ add_library(capriole_engine STATIC
   src/core/source_reader.cpp
   src/core/version.cpp
   src/crypto/cipher.cpp
+  src/signature/signatures.cpp
+  src/crypto/cms.cpp
+  src/crypto/der.cpp
+  src/crypto/digest.cpp
+  src/crypto/mbed.cpp
+  src/crypto/pkcs12.cpp
+  src/crypto/rc2.cpp
   src/crypto/hash.cpp
   src/crypto/security_handler.cpp
   src/document/document.cpp
@@ -29,6 +36,7 @@ add_library(capriole_engine STATIC
   src/edit/forms.cpp
   src/edit/pages.cpp
   src/edit/redact.cpp
+  src/edit/sign.cpp
   src/render/raster.cpp
   src/text/extract.cpp
   src/filters/basic.cpp
@@ -89,7 +97,7 @@ if(NOT MSVC)
   target_compile_options(capriole_jpeg_shim PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow $<$<BOOL:${CAPRIOLE_WARNINGS_AS_ERRORS}>:-Werror>)
 endif()
 
-target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim capriole::openjpeg capriole::freetype capriole::lcms2)
+target_link_libraries(capriole_engine PRIVATE capriole::zlib blend2d::blend2d capriole_jpeg_shim capriole::openjpeg capriole::freetype capriole::lcms2 capriole::mbedtls)
 capriole_set_warnings(capriole_engine)
 
 configure_file(src/core/version_config.hpp.in include/capriole/core/version_config.hpp @ONLY)

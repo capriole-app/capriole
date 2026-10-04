@@ -4,6 +4,7 @@
 //   *.pdf           opened as a Document; every object loaded, every stream decoded, page tree walked
 //   security/*.bin  an /Encrypt dictionary followed by data, fed to the standard security handler
 //   render/*        a document whose first pages are interpreted and drawn, as fuzz_render does
+//   pkcs12/*        a PKCS#12 file read with the password of the fixtures and an empty one, as fuzz_pkcs12 does
 //
 // A case passes when it does not crash: under ASan/UBSan any memory error aborts the test binary.
 // Errors are expected and fine — these inputs are hostile by construction.
@@ -18,6 +19,7 @@
 
 #include "capriole/content/interpreter.hpp"
 #include "capriole/core/source_reader.hpp"
+#include "capriole/crypto/pkcs12.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
 #include "capriole/parser/object_parser.hpp"
@@ -118,6 +120,11 @@ TEST(Regression, ReplayAllCases) {
     } else if (entry.path().parent_path().filename() == "security" && entry.path().extension() == ".bin") {
       replay_security(bytes);
       ++cases;
+    } else if (entry.path().parent_path().filename() == "pkcs12") {
+      for (const char* password : {"capriole", ""}) {
+        (void)crypto::read_pkcs12(bytes, password);
+      }
+      ++cases;
     }
   }
   EXPECT_GT(cases, 0U);
@@ -136,6 +143,15 @@ TEST(Regression, EncryptVersionAndRevisionMustMatch) {
 // strokes) made Blend2D's stroker read outside the bitmap. Geometry out of range is now clipped in
 // double precision before Blend2D sees it (render/raster.cpp, kSafeCoordinate).
 TEST(Regression, AstronomicCoordinatesDoNotReachBlend2D) { replay_render(read_file(kRegressionDir / "render" / "astronomic_ctm.pdf")); }
+
+// fuzz_pkcs12 (2026-10-04): a PBES2-encrypted part with no bytes in it reached Mbed TLS's CBC decryption
+// as a null pointer, which it copies from (undefined behaviour). Now "nothing encrypted": a damaged file.
+TEST(Regression, Pkcs12WithNothingEncrypted) {
+  const auto bytes = read_file(kRegressionDir / "pkcs12" / "empty_encrypted_content.p12");
+  auto read = crypto::read_pkcs12(bytes, "capriole");
+  ASSERT_FALSE(read.has_value());
+  EXPECT_EQ(read.error().code, ErrorCode::kSyntax);
+}
 
 }  // namespace
 }  // namespace capriole

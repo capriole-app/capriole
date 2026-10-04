@@ -22,6 +22,8 @@
 #include "capriole/core/byte_source.hpp"
 #include "capriole/core/error.hpp"
 #include "capriole/core/version_config.hpp"
+#include "capriole/crypto/cms.hpp"
+#include "capriole/crypto/pkcs12.hpp"
 #include "capriole/crypto/security_handler.hpp"
 #include "capriole/document/document.hpp"
 #include "capriole/edit/annotations.hpp"
@@ -30,15 +32,18 @@
 #include "capriole/edit/forms.hpp"
 #include "capriole/edit/pages.hpp"
 #include "capriole/edit/redact.hpp"
+#include "capriole/edit/sign.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
 #include "capriole/model/text_string.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/render/raster.hpp"
 #include "capriole/repair/repair.hpp"
+#include "capriole/signature/signatures.hpp"
 #include "capriole/text/text.hpp"
 #include "capriole/writer/byte_sink.hpp"
 #include "capriole/writer/save.hpp"
+#include "capriole/writer/serializer.hpp"
 #include "json.hpp"
 #include "json_read.hpp"
 
@@ -246,6 +251,10 @@ std::string summary_json(capriole::Document& document) {
 // The handle behind capriole_document: the C API's view of a capriole::Document.
 struct capriole_document {
   capriole::Document document;
+};
+
+struct capriole_signing {
+  capriole::edit::PreparedSignature prepared;
 };
 
 extern "C" {
@@ -798,6 +807,148 @@ capriole::Result<capriole::edit::AnnotationSpec> spec_of(const capriole::capi::J
   return spec;
 }
 
+void append_certificate(std::string& out, const capriole::crypto::CertificateInfo& c) {
+  const auto text = [&](std::string_view key, const std::string& utf8) {
+    out += std::format(R"("{}":)", key);
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(utf8));
+  };
+  out += "{";
+  text("name", c.common_name);
+  out += ",";
+  text("subject", c.subject);
+  out += ",";
+  text("issuer", c.issuer);
+  out += std::format(R"(,"serial":"{}","notBefore":"{}","notAfter":"{}","key":"{}","ca":{}}})", c.serial, c.not_before, c.not_after, c.key, c.ca);
+}
+
+std::string_view integrity_name(capriole::signature::Integrity integrity) {
+  switch (integrity) {
+    case capriole::signature::Integrity::kValid:
+      return "valid";
+    case capriole::signature::Integrity::kInvalid:
+      return "invalid";
+    case capriole::signature::Integrity::kUnsupported:
+      return "unsupported";
+  }
+  return "";
+}
+
+std::string_view trust_name(capriole::signature::Trust trust) {
+  switch (trust) {
+    case capriole::signature::Trust::kTrusted:
+      return "trusted";
+    case capriole::signature::Trust::kUntrusted:
+      return "untrusted";
+    case capriole::signature::Trust::kNotChecked:
+      return "notChecked";
+  }
+  return "";
+}
+
+std::string signatures_json(const std::vector<capriole::signature::SignatureInfo>& list) {
+  std::string out = "[";
+  for (std::size_t i = 0; i < list.size(); ++i) {
+    const auto& s = list[i];
+    const auto text = [&](std::string_view key, const std::string& utf8) {
+      out += std::format(R"(,"{}":)", key);
+      capriole::capi::append_json_text(out, capriole::model::from_utf8(utf8));
+    };
+    out += std::format(R"({}{{"field":[{},{}])", i == 0 ? "" : ",", s.field.number, s.field.generation);
+    text("fieldName", s.field_name);
+    text("subFilter", s.sub_filter);
+    out += std::format(R"(,"documentTimestamp":{})", s.document_timestamp);
+    text("name", s.name);
+    text("reason", s.reason);
+    text("location", s.location);
+    text("contactInfo", s.contact_info);
+    out += R"(,"date":)";
+    capriole::capi::append_json_string(out, s.date);
+    out += std::format(R"(,"integrity":"{}")", integrity_name(s.integrity));
+    text("problem", s.problem);
+    out += s.digest ? std::format(R"(,"digest":"{}")", capriole::crypto::name(*s.digest)) : std::string(R"(,"digest":null)");
+    out += std::format(R"(,"coversWholeFile":{},"signedBytes":{},"signer":)", s.covers_whole_file, s.signed_bytes);
+    if (s.signer) {
+      append_certificate(out, *s.signer);
+    } else {
+      out += "null";
+    }
+    out += std::format(R"(,"level":"{}","timestamp":)", s.level);
+    capriole::capi::append_json_string(out, s.timestamp.value_or(""));
+    out += std::format(R"(,"timestampInvalid":{},"signingTime":)", s.timestamp_invalid);
+    capriole::capi::append_json_string(out, s.signing_time);
+    out += std::format(R"(,"certificateValidAtSigning":{},"trust":"{}")", s.certificate_valid_at_signing, trust_name(s.trust));
+    text("trustProblem", s.trust_problem);
+    out += s.page ? std::format(R"(,"page":{})", *s.page) : std::string(R"(,"page":null)");
+    out += s.rect ? std::format(R"(,"rect":[{},{},{},{}]}})", capriole::writer::format_real(s.rect->x0), capriole::writer::format_real(s.rect->y0),
+                                capriole::writer::format_real(s.rect->x1), capriole::writer::format_real(s.rect->y1))
+                  : std::string(R"(,"rect":null})");
+  }
+  return out + "]";
+}
+
+capriole::Result<capriole::edit::SignRequest> sign_request_of(const char* spec_json) {
+  auto spec = capriole::capi::parse_json(spec_json);
+  if (!spec) {
+    return std::unexpected(std::move(spec.error()));
+  }
+  if (spec->object() == nullptr) {
+    return capriole::make_error(capriole::ErrorCode::kSyntax, "a JSON object expected");
+  }
+  capriole::edit::SignRequest request;
+  const auto string_of = [&](std::string_view key, std::string& into) -> capriole::Result<void> {
+    if (const auto* v = spec->get(key); v != nullptr && !std::holds_alternative<std::nullptr_t>(v->value)) {
+      if (v->string() == nullptr) {
+        return capriole::make_error(capriole::ErrorCode::kSyntax, std::format("{}: a string expected", key));
+      }
+      into = *v->string();
+    }
+    return {};
+  };
+  for (const auto& [key, into] : {std::pair<std::string_view, std::string*>{"date", &request.date},
+                                  {"fieldName", &request.field_name},
+                                  {"name", &request.name},
+                                  {"reason", &request.reason},
+                                  {"location", &request.location},
+                                  {"contactInfo", &request.contact_info}}) {
+    if (auto read = string_of(key, *into); !read) {
+      return std::unexpected(std::move(read.error()));
+    }
+  }
+  if (const auto* page = spec->get("page")) {
+    const auto n = page->number();
+    if (!n || *n < 0 || *n > 4294967295.0 || *n != std::floor(*n)) {
+      return capriole::make_error(capriole::ErrorCode::kSyntax, "page: an index expected");
+    }
+    request.page = static_cast<std::uint32_t>(*n);
+  }
+  if (const auto* rect = spec->get("rect"); rect != nullptr && !std::holds_alternative<std::nullptr_t>(rect->value)) {
+    auto r = rect_in(rect, "rect");
+    if (!r) {
+      return std::unexpected(std::move(r.error()));
+    }
+    request.rect = *r;
+  }
+  if (const auto* lines = spec->get("lines")) {
+    if (lines->array() == nullptr) {
+      return capriole::make_error(capriole::ErrorCode::kSyntax, "lines: an array of strings expected");
+    }
+    for (const auto& line : *lines->array()) {
+      if (line.string() == nullptr) {
+        return capriole::make_error(capriole::ErrorCode::kSyntax, "lines: an array of strings expected");
+      }
+      request.lines.push_back(*line.string());
+    }
+  }
+  if (const auto* timestamp = spec->get("timestamp")) {
+    const auto b = timestamp->boolean();
+    if (!b) {
+      return capriole::make_error(capriole::ErrorCode::kSyntax, "timestamp: a boolean expected");
+    }
+    request.timestamp = *b;
+  }
+  return request;
+}
+
 std::string redaction_json(const capriole::edit::RedactionReport& r) {
   return std::format(R"({{"glyphs":{},"paths":{},"imagesRemoved":{},"imagesCleared":{},"annotations":{}}})", r.glyphs, r.paths, r.images_removed,
                      r.images_cleared, r.annotations);
@@ -1302,6 +1453,115 @@ capriole_status capriole_document_save(capriole_document* document, int incremen
       return fail(report.error());
     }
     return hand_over(sink.data(), data, size);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_pkcs12_info(const uint8_t* p12, size_t size, const char* password, char** json) {
+  g_last_error.clear();
+  if ((p12 == nullptr && size != 0) || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto credentials = capriole::crypto::read_pkcs12(std::as_bytes(std::span(p12, size)), password != nullptr ? password : "");
+    if (!credentials) {
+      return fail(credentials.error());
+    }
+    auto info = capriole::crypto::certificate_info(credentials->certificate());
+    if (!info) {
+      return fail(info.error());
+    }
+    std::string out;
+    append_certificate(out, *info);
+    out.pop_back();
+    out += std::format(R"(,"chain":{}}})", credentials->chain().size());
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_sign_begin(capriole_document* document, const char* spec_json, const uint8_t* p12, size_t p12_size, const char* password,
+                                             capriole_signing** signing) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || (p12 == nullptr && p12_size != 0) || signing == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  *signing = nullptr;
+  try {
+    auto request = sign_request_of(spec_json);
+    if (!request) {
+      return fail(request.error());
+    }
+    auto credentials = capriole::crypto::read_pkcs12(std::as_bytes(std::span(p12, p12_size)), password != nullptr ? password : "");
+    if (!credentials) {
+      return fail(credentials.error());
+    }
+    auto prepared = capriole::edit::prepare_signature(document->document, *credentials, *request);
+    if (!prepared) {
+      return fail(prepared.error());
+    }
+    *signing = new capriole_signing{.prepared = std::move(*prepared)};  // NOLINT(cppcoreguidelines-owning-memory): released by capriole_signing_free
+    return CAPRIOLE_OK;
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_signing_timestamp_request(capriole_signing* signing, uint8_t** data, size_t* size) {
+  g_last_error.clear();
+  if (signing == nullptr || data == nullptr || size == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    return hand_over(signing->prepared.timestamp_request, data, size);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_sign_finish(capriole_document* document, capriole_signing* signing, const uint8_t* response, size_t response_size,
+                                              uint8_t** data, size_t* size) {
+  g_last_error.clear();
+  if (document == nullptr || signing == nullptr || (response == nullptr && response_size != 0) || data == nullptr || size == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto file = capriole::edit::finish_signature(signing->prepared, std::as_bytes(std::span(response, response_size)));
+    if (!file) {
+      return fail(file.error());
+    }
+    // The document goes on from the signed file: what is edited next is appended after the signature.
+    auto reopened = capriole::Document::open(std::make_unique<capriole::MemoryByteSource>(std::vector<std::byte>(*file)),
+                                             capriole::OpenOptions{.limits = capriole::kDefaultParseLimits, .password = "", .repair = true});
+    if (!reopened) {
+      return fail(reopened.error());
+    }
+    document->document = std::move(*reopened);
+    return hand_over(*file, data, size);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+void capriole_signing_free(capriole_signing* signing) {
+  delete signing;  // NOLINT(cppcoreguidelines-owning-memory): the handle made by capriole_document_sign_begin
+}
+
+capriole_status capriole_document_signatures_json(capriole_document* document, const uint8_t* anchors, size_t anchors_size, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || (anchors == nullptr && anchors_size != 0) || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    capriole::signature::VerifyOptions options;
+    options.trust_anchors = std::as_bytes(std::span(anchors, anchors_size));
+    auto list = capriole::signature::list_signatures(document->document, options);
+    if (!list) {
+      return fail(list.error());
+    }
+    return hand_over(signatures_json(*list), json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

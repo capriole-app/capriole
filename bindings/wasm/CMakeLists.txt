@@ -43,6 +43,12 @@ set(_capriole_exports
   _capriole_document_facturx_embed
   _capriole_document_page_redact
   _capriole_document_page_apply_redactions
+  _capriole_pkcs12_info
+  _capriole_document_sign_begin
+  _capriole_signing_timestamp_request
+  _capriole_document_sign_finish
+  _capriole_signing_free
+  _capriole_document_signatures_json
   _capriole_resource_add
   _capriole_last_missing_resources_json
   _malloc

@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · 8h firma PAdES · 8i PDF/A · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app) · 8i PDF/A · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -1003,6 +1003,60 @@ del motore: `applyRedactions`, il tipo `redact`. Tolti due `console.log` di debu
 Criterio: test e2e (segna testo e un'area, applica dopo la conferma, annulla e riapplica, salva — nel file
 salvato, flussi decompressi, la parola tolta non c'è, le altre sì, nessuna marcatura) verde.
 
+**8h-1 (2026-10-04) — firme digitali nel motore: uscita raggiunta.** Dipendenza nuova: **Mbed TLS 3.6.7
+LTS** (Apache-2.0, scelta tra le due licenze), compilata dai sorgenti con una configurazione nostra
+(`cmake/mbedtls/`): X.509, RSA, ECDSA, hash, la cifratura delle chiavi PKCS#12; niente TLS, PSA,
+entropia od orologio della piattaforma. OpenSSL resta uno strumento di verifica esterno. Le strutture
+sono del motore:
+- `crypto/der`: ASN.1 BER/DER in lettura (input ostile: lunghezze controllate, annidamento limitato,
+  lunghezze indefinite e stringhe costruite di BER) e DER in scrittura.
+- `crypto/pkcs12`: file `.p12`/`.pfx` — MAC verificato per primo (password sbagliata ≠ file guasto),
+  PBES2 (PBKDF2 con AES o 3DES, OpenSSL 3) e le PBE PKCS#12 con 3DES o **RC2** (strumenti vecchi e Windows:
+  RC2 scritto qui, solo decifratura, Mbed TLS non lo ha più), password UTF-8 come BMPString; la chiave si
+  cancella dalla memoria quando non serve più. Non letti: PBMAC1, certificati in EnvelopedData.
+- `crypto/cms`: firma CMS staccata in forma PAdES baseline (SHA-256; content-type, message-digest,
+  signing-certificate-v2; nessun signing-time: vale `/M`), RSA PKCS#1 v1.5 o ECDSA **deterministici**
+  (RFC 6979; l'accecamento da un DRBG seminato dalla chiave e dal digest: stessi input, stessi byte);
+  verifica (RSA v1.5 e PSS, ECDSA, MD5…SHA-512; firmatario per identificativo, altrimenti per chiave);
+  marche temporali RFC 3161 (richiesta, risposta controllata: concessa, della firma, verificata); catena
+  verso radici date dall'host (il motore non si fida di nessuno da solo); validità del certificato
+  all'ora della firma, non a quella corrente.
+- `signature/signatures`: le firme dei campi del modulo, verificate — adbe.pkcs7.detached,
+  ETSI.CAdES.detached, adbe.pkcs7.sha1, adbe.x509.rsa_sha1, marche temporali di documento ETSI.RFC3161 —:
+  integrità, copertura (tutto il file, o revisioni aggiunte dopo), ora (della marca, altrimenti `/M`),
+  livello PAdES (B-B, B-T; B-LT e B-LTA se ci sono `/DSS` e una marca di documento successiva), fiducia,
+  dove si vede.
+- `edit/sign`: la firma come nuova revisione (salvataggio incrementale): campo e widget (visibile, con
+  righe di Helvetica nel riquadro — `{signer}` è il nome del certificato —, o invisibile), `/SigFlags 3`,
+  spazio in `/Contents` misurato con una firma di prova, `/ByteRange` scritto al suo posto, poi digest e
+  firma. In due passi per la marca temporale (B-T): la richiesta va all'host, che la manda alla TSA (il
+  motore non fa chiamate di rete). Rifiutati: documenti cifrati, struttura riparata (prima un salvataggio
+  completo).
+
+API C (`capriole_pkcs12_info`, `capriole_document_sign_begin` / `_finish`,
+`capriole_signing_timestamp_request`, `capriole_document_signatures_json`; anche WASM; dopo la firma il
+documento si riapre dai byte firmati, così le modifiche successive vanno dopo la firma), `cpdf sign`
+(marca temporale in due passi, possibili perché la firma è deterministica), `cpdf signatures`, `cpdf p12`;
+PKI di prova versionata (`tests/data/signing/make_fixtures.sh`: chiavi senza valore); fuzz target
+`fuzz_cms`, `fuzz_pkcs12`, `fuzz_signatures`; test.
+
+Corretti strada facendo: un campo firma con `/V` illeggibile era saltato come non firmato (ora: firma non
+valida, come per Poppler); una parte cifrata vuota di un `.p12` arrivava a Mbed TLS come puntatore nullo,
+da cui copia (comportamento indefinito, trovato da `fuzz_pkcs12`: ora file guasto; regressione in
+`tests/regression/pkcs12/`).
+
+Limiti dichiarati: niente revoca (OCSP, CRL) né B-LT/B-LTA in scrittura (dopo la 8i); niente DocMDP
+(le revisioni dopo una firma non si distinguono in permesse e no); niente smart card (PKCS#11: app
+desktop); documenti cifrati non firmati.
+
+Criterio: `corpus-tools/check_signatures.py` — 100 file dei tre corpora firmati (RSA ed ECDSA, 51
+visibili, 24 con marca temporale di una TSA locale; 28 riscritti prima perché riparati, 5 cifrati
+saltati): `pdfsig` (NSS, CA di prova) valida, documento intero, certificato fidato; `openssl cms -verify` e
+`openssl ts -verify` riusciti; salvataggio incrementale e `qpdf --check` mai peggiore; Capriole la rilegge
+valida, fidata, al livello fatto; un byte cambiato la rende non valida per tutti e tre — **100/100**. Firme
+già nei corpora (143 file, 115 firme): il verdetto di Capriole è quello di Poppler per **143/143**.
+Rapporto: `CORPORA/reports/signatures-all-20261004-141842/`.
+
 ---
 
 ## Decisioni aperte (con la fase in cui diventano bloccanti)
@@ -1016,7 +1070,7 @@ salvato, flussi decompressi, la parola tolta non c'è, le altre sì, nessuna mar
 | ~~JPEG 2000 (JPX)~~ | fase 6 | **deciso: OpenJPEG 2.5.4** (ADR 0004), sostituibile |
 | ~~JBIG2 / CCITT con licenza compatibile~~ | fase 6 | **fatto: implementazione propria** |
 | ~~Ordine di lettura del testo~~ | fase 7 | **deciso: ordine del contenuto** (ADR 0007), misurato |
-| Libreria crittografica per PAdES | fase 8 | mbedTLS vs OpenSSL 3 (entrambe Apache-2.0) |
+| ~~Libreria crittografica per PAdES~~ | fase 8 | **decisa: Mbed TLS 3.6 LTS** (8h-1); OpenSSL solo strumento di verifica |
 | Firma qualificata nel browser | fase 8 | smart card non accessibili dal web → desktop o firma remota |
 | ~~Framework UI / shell desktop~~ | fase 8 | **decisi: Svelte 5 + Tauri** (ADR 0008) |
 | Package manager (vcpkg?) | fase 6 | quando le dipendenze native diventano 5+ |

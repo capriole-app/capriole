@@ -24,6 +24,8 @@ add_executable(capriole_unit_tests
   unit/form_test.cpp
   unit/attachment_test.cpp
   unit/redact_test.cpp
+  unit/crypto_signing_test.cpp
+  unit/sign_test.cpp
   unit/blend_test.cpp
   unit/ccitt_test.cpp
   unit/dct_test.cpp

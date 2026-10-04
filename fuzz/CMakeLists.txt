@@ -48,3 +48,14 @@ target_include_directories(fuzz_icc PRIVATE ${PROJECT_SOURCE_DIR}/engine/src)
 # These two exercise the engine's internals (font/): its sources are their include path.
 target_include_directories(fuzz_font PRIVATE ${PROJECT_SOURCE_DIR}/engine/src)
 target_include_directories(fuzz_cmap PRIVATE ${PROJECT_SOURCE_DIR}/engine/src)
+
+# Digital signatures: CMS and time stamps, PKCS#12 files, and a document's signatures through the C API
+# (listed, then signed with the test key and listed again).
+capriole_add_fuzzer(fuzz_cms fuzz_cms.cpp)
+capriole_add_fuzzer(fuzz_pkcs12 fuzz_pkcs12.cpp)
+include(${PROJECT_SOURCE_DIR}/cmake/EmbedFiles.cmake)
+capriole_embed_files(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/fuzz_signing_files.cpp FUNCTION fuzz_signing_file FILES
+  ${PROJECT_SOURCE_DIR}/tests/data/signing/ec.p12 ${PROJECT_SOURCE_DIR}/tests/data/signing/ca.pem)
+capriole_add_fuzzer(fuzz_signatures fuzz_signatures.cpp)
+target_sources(fuzz_signatures PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated/fuzz_signing_files.cpp)
+target_link_libraries(fuzz_signatures PRIVATE capriole::capi)

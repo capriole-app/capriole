@@ -223,6 +223,25 @@ if(CAPRIOLE_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "Clang")
   target_compile_options(capriole_lcms2 PRIVATE -fno-sanitize=function)
 endif()
 
+# Mbed TLS 3.6.7 (LTS) — Apache-2.0 (dual-licensed Apache-2.0 OR GPL-2.0-or-later: taken under
+# Apache-2.0). Digital signatures (PLAN.md phase 8h): X.509, RSA, ECDSA, hashes, the key encryption of
+# PKCS#12 files. Built from its sources like zlib, with our configuration (cmake/mbedtls/): no TLS, no
+# PSA, no entropy or clock of the platform. The CMS and PKCS#12 structures are the engine's own.
+FetchContent_Declare(mbedtls
+  URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2
+  URL_HASH SHA256=a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  SOURCE_SUBDIR do-not-add-mbedtls-build)
+FetchContent_MakeAvailable(mbedtls)
+# Every module is guarded by its MBEDTLS_*_C option: those our configuration leaves out compile to nothing.
+file(GLOB _mbedtls_sources ${mbedtls_SOURCE_DIR}/library/*.c)
+add_library(capriole_mbedtls STATIC ${_mbedtls_sources})
+add_library(capriole::mbedtls ALIAS capriole_mbedtls)
+target_include_directories(capriole_mbedtls SYSTEM PUBLIC ${CMAKE_CURRENT_LIST_DIR}/mbedtls ${mbedtls_SOURCE_DIR}/include
+  PRIVATE ${mbedtls_SOURCE_DIR}/library)
+target_compile_definitions(capriole_mbedtls PUBLIC "MBEDTLS_CONFIG_FILE=<capriole_mbedtls_config.h>")
+set_target_properties(capriole_mbedtls PROPERTIES C_STANDARD 99 POSITION_INDEPENDENT_CODE ON)
+
 # The standard 14 fonts' substitutes (ADR 0005): the Foxit fonts — BSD-3-Clause (the PDFium authors),
 # CFF programs with the metrics of Adobe's core fonts — taken from the pdfjs-dist 2.16.105 package on
 # npm, the last one that carries all fourteen (with its LICENSE_FOXIT). Only data: built into the engine

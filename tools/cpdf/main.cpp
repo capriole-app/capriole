@@ -102,6 +102,11 @@ void print_usage() {
                "                  embed a file (associated with the document: /AF), saved incrementally\n"
                "  attach remove <file> <number> <output>\n"
                "  facturx <file>                 the Factur-X invoice embedded, as JSON (null: none)\n"
+               "  sign <file> <p12> <json> <output> [--timestamp-request <tsq>] [--timestamp-response <tsr>]\n"
+               "                  sign with a PKCS#12 key (password in CAPRIOLE_P12_PASSWORD): {\"page\":0,\"rect\":[x0,y0,x1,y1]|null,\n"
+               "                  \"lines\":[…],\"reason\",\"location\",\"date\",\"timestamp\":false}; a time stamp in two runs\n"
+               "  signatures <file> [anchors.pem]   the signatures, verified (identity against the roots given)\n"
+               "  p12 <file>      the certificate of a PKCS#12 file\n"
                "  redact <file> <page> <json> <output>\n"
                "                  take what lies in areas out of the file ({\"areas\":[[x0,y0,x1,y1]],\"fill\":[0,0,0]};\n"
                "                  the page as shown); saved fully\n"
@@ -790,6 +795,160 @@ int cmd_redact(std::span<char* const> args) {
   return save_capi(document, args[3]);
 }
 
+// Bytes read as characters, as the C API takes them.
+const std::uint8_t* u8(const std::vector<char>& bytes) {
+  return reinterpret_cast<const std::uint8_t*>(bytes.data());  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast): bytes as bytes
+}
+
+bool write_file(std::string_view path, std::span<const std::uint8_t> bytes) {
+  std::ofstream out{std::string(path), std::ios::binary};
+  const std::vector<char> chars(bytes.begin(), bytes.end());
+  out.write(chars.data(), static_cast<std::streamsize>(chars.size()));
+  if (!out) {
+    std::cerr << std::format("cpdf: cannot write {}\n", path);
+    return false;
+  }
+  return true;
+}
+
+// p12 <file>: the certificate of a PKCS#12 file (the password in CAPRIOLE_P12_PASSWORD).
+int cmd_p12(std::string_view path) {
+  const auto bytes = read_file(path);
+  if (!bytes) {
+    return kExitFailure;
+  }
+  const char* password = std::getenv("CAPRIOLE_P12_PASSWORD");  // NOLINT(concurrency-mt-unsafe): single-threaded tool
+  char* json = nullptr;
+  if (capriole_pkcs12_info(u8(*bytes), bytes->size(), password, &json) != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: {}\n", path, capriole_last_error_message());
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  return kExitOk;
+}
+
+// signatures <file> [anchors]: the document's signatures, verified (the signers' identity against the
+// roots in anchors, a PEM bundle, when given).
+int cmd_signatures(std::span<char* const> args) {
+  capriole_document* document = open_capi(args[0]);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  std::vector<char> anchors;
+  if (args.size() > 1) {
+    auto read = read_file(args[1]);
+    if (!read) {
+      capriole_document_close(document);
+      return kExitFailure;
+    }
+    anchors = std::move(*read);
+  }
+  char* json = nullptr;
+  const capriole_status status = capriole_document_signatures_json(document, anchors.empty() ? nullptr : u8(anchors), anchors.size(), &json);
+  capriole_document_close(document);
+  if (status != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: {}\n", args[0], capriole_last_error_message());
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  return kExitOk;
+}
+
+// sign <file> <p12> <json> <output> [--timestamp-request <file>] [--timestamp-response <file>]: signs
+// with the key of a PKCS#12 file (the password in CAPRIOLE_P12_PASSWORD). The date is now unless the
+// JSON gives one. A time stamp in two runs with the same date (the signature is deterministic): the first
+// writes the RFC 3161 request and no output, the second takes the authority's response.
+int cmd_sign(std::span<char* const> args) {
+  const std::string_view path = args[0];
+  std::optional<std::string_view> request_path;
+  std::optional<std::string_view> response_path;
+  for (std::size_t i = 4; i + 1 < args.size(); i += 2) {
+    const std::string_view option = args[i];
+    if (option == "--timestamp-request") {
+      request_path = args[i + 1];
+    } else if (option == "--timestamp-response") {
+      response_path = args[i + 1];
+    } else {
+      print_usage();
+      return kExitUsage;
+    }
+  }
+  const auto p12 = read_file(args[1]);
+  std::optional<std::vector<char>> response;
+  if (response_path) {
+    response = read_file(*response_path);
+  }
+  if (!p12 || (response_path && !response)) {
+    return kExitFailure;
+  }
+  std::string spec(args[2]);
+  if (spec.find("\"date\"") == std::string::npos && spec.starts_with("{")) {
+    const std::string now = std::format("D:{:%Y%m%d%H%M%S}Z", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+    spec.insert(1, std::format(R"("date":"{}"{})", now, spec.size() > 2 ? "," : ""));
+  }
+  const char* password = std::getenv("CAPRIOLE_P12_PASSWORD");  // NOLINT(concurrency-mt-unsafe): single-threaded tool
+  capriole_document* document = open_capi(path);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  const auto* key = u8(*p12);
+  capriole_signing* signing = nullptr;
+  capriole_status status = capriole_document_sign_begin(document, spec.c_str(), key, p12->size(), password, &signing);
+  if (status == CAPRIOLE_ERROR_UNSUPPORTED && std::string_view(capriole_last_error_message()).find("needed repairs") != std::string_view::npos) {
+    // A structure that reads only with repairs: written anew first, then signed (earlier signatures,
+    // if any, do not survive that).
+    std::uint8_t* data = nullptr;
+    std::size_t size = 0;
+    if (capriole_document_save(document, 0, nullptr, &data, &size) == CAPRIOLE_OK) {
+      capriole_document_close(document);
+      document = nullptr;
+      const capriole_status reopened = capriole_document_open(data, size, nullptr, 1, &document);
+      capriole_free(data);
+      if (reopened != CAPRIOLE_OK) {
+        std::cerr << std::format("cpdf: {}: {}\n", path, capriole_last_error_message());
+        return kExitFailure;
+      }
+      std::cerr << std::format("cpdf: {}: its structure needed repairs: written anew, then signed\n", path);
+      status = capriole_document_sign_begin(document, spec.c_str(), key, p12->size(), password, &signing);
+    }
+  }
+  if (status != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: sign: {}\n", path, capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  }
+  int exit = kExitOk;
+  if (request_path) {
+    std::uint8_t* data = nullptr;
+    std::size_t size = 0;
+    if (capriole_signing_timestamp_request(signing, &data, &size) != CAPRIOLE_OK || size == 0) {
+      std::cerr << std::format("cpdf: {}: no time stamp request (\"timestamp\":true?)\n", path);
+      exit = kExitFailure;
+    } else {
+      exit = write_file(*request_path, std::span(data, size)) ? kExitOk : kExitFailure;
+      std::cout << std::format("{}: time stamp request, {} bytes\n", *request_path, size);
+    }
+    capriole_free(data);
+  } else {
+    std::uint8_t* data = nullptr;
+    std::size_t size = 0;
+    const auto* r = response ? u8(*response) : nullptr;
+    if (capriole_document_sign_finish(document, signing, r, response ? response->size() : 0, &data, &size) != CAPRIOLE_OK) {
+      std::cerr << std::format("cpdf: {}: sign: {}\n", path, capriole_last_error_message());
+      exit = kExitFailure;
+    } else {
+      exit = write_file(args[3], std::span(data, size)) ? kExitOk : kExitFailure;
+      std::cout << std::format("{}: {} bytes (signed)\n", args[3], size);
+    }
+    capriole_free(data);
+  }
+  capriole_signing_free(signing);
+  capriole_document_close(document);
+  return exit;
+}
+
 // facturx <file> | facturx embed <file> <xml> <output>: the document's Factur-X invoice.
 int cmd_facturx(std::span<char* const> args) {
   const bool embed = args.size() == 4;
@@ -1145,6 +1304,15 @@ int run(std::span<char*> args) {
         (action == "add" && args.size() >= 6 && args.size() <= 9)) {
       return cmd_attach(args.subspan(2));
     }
+  }
+  if (command == "sign" && args.size() >= 6 && args.size() % 2 == 0) {
+    return cmd_sign(args.subspan(2));
+  }
+  if (command == "signatures" && (args.size() == 3 || args.size() == 4)) {
+    return cmd_signatures(args.subspan(2));
+  }
+  if (command == "p12" && args.size() == 3) {
+    return cmd_p12(args[2]);
   }
   if (command == "redact" && (args.size() == 6)) {
     return cmd_redact(args.subspan(2));

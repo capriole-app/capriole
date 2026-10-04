@@ -16,6 +16,7 @@ con licenza verificata alla fonte, e in `cmake/Dependencies.cmake` con versione 
 | FreeType | 2.14.3 (2026-03-22) | FTL (BSD-style; scelta al posto della GPLv2) | motore (contorni dei glifi) | FetchContent, hash fissato; firma GPG del tarball verificata (chiave di Werner Lemberg `E306 7470 7856 409F F194 8010 BE6C 3AAC 63AD 8E3F`); compilato dai sorgenti con i soli moduli sfnt, TrueType, Type 1, CFF, CID, psaux, psnames e le nostre opzioni (`cmake/freetype/`): niente rasterizzatori, hinting, interprete di bytecode, bitmap, SVG, compressione; con i sanitizer `-fsanitize=nonnull-attribute` spento solo per FreeType (ADR 0005) |
 | Little CMS | 2.19.1 | MIT | motore (profili ICC, CalRGB/CalGray, DeviceCMYK) | FetchContent, hash fissato; compilato dai sorgenti; contesto con budget di memoria per ogni trasformazione (ADR 0006) |
 | Tabella CMYK → sRGB | da SWOP2006_Coated3v2 | colori campionati dal profilo IDEAlliance | motore (DeviceCMYK senza profilo) | generata da `scripts/gen_cmyk_table.py` in `engine/src/content/cmyk_table.cpp` (9⁴ punti), hash del profilo fissato nello script (ADR 0006) |
+| Mbed TLS | 3.6.7 (LTS) | Apache-2.0 (doppia licenza Apache-2.0 o GPL-2.0+: scelta Apache-2.0) | motore (firme digitali: X.509, RSA, ECDSA, hash, cifratura delle chiavi PKCS#12) | FetchContent, hash fissato (verificato con quello della release); compilato dai sorgenti con la nostra configurazione `cmake/mbedtls/`: niente TLS, PSA, entropia od orologio della piattaforma; CMS e PKCS#12 sono del motore |
 | Font Foxit (14) | pdfjs-dist 2.16.105 (npm) | BSD-3-Clause (PDFium Authors) | motore (sostituti dei font non incorporati) | FetchContent del pacchetto npm, hash fissato; solo i 14 file `standard_fonts/Foxit*.pfb` (CFF), incorporati nel motore da `cmake/EmbedFiles.cmake`; nulla del codice di pdf.js (ADR 0005) |
 | Adobe Glyph List + AGLFN | commit `4036a9ca` (2019-10-31) | BSD-3-Clause (Adobe) | motore (nomi dei glifi → Unicode) | tabelle generate da `scripts/gen_glyph_tables.py` in `engine/src/font/glyph_tables.cpp`, hash dei file fissati nello script |
 
@@ -24,7 +25,6 @@ con licenza verificata alla fonte, e in `cmake/Dependencies.cmake` con versione 
 | Libreria        | Licenza attesa        | Fase | Uso |
 |-----------------|-----------------------|------|-----|
 | HarfBuzz        | MIT ("Old MIT")       | 8    | shaping del testo inserito |
-| mbedTLS o OpenSSL 3 | Apache-2.0        | 8    | PAdES (X.509, CMS, RSA/ECDSA) — aggiunta alla spec §4.2 all'avvio |
 
 Implementazione propria (nessuna libreria compatibile): JBIG2 (jbig2dec è AGPL), CCITT Fax,
 LZW, RunLength, ASCIIHex/ASCII85, crittografia dei PDF (MD5, RC4, AES, SHA-2).

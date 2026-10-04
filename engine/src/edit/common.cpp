@@ -345,4 +345,34 @@ model::Stream form_xobject(const Rect& bbox, Dict resources, std::string_view co
   return stream;
 }
 
+std::string in_view(const Page& page, const std::string& content) {
+  const graphics::Matrix& m = page.to_user;
+  return std::format("q {} {} {} {} {} {} cm\n{}Q\n", num(m.a), num(m.b), num(m.c), num(m.d), num(m.e), num(m.f), content);
+}
+
+Annots annots_of(Document& document, const Page& page) {
+  const model::Object* entry = page.dict.find("Annots");
+  if (entry == nullptr) {
+    return {};
+  }
+  auto resolved = document.resolve(*entry);
+  const bool array = resolved && resolved->as_array() != nullptr;
+  // The array's own object, when the page's reference reaches it (a reference whose generation does not
+  // match reads as null, §7.3.10: written there, the change would be out of reach).
+  return {.list = array ? *resolved->as_array() : model::Array{}, .ref = array ? entry->as_ref() : std::nullopt};
+}
+
+Result<void> write_annots(Document& document, const Page& page, Annots annots) {
+  if (annots.ref) {
+    return document.set(annots.ref->number, model::Object(std::move(annots.list)));
+  }
+  model::Dict dict = page.dict;
+  if (annots.list.empty()) {
+    dict.erase("Annots");
+  } else {
+    dict.set("Annots", std::move(annots.list));
+  }
+  return document.set(page.ref.number, model::Object(std::move(dict)));
+}
+
 }  // namespace capriole::edit::detail

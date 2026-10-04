@@ -22,10 +22,13 @@ namespace capriole::edit {
 
 namespace {
 
+using detail::Annots;
+using detail::annots_of;
 using detail::bounds;
 using detail::clamp;
 using detail::grow;
 using detail::hex;
+using detail::in_view;
 using detail::name;
 using detail::num;
 using detail::number_object;
@@ -35,6 +38,7 @@ using detail::rgb_array;
 using detail::rgb_operands;
 using detail::subtype_of;
 using detail::utf8_of;
+using detail::write_annots;
 using graphics::Matrix;
 using graphics::Point;
 using graphics::Rect;
@@ -53,12 +57,6 @@ constexpr std::int64_t kPrintFlag = 1 << 2;
 constexpr std::int64_t kNoZoomFlag = 1 << 3;
 constexpr std::int64_t kNoRotateFlag = 1 << 4;
 constexpr std::int64_t kNoViewFlag = 1 << 5;
-
-// Content drawn in the page's coordinates as shown (y down), placed into page space.
-std::string in_view(const Page& page, const std::string& content) {
-  const Matrix& m = page.to_user;
-  return std::format("q {} {} {} {} {} {} cm\n{}Q\n", num(m.a), num(m.b), num(m.c), num(m.d), num(m.e), num(m.f), content);
-}
 
 // A note's icon in its rectangle as shown: a page of paper in the note's colour with lines of text.
 std::string note_icon(const Rect& r, const Rgb& color) {
@@ -173,37 +171,6 @@ Result<bool> set_appearance(Document& document, const Page& page, Dict& annotati
   annotation.set("AP", std::move(ap));
   annotation.erase("AS");
   return true;
-}
-
-// The page's /Annots as an array, and where it lives (the page, or its own object).
-struct Annots {
-  Array list;
-  std::optional<ObjectRef> ref;
-};
-
-Annots annots_of(Document& document, const Page& page) {
-  const Object* entry = page.dict.find("Annots");
-  if (entry == nullptr) {
-    return {};
-  }
-  auto resolved = document.resolve(*entry);
-  const bool array = resolved && resolved->as_array() != nullptr;
-  // The array's own object, when the page's reference reaches it (a reference whose generation does not
-  // match reads as null, §7.3.10: written there, the change would be out of reach).
-  return {.list = array ? *resolved->as_array() : Array{}, .ref = array ? entry->as_ref() : std::nullopt};
-}
-
-Result<void> write_annots(Document& document, const Page& page, Annots annots) {
-  if (annots.ref) {
-    return document.set(annots.ref->number, Object(std::move(annots.list)));
-  }
-  Dict dict = page.dict;
-  if (annots.list.empty()) {
-    dict.erase("Annots");
-  } else {
-    dict.set("Annots", std::move(annots.list));
-  }
-  return document.set(page.ref.number, Object(std::move(dict)));
 }
 
 Result<Dict> annotation_of(Document& document, const Page& page, ObjectRef ref) {
