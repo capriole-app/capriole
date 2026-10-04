@@ -15,6 +15,7 @@
 #include "capriole/edit/attachments.hpp"
 #include "common.hpp"
 #include "sound.hpp"
+#include "xmp.hpp"
 
 namespace capriole::edit {
 
@@ -211,6 +212,12 @@ std::optional<std::string> with_facturx(std::string xmp, std::string_view level)
 }
 
 }  // namespace
+
+namespace detail {
+
+std::optional<std::string> with_facturx_properties(std::string xmp, std::string_view level) { return with_facturx(std::move(xmp), level); }
+
+}  // namespace detail
 
 Result<std::string> facturx_profile(std::span<const std::byte> xml) {
   const std::string_view text = text_of(xml.first(std::min(xml.size(), kMaxXml)));

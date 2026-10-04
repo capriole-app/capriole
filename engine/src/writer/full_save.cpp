@@ -219,7 +219,8 @@ Result<SaveReport> save_full(Document& document, ByteSink& output, const SaveOpt
 
   // Header, with a comment of high bytes so that transfer tools treat the file as binary (§7.5.2).
   const auto& header = document.header();
-  if (auto ok = write_all(sink, std::format("%PDF-{}.{}\n%\xE2\xE3\xCF\xD3\n", header.major, header.minor)); !ok) {
+  const auto [major, minor] = options.version.value_or(std::pair{header.major, header.minor});
+  if (auto ok = write_all(sink, std::format("%PDF-{}.{}\n%\xE2\xE3\xCF\xD3\n", major, minor)); !ok) {
     return std::unexpected(std::move(ok.error()));
   }
 

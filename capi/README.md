@@ -179,6 +179,17 @@ removes them. A redacted document is saved fully, leaving out what nothing refer
 `capriole_document_save` with `incremental` is then `CAPRIOLE_ERROR_UNSUPPORTED` (it would keep the
 original bytes).
 
+## PDF/A
+
+`capriole_document_convert_pdfa(document, spec_json, &data, &size, &json)` converts the document to
+PDF/A (`edit/pdfa.hpp`): `{"part": 2 | 3 | 0, "date": "D:…"}` (0: PDF/A-2b, or -3b when the document has
+embedded files; the date is the modification date written). It gives the file, written in full, and what
+was put right, `{"part": 2, "changes": ["output intent added: 1 (sRGB IEC61966-2.1)", …]}`; the document is
+reopened from the file. A document that needed repairs is written anew and read back first. What cannot be
+put right refuses the conversion (`CAPRIOLE_ERROR_UNSUPPORTED`), every reason in the message: an encrypted
+or signed document; a font shown that is not embedded and has no substitute of the same metrics; an
+embedded font whose program does not match its dictionary; DeviceCMYK colour; embedded files with part 2.
+
 ## Digital signatures
 
 `capriole_document_signatures_json(document, anchors, size, &json)` lists the signed signature fields,

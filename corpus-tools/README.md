@@ -159,3 +159,12 @@ la firma sia una revisione incrementale e `qpdf --check` non peggiori, che Capri
 fidata al livello fatto, e che un byte cambiato la renda non valida per tutti e tre; su ogni file dei
 corpora con una `/ByteRange` confronta il verdetto di Capriole con quello di Poppler. Strumenti esterni:
 `pdfsig`, `certutil` (NSS), `openssl`, `qpdf`.
+
+## PDF/A
+
+`check_pdfa.py` (criterio di uscita della fase 8i, motore): converte `--files` file dei corpora con
+`cpdf pdfa` e controlla che veraPDF (`--verapdf`) dia conformi i file convertiti (2b o 3b), che Capriole
+li disegni come l'originale riscritto per intero, che Poppler non perda caratteri, che `qpdf --check` non
+peggiori; conta i rifiuti per motivo; sui primi `--invoices` incorpora una fattura Factur-X e converte in
+PDF/A-3 (veraPDF 3b e, con `--facturx-python`, la libreria factur-x). veraPDF gira senza il limite di
+memoria di `run()` (la JVM riserva molto più spazio di quanto usa) e con l'heap limitato.

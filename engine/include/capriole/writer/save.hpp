@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "capriole/core/error.hpp"
@@ -41,6 +42,9 @@ struct SaveOptions {
   // after deleting or extracting pages, whose objects would otherwise stay in the file unused. Always
   // so for a redacted document (Document::redacted()): what was removed must not stay in the file.
   bool drop_unreachable = false;
+  // Full save only: the version written in the header instead of the document's (PDF/A-2 and -3 are
+  // based on PDF 1.7: edit/pdfa.hpp).
+  std::optional<std::pair<int, int>> version = std::nullopt;
 };
 
 struct SaveReport {

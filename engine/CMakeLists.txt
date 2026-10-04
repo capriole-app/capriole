@@ -37,6 +37,7 @@ add_library(capriole_engine STATIC
   src/edit/pages.cpp
   src/edit/redact.cpp
   src/edit/sign.cpp
+  src/edit/pdfa.cpp
   src/render/raster.cpp
   src/text/extract.cpp
   src/filters/basic.cpp

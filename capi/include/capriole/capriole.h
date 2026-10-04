@@ -231,6 +231,14 @@ capriole_status capriole_document_page_apply_redactions(capriole_document* docum
 /* ── Attachments and Factur-X (edit/attachments.hpp, edit/facturx.hpp) ────────────────────── */
 
 /*
+ * Converts the document to PDF/A (PLAN.md phase 8i; edit/pdfa.hpp): spec_json {"part": 2 | 3 | 0 (2, or 3
+ * with embedded files), "date": PDF date (required)}. *data receives the file, written in full; *json what
+ * was put right, {"part", "changes": [text…]}. The document is reopened from the file. A document that
+ * cannot be made PDF/A is refused (CAPRIOLE_ERROR_UNSUPPORTED) with every reason in the message.
+ */
+capriole_status capriole_document_convert_pdfa(capriole_document* document, const char* spec_json, uint8_t** data, size_t* size, char** json);
+
+/*
  * Digital signatures (PLAN.md phase 8h; format in capi/README.md).
  *
  * The certificate of a PKCS#12 file (.p12, .pfx) as JSON: {"name", "subject", "issuer", "serial",

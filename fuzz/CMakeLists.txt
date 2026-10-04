@@ -59,3 +59,7 @@ capriole_embed_files(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/fuzz_signing_f
 capriole_add_fuzzer(fuzz_signatures fuzz_signatures.cpp)
 target_sources(fuzz_signatures PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated/fuzz_signing_files.cpp)
 target_link_libraries(fuzz_signatures PRIVATE capriole::capi)
+
+# The conversion to PDF/A through the C API.
+capriole_add_fuzzer(fuzz_pdfa fuzz_pdfa.cpp)
+target_link_libraries(fuzz_pdfa PRIVATE capriole::capi)

@@ -107,6 +107,7 @@ void print_usage() {
                "                  \"lines\":[…],\"reason\",\"location\",\"date\",\"timestamp\":false}; a time stamp in two runs\n"
                "  signatures <file> [anchors.pem]   the signatures, verified (identity against the roots given)\n"
                "  p12 <file>      the certificate of a PKCS#12 file\n"
+               "  pdfa <file> <output> [2|3]   convert to PDF/A-2b or -3b (refused, with reasons, when it cannot be)\n"
                "  redact <file> <page> <json> <output>\n"
                "                  take what lies in areas out of the file ({\"areas\":[[x0,y0,x1,y1]],\"fill\":[0,0,0]};\n"
                "                  the page as shown); saved fully\n"
@@ -811,6 +812,31 @@ bool write_file(std::string_view path, std::span<const std::uint8_t> bytes) {
   return true;
 }
 
+// pdfa <file> <output> [part]: the document converted to PDF/A (part 2 or 3; default: 2, or 3 with
+// embedded files), what was put right printed as JSON.
+int cmd_pdfa(std::span<char* const> args) {
+  capriole_document* document = open_capi(args[0]);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  const std::string now = std::format("D:{:%Y%m%d%H%M%S}Z", std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+  const std::string spec = std::format(R"({{"part":{},"date":"{}"}})", args.size() > 2 ? args[2] : "0", now);
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  char* json = nullptr;
+  const capriole_status status = capriole_document_convert_pdfa(document, spec.c_str(), &data, &size, &json);
+  capriole_document_close(document);
+  if (status != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: pdfa: {}\n", args[0], capriole_last_error_message());
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  const bool written = write_file(args[1], std::span(data, size));
+  capriole_free(data);
+  return written ? kExitOk : kExitFailure;
+}
+
 // p12 <file>: the certificate of a PKCS#12 file (the password in CAPRIOLE_P12_PASSWORD).
 int cmd_p12(std::string_view path) {
   const auto bytes = read_file(path);
@@ -1310,6 +1336,9 @@ int run(std::span<char*> args) {
   }
   if (command == "signatures" && (args.size() == 3 || args.size() == 4)) {
     return cmd_signatures(args.subspan(2));
+  }
+  if (command == "pdfa" && (args.size() == 4 || args.size() == 5)) {
+    return cmd_pdfa(args.subspan(2));
   }
   if (command == "p12" && args.size() == 3) {
     return cmd_p12(args[2]);

@@ -49,6 +49,7 @@ set(_capriole_exports
   _capriole_document_sign_finish
   _capriole_signing_free
   _capriole_document_signatures_json
+  _capriole_document_convert_pdfa
   _capriole_resource_add
   _capriole_last_missing_resources_json
   _malloc

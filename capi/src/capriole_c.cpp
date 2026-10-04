@@ -31,6 +31,7 @@
 #include "capriole/edit/facturx.hpp"
 #include "capriole/edit/forms.hpp"
 #include "capriole/edit/pages.hpp"
+#include "capriole/edit/pdfa.hpp"
 #include "capriole/edit/redact.hpp"
 #include "capriole/edit/sign.hpp"
 #include "capriole/font/resources.hpp"
@@ -1562,6 +1563,57 @@ capriole_status capriole_document_signatures_json(capriole_document* document, c
       return fail(list.error());
     }
     return hand_over(signatures_json(*list), json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_convert_pdfa(capriole_document* document, const char* spec_json, uint8_t** data, size_t* size, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || data == nullptr || size == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto spec = capriole::capi::parse_json(spec_json);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    if (spec->object() == nullptr) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "a JSON object expected");
+    }
+    capriole::edit::PdfaOptions options;
+    if (const auto* part = spec->get("part")) {
+      const auto n = part->number();
+      if (!n || (*n != 0 && *n != 2 && *n != 3)) {
+        return fail(CAPRIOLE_ERROR_SYNTAX, "part: 0, 2 or 3 expected");
+      }
+      options.part = static_cast<int>(*n);
+    }
+    const auto* date = spec->get("date");
+    if (date == nullptr || date->string() == nullptr) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "date: a PDF date expected");
+    }
+    options.date = *date->string();
+    const auto result = capriole::edit::convert_to_pdfa(document->document, options);
+    if (!result) {
+      return fail(result.error());
+    }
+    std::string report = std::format(R"({{"part":{},"changes":[)", result->part);
+    for (std::size_t i = 0; i < result->changes.size(); ++i) {
+      report += i == 0 ? "" : ",";
+      capriole::capi::append_json_text(report, capriole::model::from_utf8(result->changes[i]));
+    }
+    report += "]}";
+    auto reopened = capriole::Document::open(std::make_unique<capriole::MemoryByteSource>(std::vector<std::byte>(result->file)),
+                                             capriole::OpenOptions{.limits = capriole::kDefaultParseLimits, .password = "", .repair = true});
+    if (!reopened) {
+      return fail(reopened.error());
+    }
+    document->document = std::move(*reopened);
+    if (const capriole_status status = hand_over(report, json); status != CAPRIOLE_OK) {
+      return status;
+    }
+    return hand_over(result->file, data, size);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

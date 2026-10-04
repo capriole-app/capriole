@@ -922,6 +922,19 @@ std::uint32_t Font::cid_glyph(std::uint32_t cid) const {
   return cid;  // CFF: the CID for a CID-keyed font, else the glyph index (§9.7.4.2)
 }
 
+Font::GlyphSource Font::glyph_source(const Code& code, FontContext& context) {
+  const Slot s = slot(code, context);
+  return {.program = s.program, .glyph = s.glyph, .embedded = s.program != nullptr && s.program == embedded_.get()};
+}
+
+std::string Font::glyph_name(std::uint32_t code) const {
+  const std::string& name = names_.at(code & 0xFFU);
+  if (!name.empty() || has_encoding_ || symbolic_) {
+    return name;
+  }
+  return std::string(encoding_table(BaseEncoding::kStandard)[code & 0xFFU]);
+}
+
 Font::Slot Font::slot(const Code& code, FontContext& context) {
   Slot s;
   if (kind_ == Kind::kSimple) {

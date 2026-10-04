@@ -743,7 +743,7 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app ✅) · 8i PDF/A · 8j editing del
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app ✅) · **8i** PDF/A (8i-1 motore ✅, 8i-2 app) · 8j editing del
 testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
@@ -1076,6 +1076,51 @@ Criterio: test e2e (firma invisibile dopo una password sbagliata; file salvato c
 originali; firma visibile disegnata, file che comincia con quello firmato prima; una nota aggiunta e
 salvata che si accoda; riaperto: due firme valide, «modificato dopo la firma») verde; un file firmato
 dall'app verificato a parte con `pdfsig`: valido, documento intero, certificato fidato (CA di prova).
+
+**8i-1 (2026-10-04) — conversione in PDF/A nel motore: uscita raggiunta.** `edit/pdfa.hpp`:
+`convert_to_pdfa` porta un documento a **PDF/A-2b**, o **3b** se ha allegati. Lavora sul documento scritto
+per intero e riletto (le riparazioni fatte, ogni flusso come l'avrà l'uscita): ciò che controlla è ciò
+che scrive, e un file convertito si converte in sé stesso. Mette a posto:
+- colore: output intent `GTS_PDFA1` con un profilo sRGB fatto da Little CMS (nessun file nuovo), oppure
+  il profilo che il documento ha già;
+- font: i non incorporati dei 14 standard e i loro alias (Arial, Times New Roman, Courier New) ricevono
+  il sostituto Foxit incorporato (CFF), con `/Widths` del programma e l'encoding intero in
+  `/Differences` — solo se le larghezze del dizionario coincidono entro 2/1000 di em (Arial Narrow no);
+  nei TrueType incorporati le larghezze del programma che differiscono da quelle del dizionario (quelle
+  che posizionano il testo) si correggono nella tabella `hmtx`; `/CIDSet` e `/CharSet` vanno; un
+  TrueType CIDFont riceve `/CIDToGIDMap`; i font senza `/Widths` (anche del solo testo invisibile) li
+  ricevono; i font scritti sul posto nelle risorse diventano oggetti;
+- metadati: XMP nuovo da `/Info` (con cui deve concordare), identificazione PDF/A, proprietà Factur-X
+  conservate, non compresso; i metadati degli oggetti (immagini, liste di proprietà) vanno;
+- annotazioni: stampabili, mai nascoste (le nascoste vanno), aspetto solo `/N` nella forma giusta
+  (dizionario di stati per i pulsanti, flusso per le altre), fatto dal motore quando manca e sa farlo,
+  altrimenti l'annotazione va; le annotazioni scritte sul posto in `/Annots` diventano oggetti;
+- azioni e il resto: JavaScript, Launch e le altre azioni vietate, `/AA`, XFA, `/NeedsRendering`,
+  funzioni di trasferimento, `/Interpolate`, `/Alternates`, `/OPI`; LZW (anche con filtri ASCII)
+  ricompresso in Flate; configurazioni di optional content con `/Name`, senza `/AS`; risorse ereditate
+  date alla pagina; `/Contents` e `/Fields` solo con ciò che sono; allegati (PDF/A-3) con tipo MIME, data,
+  `/AFRelationship`, `/AF`; versione 1.7 al più.
+
+Rifiuta, con tutti i motivi nel messaggio: documenti cifrati o firmati (convertire romperebbe le firme:
+prima PDF/A, poi la firma); font visibili non incorporati senza un sostituto di metriche identiche; font
+incorporati che mostrano `.notdef`; colore DeviceCMYK (servirebbe un profilo CMYK); operatori non definiti
+da PDF; filtri non standard; nomi non UTF-8; allegati con PDF/A-2. API C
+`capriole_document_convert_pdfa` (anche WASM), `cpdf pdfa`, fuzz target `fuzz_pdfa`, test.
+`SaveOptions::version` (la versione scritta nell'intestazione). veraPDF 1.30.2 installato in
+`CORPORA/tools/verapdf` come strumento esterno (GPL/MPL: mai linkato).
+
+Corretti strada facendo, emersi dalla verifica: i caratteri accentati sparivano nei font sostituiti
+quando l'analisi non vedeva un codice (ora l'encoding è scritto intero); un font composito era letto con
+la lunghezza di codice sbagliata (falsi `.notdef`); i problemi trovati nei passaggi sugli oggetti
+arrivavano dopo la decisione (ora un controllo finale); una conversione non idempotente su file
+danneggiati (ora lavora sul file riscritto).
+
+Criterio: `corpus-tools/check_pdfa.py` su 100 file dei tre corpora — **63 convertiti, 63/63** validi per
+veraPDF (2b), disegnati come prima da Capriole (rispetto all'originale riscritto per intero), nessun
+carattere perso per Poppler, `qpdf --check` mai peggiore; 37 rifiutati, ognuno con il motivo (font non
+incorporati senza sostituto: 36 casi; CMYK 7; firmati 7; operatori non definiti 5; …); fatture Factur-X
+incorporate e convertite in PDF/A-3b: **11/11** valide per veraPDF e per la libreria factur-x. Rapporto:
+`CORPORA/reports/pdfa-all-20261004-194739/`. Il PDF/A-3 dei Factur-X, in sospeso dalla 8f, è verificato.
 
 ---
 

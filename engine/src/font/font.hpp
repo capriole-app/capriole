@@ -126,6 +126,19 @@ class Font {
   [[nodiscard]] double ascent() const noexcept { return ascent_; }
   [[nodiscard]] double descent() const noexcept { return descent_; }
 
+  // For conversions (edit/pdfa.hpp): the program and glyph a code is drawn with (no program: none), and
+  // whether that program is the font's embedded one.
+  struct GlyphSource {
+    const FontProgram* program = nullptr;
+    std::uint32_t glyph = 0;
+    bool embedded = false;
+  };
+  [[nodiscard]] GlyphSource glyph_source(const Code& code, FontContext& context);
+  // Simple fonts: the glyph name a code's encoding gives (/Differences, the base encoding; a
+  // non-symbolic font without one: the standard encoding); empty when none says.
+  [[nodiscard]] std::string glyph_name(std::uint32_t code) const;
+  [[nodiscard]] bool embedded() const noexcept { return embedded_ != nullptr; }
+
   // Type 3 fonts (§9.6.4).
   [[nodiscard]] const graphics::Matrix& font_matrix() const noexcept { return font_matrix_; }
   // The glyph procedure of a code (possibly a reference); nullptr when the font has none for it.

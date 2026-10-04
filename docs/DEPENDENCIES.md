@@ -48,7 +48,10 @@ jbig2dec (AGPL: oracolo delle fixture JBIG2, `tests/data/jbig2/make_fixtures.py`
 (generazione delle fixture CCITT e MMR). Per la verifica degli allegati e di Factur-X (fase 8f, facoltativi, fuori dal
 repo in `CORPORA/tools/`): la libreria Python `factur-x` (BSD, con gli XSD Factur-X) e veraPDF (GPL/MPL,
 Java); `lxml` (BSD) per leggere gli XMP nella verifica. Per la verifica della redaction (fase 8g):
-`pikepdf` (MPL-2.0, su qpdf) per leggere i flussi di una pagina e i testi della sua struttura.
+`pikepdf` (MPL-2.0, su qpdf) per leggere i flussi di una pagina e i testi della sua struttura. Per le firme (fase
+8h): `pdfsig` (Poppler, NSS), `openssl` (Apache-2.0: `cms -verify`, `ts -reply`/`-verify`, la PKI di prova),
+`certutil` (NSS). Per PDF/A (fase 8i): veraPDF 1.30.2 (`CORPORA/tools/verapdf`, installato senza rete
+dall'installer scaricato dall'utente).
 
 ## Apps (`apps/inspector`, `apps/capriole`) — npm, devDependencies only
 

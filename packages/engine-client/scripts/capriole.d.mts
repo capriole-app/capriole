@@ -100,6 +100,13 @@ export interface CaprioleModule {
   ): number;
   _capriole_signing_free(signing: number): void;
   _capriole_document_signatures_json(document: number, anchors: number, anchorsSize: number, out: number): number;
+  _capriole_document_convert_pdfa(
+    document: number,
+    spec: number,
+    outData: number,
+    outSize: number,
+    outJson: number,
+  ): number;
   _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,
