@@ -1,7 +1,8 @@
 #pragma once
 
 // Editing the text of a page (PLAN.md phase 8j): the characters whose centres lie in an area (the page as
-// shown; on one line) are replaced with other text — a word, part of a line, a whole line.
+// shown; on one line, as the text is laid out — the text an earlier edit drew is on its line) are
+// replaced with other text — a word, part of a line, a whole line.
 //
 // Two ways, the first that can:
 // - the same font: when the characters come from one text-showing operator of the page's content (Tj,

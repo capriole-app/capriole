@@ -1,6 +1,6 @@
 <script lang="ts">
   // The page shown large: back to the pages, the page before and after, the tools that make
-  // annotations, the colour of the next one, undo and save.
+  // annotations or edit the page's text, the colour of the next one, undo and save.
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Circle from '@lucide/svelte/icons/circle';
@@ -16,6 +16,7 @@
   import Square from '@lucide/svelte/icons/square';
   import StickyNote from '@lucide/svelte/icons/sticky-note';
   import Strikethrough from '@lucide/svelte/icons/strikethrough';
+  import TextCursorInput from '@lucide/svelte/icons/text-cursor-input';
   import Type from '@lucide/svelte/icons/type';
   import Underline from '@lucide/svelte/icons/underline';
   import Undo2 from '@lucide/svelte/icons/undo-2';
@@ -31,6 +32,7 @@
   const all: { tool: Tool; label: string; icon: typeof Highlighter }[] = [
     { tool: 'form', label: 'Compila il modulo', icon: FormInput },
     { tool: 'select', label: 'Seleziona e sposta', icon: MousePointer2 },
+    { tool: 'edittext', label: 'Modifica testo', icon: TextCursorInput },
     { tool: 'highlight', label: 'Evidenzia', icon: Highlighter },
     { tool: 'underline', label: 'Sottolinea', icon: Underline },
     { tool: 'strikeout', label: 'Barra', icon: Strikethrough },

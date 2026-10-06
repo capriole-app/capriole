@@ -228,6 +228,17 @@ export interface SignSpec {
   contactInfo?: string;
 }
 
+/** How capriole_document_page_replace_text wrote the new text (capi/README.md). */
+export interface TextEditReport {
+  /** sameFont: the old text's font; similarFont: the nearest standard font, drawn where the old glyphs were. */
+  method: 'sameFont' | 'similarFont';
+  font: string;
+  /** The text that was there. */
+  replaced: string;
+  /** similarFont: the horizontal scaling it is written with (1: none; at least 0.5). */
+  scale: number;
+}
+
 /** What a redaction took out of a page. */
 export interface RedactionReport {
   glyphs: number;
@@ -391,6 +402,7 @@ export type Request =
   | { kind: 'annotationRemove'; index: number; ref: [number, number] }
   | { kind: 'formFields' }
   | { kind: 'applyRedactions'; index: number }
+  | { kind: 'replaceText'; index: number; area: [number, number, number, number]; text: string }
   | { kind: 'pkcs12Info'; p12: ArrayBuffer; password: string }
   | { kind: 'sign'; spec: SignSpec; p12: ArrayBuffer; password: string }
   | { kind: 'signatures' }

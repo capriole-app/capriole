@@ -204,6 +204,28 @@ TEST(TextEdit, CodesOfNoWidthAreGivenOneWhenUnused) {
   EXPECT_NEAR(still->box.x1, qq->box.x1, 0.01);
 }
 
+// A line edited in a similar font, then edited again as a whole: the new text, drawn at the end of the
+// content, is on the line as laid out — not a line of its own, refused as "several lines" (found by the
+// app's e2e test).
+TEST(TextEdit, ALineEditedInASimilarFontIsStillOneLine) {
+  Document document = open(page_pdf("BT /F1 12 Tf 20 150 Td (Total 120 euro) Tj ET BT /F1 12 Tf 20 100 Td (Other line) Tj ET"));
+  const auto before = page_text(document);
+  const auto* euro = word(before, U"euro");
+  ASSERT_NE(euro, nullptr);
+  auto first = replace_text(document, 0, around(*euro), "\xE2\x82\xAC");
+  ASSERT_TRUE(first.has_value()) << first.error().message;
+  EXPECT_EQ(first->method, TextEditMethod::kSimilarFont);
+  const auto* total = word(before, U"Total");
+  ASSERT_NE(total, nullptr);
+  const graphics::Rect line{total->box.x0 - 0.5, euro->box.y0 - 0.5, euro->box.x1 + 0.5, euro->box.y1 + 0.5};
+  auto again = replace_text(document, 0, line, "Total 150 \xE2\x82\xAC");
+  ASSERT_TRUE(again.has_value()) << again.error().message;
+  EXPECT_EQ(again->replaced, "Total120\u20AC") << "the old text, both parts";
+  const auto after = page_text(document);
+  EXPECT_EQ(word(after, U"120"), nullptr);
+  EXPECT_NE(word(after, U"Other"), nullptr);
+}
+
 // The text of an annotation's appearance (a signature's, here a free-text annotation's) is not the page's
 // content: refused, where the old text stayed and the new was drawn over it (found by
 // corpus-tools/check_text_edit.py, on signature widgets).

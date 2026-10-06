@@ -9,6 +9,7 @@ import type {
   FacturxResult,
   FieldInfo,
   RedactionReport,
+  TextEditReport,
   CertificateInfo,
   SignatureInfo,
   SignSpec,
@@ -190,6 +191,15 @@ export class EngineClient {
    */
   applyRedactions(index: number): Promise<RedactionReport> {
     return this.#call({ kind: 'applyRedactions', index });
+  }
+
+  /**
+   * Replaces the text of the characters in area (the page as shown, one line) with text (empty: deleted):
+   * in the same font when it can, else in a similar standard font. Refused (Status.unsupported) for
+   * several lines, invisible text, an annotation's text; Status.outOfRange when there is no text there.
+   */
+  replaceText(index: number, area: [number, number, number, number], text: string): Promise<TextEditReport> {
+    return this.#call({ kind: 'replaceText', index, area, text });
   }
 
   /** The certificate of a PKCS#12 file (.p12, .pfx); Status.passwordRequired for a wrong password. The bytes are transferred. */

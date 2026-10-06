@@ -182,7 +182,8 @@ original bytes).
 ## Editing text
 
 `capriole_document_page_replace_text(document, page, spec_json, &json)` replaces the text of the
-characters whose centres lie in an area, on one line: `{"area":[x0,y0,x1,y1] (the page as shown),
+characters whose centres lie in an area, on one line (as the text is laid out: the page's text in
+`CAPRIOLE_TEXT_ORDER_LAYOUT`): `{"area":[x0,y0,x1,y1] (the page as shown),
 "text":"…" (empty: deleted)}`. The answer says how: `{"method":"sameFont" | "similarFont", "font":"…",
 "replaced":"…", "scale":1}` — in the same font when the characters come from one text operator of the
 page's content and its font (an indirect object) draws every new character (only that operator's strings change, byte for

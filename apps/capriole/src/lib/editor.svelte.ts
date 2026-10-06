@@ -13,6 +13,7 @@ import {
   type FacturxInfo,
   type FieldInfo,
   type PageRaster,
+  type PageText,
   type PdfaReport,
   type Repair,
   type SignatureInfo,
@@ -20,10 +21,20 @@ import {
 } from '@capriole/engine-client';
 import { baseName, dateTime, pdfDateNow } from './files';
 import { parseInvoice, type Invoice } from './invoice';
+import { lineText, replacementFor, textEditNotice, textEditRefusal, type LineText } from './textedit';
 import { fromBrowser, pickPdf, saveFile, savePdf, type PickedFile } from './platform';
 
-/** What a pointer does on the page shown large: fill the form, select (and move) annotations, or make one. */
-export type Tool = 'form' | 'select' | 'sign' | AnnotationSpec['kind'];
+/**
+ * What a pointer does on the page shown large: fill the form, select (and move) annotations, make one, or
+ * edit the page's own text (edittext).
+ */
+export type Tool = 'form' | 'select' | 'sign' | 'edittext' | AnnotationSpec['kind'];
+
+/** A line of the page's text being written again, and the page's text it was read from. */
+export interface LineEditing {
+  line: LineText;
+  page: PageText;
+}
 
 /** A signature to make: on page (from 0), visible in rect (the page as shown), or invisible (null). */
 export interface SignRequest {
@@ -112,6 +123,10 @@ export class Editor {
   fontSize = $state(12);
   /** The free text being written on the page (null: none). */
   typing = $state.raw<Typing | null>(null);
+  /** The line of the page's text being written again (null: none). */
+  editingLine = $state.raw<LineEditing | null>(null);
+  /** How the last edit of the page's text was written, when worth saying (a similar font). */
+  textNotice = $state<string | null>(null);
   /** An existing free text being written again: the document before (for undo) and its text then. */
   #retyping: { before: ArrayBuffer; text: string; rect: Typing['rect'] } | null = null;
 
@@ -676,6 +691,8 @@ export class Editor {
     this.fields = [];
     this.typing = null;
     this.#retyping = null;
+    this.editingLine = null;
+    this.textNotice = null;
     this.selectedAnnotation = null;
     this.tool = 'select';
   }
@@ -786,6 +803,45 @@ export class Editor {
         await this.#loadAnnotations();
       }),
     );
+  }
+
+  // ── The page's own text ───────────────────────────────────────────────────────────────────────
+
+  /** Starts writing again line `line` of the page shown (page: its text, as read now). */
+  startEditingLine(page: PageText, line: number): void {
+    if (this.viewing === null || this.typing || this.editingLine) return;
+    const read = lineText(page, line);
+    this.textNotice = null;
+    if (read.invisible) {
+      this.error = textEditRefusal('invisible');
+      return;
+    }
+    this.error = null;
+    this.editingLine = { line: read, page };
+  }
+
+  /**
+   * Ends writing the line: text replaces what changed in it (one step of undo; nothing changed: none);
+   * null leaves it as it was. How it was written, when it took a similar font, goes to textNotice; a
+   * refusal, in Italian, to error.
+   */
+  async finishEditingLine(text: string | null): Promise<void> {
+    const editing = this.editingLine;
+    const pageIndex = this.viewing;
+    this.editingLine = null;
+    if (!editing || pageIndex === null || text === null) return;
+    const replacement = replacementFor(editing.page, editing.line.index, text);
+    if (!replacement) return;
+    await this.#editPage(async () => {
+      try {
+        const report = await this.engine.replaceText(pageIndex, replacement.area, replacement.text);
+        this.textNotice = textEditNotice(report);
+      } catch (error) {
+        if (error instanceof EngineError && (error.status === Status.unsupported || error.status === Status.outOfRange))
+          throw new Error(textEditRefusal(error.message));
+        throw error;
+      }
+    });
   }
 
   /** The redaction marks of the page shown. */

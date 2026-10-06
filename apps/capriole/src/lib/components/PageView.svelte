@@ -1,21 +1,59 @@
 <script lang="ts">
   // The page shown large, to annotate: the engine's drawing of it, and over it a layer in the page's
   // coordinates (points as shown — those of the text and of the annotations the engine lists) where the
-  // pointer makes annotations with the tool chosen, or selects and moves them. Beside it, the selected
+  // pointer makes annotations with the tool chosen, or selects and moves them, or writes a line of the
+  // page's own text again (edittext: a double click on it). Beside it, the selected
   // annotation (its text, colour, removal) and the list of the page's annotations (the keyboard's way).
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import FormLayer from './FormLayer.svelte';
+  import LineEditor from './LineEditor.svelte';
   import TextBoxEditor from './TextBoxEditor.svelte';
   import type { AnnotationInfo, FieldInfo, PageRaster, PageText } from '@capriole/engine-client';
   import { tick } from 'svelte';
   import { colors, css, sameColor } from '$lib/colors';
   import { getEditor, type Rgb } from '$lib/editor.svelte';
+  import { lineAt } from '$lib/textedit';
 
   const editor = getEditor();
   const index = $derived(editor.viewing ?? 0);
 
-  // The text gives the page's size as shown, and the words that text markup goes on.
-  const text = $derived(editor.engine.pageText(index, 'content'));
+  // The text gives the page's size as shown, the words that text markup goes on and the lines edittext
+  // writes again — in the content's order, or as laid out for edittext (as the engine groups lines: text
+  // an earlier edit drew at the end of the content is on its line) —, read again after each edit (the
+  // page's text may have changed), the last one read kept until then (no flash).
+  const order = $derived(editor.tool === 'edittext' ? 'layout' : 'content');
+  const text = $derived.by(() => {
+    void editor.version;
+    return editor.engine.pageText(index, order);
+  });
+  let read = $state.raw<{ index: number; page: PageText; from: Promise<PageText> } | null>(null);
+  let failure = $state<string | null>(null);
+  $effect(() => {
+    const reading = text;
+    const at = index;
+    let current = true;
+    reading.then(
+      (page) => {
+        if (!current) return;
+        read = { index: at, page, from: reading };
+        failure = null;
+      },
+      (error: unknown) => {
+        if (current) failure = error instanceof Error ? error.message : String(error);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  });
+  const page = $derived(read?.index === index ? read.page : null);
+  /** The text shown is the page's now (not the one before an edit, still being read again). */
+  const fresh = $derived(read !== null && read.from === text);
+  /** edittext: the line under the pointer, and its box. */
+  let hovered = $state<number | null>(null);
+  const hoveredBox = $derived(
+    editor.tool === 'edittext' && hovered !== null && page ? (page.lines[hovered] ?? null) : null,
+  );
   // Sharp enough for a page on a screen; drawn again after each edit (the annotations are in it).
   const dpi = Math.round(Math.min(220, 110 * Math.min(globalThis.devicePixelRatio || 1, 2)));
   const raster = $derived.by(() => {
@@ -91,7 +129,7 @@
 
   function down(event: PointerEvent, page: PageText) {
     // While a text is written, a click elsewhere only ends it (the box's blur).
-    if (event.button !== 0 || editor.tool === 'form' || editor.typing) return;
+    if (event.button !== 0 || editor.tool === 'form' || editor.tool === 'edittext' || editor.typing) return;
     // Text can be started while the last edit is written (the box does not touch the engine, and its
     // text joins the queue of edits): a click right after the last text is not lost.
     if (editor.busy && editor.tool !== 'freetext') return;
@@ -140,6 +178,10 @@
   const lineBox = (size: number) => size * 1.2 + 4;
 
   function move(event: PointerEvent, page: PageText) {
+    if (editor.tool === 'edittext') {
+      const p = pointOf(event);
+      hovered = editor.editingLine ? null : lineAt(page, p[0], p[1]);
+    }
     if (!drag) return;
     const p = pointOf(event);
     if (drag.kind === 'move' || drag.kind === 'shape') drag = { ...drag, current: p };
@@ -276,7 +318,7 @@
   const cursor = $derived(
     editor.tool === 'select'
       ? 'default'
-      : ['highlight', 'underline', 'strikeout', 'squiggly', 'redact'].includes(editor.tool)
+      : ['highlight', 'underline', 'strikeout', 'squiggly', 'redact', 'edittext'].includes(editor.tool)
         ? 'text'
         : 'crosshair',
   );
@@ -284,9 +326,11 @@
 
 <div class="flex min-h-0 flex-1">
   <main class="min-w-0 flex-1 overflow-auto bg-muted p-6">
-    {#await text}
+    {#if failure}
+      <p class="rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">{failure}</p>
+    {:else if !page}
       <p class="text-sm text-muted-foreground">Lettura della pagina…</p>
-    {:then page}
+    {:else}
       <!-- The whole page in the window (fit to page): as wide as the room, or as the height allows. -->
       <div
         class="@container relative mx-auto bg-white shadow-sm"
@@ -303,18 +347,48 @@
             ? 'seleziona un’annotazione'
             : editor.tool === 'form'
               ? 'il modulo'
-              : 'disegna'}"
+              : editor.tool === 'edittext'
+                ? 'doppio clic su una riga per modificarne il testo'
+                : 'disegna'}"
           data-testid="page-surface"
           onpointerdown={(e) => down(e, page)}
           onpointermove={(e) => move(e, page)}
           onpointerup={() => up(page)}
           onpointercancel={() => (drag = null)}
+          onpointerleave={() => (hovered = null)}
           ondblclick={(e) => {
+            const p = pointOf(e);
+            if (editor.tool === 'edittext') {
+              // A double click on a line of the page's text writes it again, in place.
+              const line = lineAt(page, p[0], p[1]);
+              // Only on the text as it is now: a line read before the last edit would be replaced wrongly.
+              if (line !== null && !editor.busy && fresh) {
+                hovered = null;
+                editor.startEditingLine(page, line);
+              }
+              return;
+            }
             // A double click on a free text writes it again, in place (with any tool but the form's).
-            const text = editor.tool !== 'form' && !editor.typing ? freeTextAt(pointOf(e)) : null;
+            const text = editor.tool !== 'form' && !editor.typing ? freeTextAt(p) : null;
             if (text) editor.retype(text);
           }}
         >
+          {#if hoveredBox}
+            {@const l = hoveredBox}
+            <rect
+              x={l[0] - 1}
+              y={l[1] - 1}
+              width={l[2] - l[0] + 2}
+              height={l[3] - l[1] + 2}
+              fill="transparent"
+              class="stroke-primary"
+              stroke-width="1"
+              stroke-dasharray="3 2"
+              vector-effect="non-scaling-stroke"
+              pointer-events="none"
+              data-testid="line-hover"
+            />
+          {/if}
           {#each editor.annotations as a, i (a.ref ? `${a.ref[0]} ${a.ref[1]}` : `d${i}`)}
             {#if a.editable && !a.hidden}
               {@const moving = drag?.kind === 'move' && same(a, drag.ref) ? drag : null}
@@ -396,15 +470,16 @@
             <TextBoxEditor typing={editor.typing} width={page.width} height={page.height} />
           {/key}
         {/if}
+        {#if editor.editingLine}
+          {#key editor.editingLine}
+            <LineEditor editing={editor.editingLine} width={page.width} height={page.height} />
+          {/key}
+        {/if}
         {#if editor.tool === 'form'}
           <FormLayer width={page.width} height={page.height} />
         {/if}
       </div>
-    {:catch error}
-      <p class="rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">
-        {error instanceof Error ? error.message : String(error)}
-      </p>
-    {/await}
+    {/if}
   </main>
 
   <aside
@@ -454,16 +529,23 @@
       </section>
     {:else}
       <p class="text-muted-foreground">
-        {editor.tool === 'sign'
-          ? 'Disegna il riquadro in cui comparirà la firma; poi scegli il certificato. Per una firma invisibile: Pagine › Firme.'
-          : editor.tool === 'redact'
-            ? 'Segna ciò che va tolto: trascina sul testo, o un rettangolo altrove. Le aree segnate restano leggibili finché non applichi la redaction.'
-            : editor.tool === 'form'
-              ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
-              : editor.tool === 'select'
-                ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
-                : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
+        {editor.tool === 'edittext'
+          ? 'Doppio clic su una riga del testo della pagina per modificarla: Invio per scrivere, Esc per lasciarla com’era. Si cambia solo ciò che modifichi; se il font del testo non ha i caratteri nuovi, si usa un font simile.'
+          : editor.tool === 'sign'
+            ? 'Disegna il riquadro in cui comparirà la firma; poi scegli il certificato. Per una firma invisibile: Pagine › Firme.'
+            : editor.tool === 'redact'
+              ? 'Segna ciò che va tolto: trascina sul testo, o un rettangolo altrove. Le aree segnate restano leggibili finché non applichi la redaction.'
+              : editor.tool === 'form'
+                ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
+                : editor.tool === 'select'
+                  ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
+                  : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
       </p>
+      {#if editor.tool === 'edittext' && editor.textNotice}
+        <p class="rounded-md bg-warning-background px-3 py-2 text-warning" role="status" data-testid="text-edit-notice">
+          {editor.textNotice}
+        </p>
+      {/if}
     {/if}
     {#if pageFields.length > 0}
       <section class="flex flex-col gap-1">

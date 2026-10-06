@@ -45,7 +45,7 @@ test('free text is written on the page: a click widens, a rectangle wraps and gr
   await page.getByTestId('open-file').setInputFiles({ name: 'testo.pdf', mimeType: 'application/pdf', buffer: pdf() });
   await page.getByTestId('page').first().dblclick();
   const list = page.getByTestId('annotation-list');
-  await page.getByRole('button', { name: 'Testo' }).click();
+  await page.getByRole('button', { name: 'Testo', exact: true }).click();
   await page.getByRole('combobox', { name: 'Dimensione del testo' }).selectOption('18');
 
   // A click: a box one line of 18 points high, the cursor in it; it widens as the text is typed.

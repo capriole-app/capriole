@@ -647,7 +647,9 @@ Result<TextEditResult> replace_text(Document& document, std::uint32_t page_index
   if (!list) {
     return std::unexpected(std::move(list.error()));
   }
-  const text::PageText page_text = text::extract(*list, text::Order::kContent);
+  // Lines as laid out on the page (not in the content's order): text drawn later where a line is — the
+  // new text of an earlier edit, written at the end of the content — is on that line.
+  const text::PageText page_text = text::extract(*list, text::Order::kLayout);
 
   // The characters chosen, and the line they are on (one).
   Selection selection;

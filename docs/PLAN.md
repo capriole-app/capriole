@@ -1,6 +1,6 @@
 # Piano di implementazione
 
-Deriva da `CAPRIOLE.md` §9. Ogni fase chiude con qualcosa di **verificabile** (criterio di uscita)
+Deriva da `CAPRIOLE.md` §9; il quadro d'insieme aggiornato è in `ROADMAP.md`. Ogni fase chiude con qualcosa di **verificabile** (criterio di uscita)
 e non si passa alla successiva con il gate rosso. Le stime sono ordini di grandezza per una persona con
 assistenza AI e servono a vedere le proporzioni, non a promettere date.
 
@@ -24,7 +24,7 @@ Legenda: ✅ fatto · 🔜 prossima · ⬜ da fare · ❓ decisione aperta che b
 
 **Uscita:** gate completo verde in locale (WASM compreso) e fuzz smoke pulito. ✅
 
-## Fase 2 — Lexer, parser rigoroso, modello basso 🔜 (~4–6 settimane) — si lavora su `development`
+## Fase 2 — Lexer, parser rigoroso, modello basso ✅
 
 Passi: **2a** lexer ✅ · **2b** oggetti + parser ✅ · **2c** xref/trailer/object stream + FlateDecode ✅ ·
 **2d** ✅ `Document` con stato delle modifiche · **2e** cifratura in lettura ✅. Un branch `feat/…` per passo.
@@ -733,7 +733,7 @@ che non passano: font senza informazioni sul testo (i riferimenti emettono codic
 complesse (devanagari, arabo in ordine visivo), testo verticale CJK (mutool lo spezza per carattere,
 noi teniamo le parole), moduli disegnati fuori ordine (pdftotext li riordina meglio).
 
-## Fase 8 — Prime funzioni utente e app — 🔜 in corso
+## Fase 8 — Prime funzioni utente e app — ✅ completata (2026-10-06)
 
 In ordine di valore/rischio: operazioni sulle pagine (unisci, dividi, riordina, ruota) → annotazioni
 → moduli AcroForm → allegati/Factur-X → redaction reale → firma PAdES → PDF/A → **editing del testo**.
@@ -744,7 +744,7 @@ Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine ne
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
 moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app ✅) · **8i** PDF/A (8i-1 motore ✅, 8i-2 app ✅) · **8j** editing del
-testo (8j-1 motore ✅). I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
+testo (8j-1 motore ✅, 8j-2 app ✅). I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
 `rotate_pages` (multipli di 90°, sopra la rotazione ereditata; tocca solo le pagine),
@@ -1157,6 +1157,23 @@ Criterio: `corpus-tools/check_text_edit.py` su 100 pagine dei corpora, una parol
 non più la vecchia, le altre righe invariate, il disegno fuori dalla riga uguale, qpdf non peggiore —
 **100/100** (61 stesso font, 39 font simile; 7 pagine rifiutate per scelta e sostituite: 6 testo di
 annotazioni, 1 testo invisibile). Report `CORPORA/reports/text-edit-all-20261006-105709`.
+
+**8j-2 (2026-10-06) — «Modifica testo» nell'app: uscita raggiunta.** `apps/capriole`: lo strumento
+«Modifica testo» evidenzia la riga sotto il puntatore; un doppio clic apre sulla riga una casella con il suo
+testo (`LineEditor.svelte`), Invio (o uscirne) scrive, Esc lascia com'era. L'app confronta il testo vecchio
+con il nuovo e dà al motore solo i caratteri cambiati (`src/lib/textedit.ts`: le parti iniziale e finale
+comuni restano byte per byte, e quasi sempre nel loro font); ogni modifica è un passo di «Annulla». Quando
+serve un font simile lo dice («scritto con un font simile (Helvetica), ristretto al …%»); i rifiuti del
+motore sono in italiano. Il testo della pagina si rilegge dopo ogni modifica (senza sfarfallio) e la casella
+si apre solo sul testo attuale. Client del motore: `replaceText`.
+Corretto nel motore: le righe di `replace_text` sono quelle della disposizione (`Order::kLayout`), non
+dell'ordine del contenuto — il testo di una modifica precedente, disegnato in fondo al contenuto, era una
+riga a sé e una seconda modifica della riga veniva rifiutata (test di regressione); l'app legge le righe
+nello stesso ordine e non mette spazi tra parole che si toccano (le parole si formano nell'ordine del
+contenuto). Verifica sul corpus ripetuta dopo la correzione: ancora 100/100 (`CORPORA/reports/text-edit-all-20261006-141704`).
+Criterio: test e2e (una parola riscritta nel suo font, salvata, il resto della riga byte per byte,
+annullata; Esc senza passo di «Annulla»; carattere che il font non ha → avviso del font simile, e la riga
+riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) verdi; gate verde.
 
 ---
 

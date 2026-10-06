@@ -100,7 +100,7 @@ test('annotates a page: highlight, note, rectangle; moves, deletes, undoes, save
   expect(saved.match(/\/AP <</g)?.length).toBe(3);
 
   // Free text: the panel's box writes the text as it is typed (after a pause, without leaving it).
-  await page.getByRole('button', { name: 'Testo' }).click();
+  await page.getByRole('button', { name: 'Testo', exact: true }).click();
   await dragOnPage(page, [150, 340], [280, 380]);
   await page.keyboard.type('Primo');
   await page.keyboard.press('Escape');
