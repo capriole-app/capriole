@@ -1,13 +1,16 @@
 #include "common.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <format>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <utility>
+#include <vector>
 
 #include "capriole/content/content_parser.hpp"
 #include "capriole/graphics/display_list.hpp"
@@ -81,6 +84,24 @@ Rect bounds(std::span<const Point> points) {
     r = {std::min(r.x0, p.x), std::min(r.y0, p.y), std::max(r.x1, p.x), std::max(r.y1, p.y)};
   }
   return r;
+}
+
+Rect transformed(const Rect& r, const graphics::Matrix& m) {
+  const std::array<Point, 4> corners = {m.apply(Point{r.x0, r.y0}), m.apply(Point{r.x1, r.y0}), m.apply(Point{r.x0, r.y1}), m.apply(Point{r.x1, r.y1})};
+  return bounds(corners);
+}
+
+std::optional<Rect> path_bounds(const graphics::Path& path) {
+  std::vector<Point> points;
+  path.for_each([&](graphics::SegmentKind kind, const Point* at) {
+    for (std::size_t i = 0; i < graphics::Path::points_of(kind); ++i) {
+      points.push_back(at[i]);  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic): the path's own points
+    }
+  });
+  if (points.empty()) {
+    return std::nullopt;
+  }
+  return bounds(points);
 }
 
 Rect grow(const Rect& r, double by) { return {r.x0 - by, r.y0 - by, r.x1 + by, r.y1 + by}; }

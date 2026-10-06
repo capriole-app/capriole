@@ -195,6 +195,23 @@ of several lines, invisible text, an annotation's text (a form field, a signatur
 new text; `CAPRIOLE_ERROR_OUT_OF_RANGE`: no text in
 the area.
 
+## Editing a paragraph
+
+`capriole_document_page_replace_paragraph(document, page, spec_json, &json)` writes a paragraph anew —
+the lines its area touches, whole: consecutive lines of one block of the page's text, as laid out —
+and lays the text out inside it: word by word to its margins (a word wider than a line is split, no
+hyphenation), its first line's indent kept, on its baselines, aligned as it was. `{"area":[x0,y0,x1,y1],
+"text":"…" (\n: a new line; empty: deleted), "shrink":false}`. The answer: `{"method":"sameFont" |
+"similarFont", "font":"…", "replaced":"…" (the old lines joined by spaces), "oldLines":3, "lines":4,
+"size":10.0, "scale":1.0, "alignment":"left" | "justified" | "centre" | "right"}` — in the paragraph's
+own font when it draws every new character, else in the nearest standard font (what WinAnsi encodes).
+The rest of the page does not move: lines beyond the old ones are taken only where the page is empty
+below the paragraph down to the next thing drawn, or the bottom of what contains it; else the edit is
+refused (`CAPRIOLE_ERROR_UNSUPPORTED`, "no room: the new text needs N lines, M fit") — unless `shrink`,
+which makes the text and its pitch smaller (by 2.5% steps, down to 70%) until it fits. Refused too:
+lines of two blocks, text that is not horizontal, invisible text, an annotation's text, a paragraph of
+more than one font, size or colour. `CAPRIOLE_ERROR_OUT_OF_RANGE`: no text in the area.
+
 ## PDF/A
 
 `capriole_document_convert_pdfa(document, spec_json, &data, &size, &json)` converts the document to

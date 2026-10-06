@@ -15,6 +15,7 @@
 
 #include "capriole/core/error.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/graphics/display_list.hpp"
 #include "capriole/graphics/geometry.hpp"
 #include "capriole/model/object.hpp"
 
@@ -31,6 +32,10 @@ using Rgb = std::array<double, 3>;  // each 0..1
 [[nodiscard]] Rgb clamp(Rgb c);
 [[nodiscard]] std::string rgb_operands(const Rgb& c);
 [[nodiscard]] graphics::Rect bounds(std::span<const graphics::Point> points);
+// A rectangle of some space, through a matrix, as its bounds.
+[[nodiscard]] graphics::Rect transformed(const graphics::Rect& r, const graphics::Matrix& m);
+// The bounds of a path's points (control points included); none for an empty path.
+[[nodiscard]] std::optional<graphics::Rect> path_bounds(const graphics::Path& path);
 [[nodiscard]] graphics::Rect grow(const graphics::Rect& r, double by);
 // <hex> for bytes, as a string operand.
 [[nodiscard]] std::string hex(std::string_view bytes);

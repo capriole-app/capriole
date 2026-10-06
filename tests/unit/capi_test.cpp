@@ -414,6 +414,31 @@ TEST(CApiDocument, TextEdit) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, ParagraphEdit) {
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>");
+  b.add_stream(4, "BT /F1 12 Tf 14 TL 20 150 Td (Hello world, a paragraph) Tj T* (of two lines.) Tj ET");
+  b.add_object(5, "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>");
+  b.finish_table("/Size 6/Root 1 0 R");
+  capriole_document* document = open_document(b.str());
+  char* json = nullptr;
+  for (const char* bad : {"", "{}", R"({"area":[1,2,3],"text":"x"})", R"({"area":[0,0,10,10]})", R"({"area":[0,0,10,10],"text":"x","shrink":1})"}) {
+    SCOPED_TRACE(bad);
+    EXPECT_NE(capriole_document_page_replace_paragraph(document, 0, bad, &json), CAPRIOLE_OK);
+  }
+  EXPECT_EQ(capriole_document_page_replace_paragraph(document, 0, R"({"area":[200,150,250,190],"text":"x"})", &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  ASSERT_EQ(capriole_document_page_replace_paragraph(
+                document, 0, R"({"area":[10,35,290,70],"text":"Hello there, a paragraph\nof three lines\nnow.","shrink":false})", &json),
+            CAPRIOLE_OK)
+      << capriole_last_error_message();
+  EXPECT_EQ(
+      take_json(json),
+      R"({"method":"sameFont","font":"Helvetica","replaced":"Hello world, a paragraph of two lines.","oldLines":2,"lines":3,"size":12.0,"scale":1.0,"alignment":"left"})");
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, Redaction) {
   capriole::test::PdfBuilder b;
   b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");

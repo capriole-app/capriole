@@ -1175,6 +1175,42 @@ Criterio: test e2e (una parola riscritta nel suo font, salvata, il resto della r
 annullata; Esc senza passo di «Annulla»; carattere che il font non ha → avviso del font simile, e la riga
 riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) verdi; gate verde.
 
+## Fase 9 — Editing avanzato del testo — 🔜 in corso
+
+Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app). Gli altri (estendere i sottoinsiemi dei font
+incorporati, paragrafi con più stili, spostare il contenuto che segue su scelta esplicita) si fissano dopo.
+
+**9a-1 (2026-10-06) — reflow dei paragrafi nel motore: uscita raggiunta.** `edit/paragraph_edit.hpp`: `replace_paragraph` riscrive le
+righe che un'area tocca (intere: righe consecutive di un blocco del testo come è disposto) e impagina il
+testo nuovo dentro il paragrafo: a capo parola per parola tra i suoi margini (una parola più larga di una
+riga si spezza, senza sillabazione), rientro della prima riga, stesse linee di base (stessa interlinea),
+allineamento riconosciuto dai bordi delle righe — sinistra, giustificato (almeno tre righe: con due la
+prima arriva sempre al margine), centrato, destra —; i giustificati allargano gli spazi con `TJ` (anche
+per i font a 2 byte, dove `Tw` non vale), l'ultima riga di ogni capoverso no. Gli a capo espliciti del
+testo restano. Font: quello del paragrafo se scrive tutti i caratteri nuovi (codifica e glifi, come 8j),
+altrimenti il font standard più vicino (WinAnsi); stessa dimensione, colore e scala orizzontale. I glifi
+vecchi escono dalle stringhe (la rimozione della 8j), il testo nuovo è uno stream aggiunto. Il resto della
+pagina non si muove (CAPRIOLE.md §5.4): righe in più solo dove sotto il paragrafo la pagina è vuota fino a
+ciò che è disegnato dopo (testo, tracciati, immagini) o al fondo di ciò che lo contiene (una cella, un
+riquadro); altrimenti rifiuto («no room: the new text needs N lines, M fit») o, su scelta (`shrink`),
+testo e interlinea più piccoli a passi del 2,5% fino al 70%. Rifiuti: righe di due blocchi o non
+consecutive, testo non orizzontale, invisibile, di annotazioni, paragrafi con più font, dimensioni o
+colori (decisione dell'utente: per ora). Codice comune con la 8j in `text_common.hpp` (font simile,
+codifica, larghezze, testo del contenuto e non di annotazioni, risorse, stream aggiunto); calcoli dei
+riquadri in `common`. API C `capriole_document_page_replace_paragraph`, export WASM,
+`cpdf edit-paragraph [--shrink]`, `cpdf text --json`, target `fuzz_paragraph_edit`.
+Criterio: `corpus-tools/check_paragraph_edit.py` su 100 paragrafi dei corpora (il blocco più lungo di
+almeno 3 righe e 15 parole, un solo font e dimensione; testo allungato — una frase dopo la seconda parola —
+o accorciato — il terzo centrale tolto —, alternati): Capriole, Poppler e MuPDF leggono il testo nuovo al
+suo posto e nient'altro, il testo e il disegno fuori dal paragrafo come prima, margini e giustificazione
+mantenuti, qpdf non peggiore — **100/100** (77 stesso font, 23 font simile; 80 a sinistra, 15
+giustificati, 5 centrati; 18 senza spazio al primo tentativo, scritti ridotti; a parte, rifiutati per
+scelta: 4 con più stili, 3 con caratteri che nessun font sa scrivere). Report
+`CORPORA/reports/paragraph-edit-all-20261006-230518`. Corretto strada facendo: un paragrafo di due righe
+veniva preso per giustificato (test di regressione).
+
+---
+
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 
 Tutto ciò che serve a rendere pubblico il repository, senza renderlo pubblico (lo decide il titolare:

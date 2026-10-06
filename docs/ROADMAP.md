@@ -23,8 +23,10 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 8j-1 Modifica del testo nel motore | ✅ | |
 | 8j-2 «Modifica testo» nell'app | ✅ | chiude la fase 8 |
 | Licenza | ✅ | 0BSD (ADR 0009) |
-| **Dopo la fase 8** (🔜 da pianificare insieme: la prossima fase) | | |
-| Editing di paragrafi con a capo (reflow) | ⬜ | CAPRIOLE.md §5.4 |
+| **Fase 9 — editing avanzato del testo** | | |
+| 9a-1 Reflow dei paragrafi nel motore | ✅ | 100/100 paragrafi del corpus |
+| 9a-2 «Modifica testo» › Paragrafo nell'app | 🔜 | prossimo |
+| Paragrafi con più stili; spostare ciò che segue su scelta | ⬜ | dopo la 9a |
 | Font: estendere i sottoinsiemi incorporati | ⬜ | CAPRIOLE.md §5.4 |
 | Modello alto del documento (vista semantica) | ⬜ | da valutare, CAPRIOLE.md §5.2 |
 | Firma con smart card (desktop), revoca OCSP/CRL | ⬜ | CAPRIOLE.md §6.1 |

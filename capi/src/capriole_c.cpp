@@ -32,6 +32,7 @@
 #include "capriole/edit/facturx.hpp"
 #include "capriole/edit/forms.hpp"
 #include "capriole/edit/pages.hpp"
+#include "capriole/edit/paragraph_edit.hpp"
 #include "capriole/edit/pdfa.hpp"
 #include "capriole/edit/redact.hpp"
 #include "capriole/edit/sign.hpp"
@@ -1674,6 +1675,50 @@ capriole_status capriole_document_page_replace_text(capriole_document* document,
     out += R"(,"replaced":)";
     capriole::capi::append_json_text(out, capriole::model::from_utf8(result->replaced));
     out += std::format(R"(,"scale":{}}})", capriole::writer::format_real(result->scale));
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_replace_paragraph(capriole_document* document, uint32_t page_index, const char* spec_json, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto spec = capriole::capi::parse_json(spec_json);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    auto area = rect_in(spec->get("area"), "area");
+    if (!area) {
+      return fail(area.error());
+    }
+    const auto* text = spec->get("text");
+    if (text == nullptr || text->string() == nullptr) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "text: a string expected");
+    }
+    capriole::edit::ParagraphOptions options;
+    if (const auto* shrink = spec->get("shrink")) {
+      const auto b = shrink->boolean();
+      if (!b) {
+        return fail(CAPRIOLE_ERROR_SYNTAX, "shrink: true or false expected");
+      }
+      options.shrink = *b;
+    }
+    auto result = capriole::edit::replace_paragraph(document->document, page_index, *area, *text->string(), options);
+    if (!result) {
+      return fail(result.error());
+    }
+    static constexpr std::array<std::string_view, 4> kAlignments = {"left", "justified", "centre", "right"};
+    std::string out = std::format(R"({{"method":"{}","font":)", result->method == capriole::edit::TextEditMethod::kSameFont ? "sameFont" : "similarFont");
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(result->font));
+    out += R"(,"replaced":)";
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(result->replaced));
+    out += std::format(R"(,"oldLines":{},"lines":{},"size":{},"scale":{},"alignment":"{}"}})", result->old_lines, result->lines,
+                       capriole::writer::format_real(result->size), capriole::writer::format_real(result->scale),
+                       kAlignments.at(static_cast<std::size_t>(result->alignment)));
     return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");

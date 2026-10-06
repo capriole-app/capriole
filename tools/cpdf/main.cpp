@@ -75,7 +75,7 @@ void print_usage() {
                "                  at N dpi, default 150); DIR: the resource pack (CMaps, CJK fonts,\n"
                "                  scripts/fetch_resources.sh); prints what was drawn, the warnings and\n"
                "                  the resources the page wanted and did not find\n"
-               "  text [--words] [--order content|layout] [--resources DIR] <file> <page>\n"
+               "  text [--words | --json] [--order content|layout] [--resources DIR] <file> <page>\n"
                "                  extract the text of a page in reading order (blocks separated by an empty\n"
                "                  line): the content's order (default) or by columns; --words: one word per\n"
                "                  line with its box (points, top-left origin) and where its first character\n"
@@ -108,6 +108,8 @@ void print_usage() {
                "  signatures <file> [anchors.pem]   the signatures, verified (identity against the roots given)\n"
                "  p12 <file>      the certificate of a PKCS#12 file\n"
                "  edit-text <file> <page> <x0,y0,x1,y1> <text> <output>   replace the text in an area (one line)\n"
+               "  edit-paragraph [--shrink] <file> <page> <x0,y0,x1,y1> <text> <output>\n"
+               "                  replace a paragraph's text, laid out anew inside it\n"
                "  pdfa <file> <output> [2|3]   convert to PDF/A-2b or -3b (refused, with reasons, when it cannot be)\n"
                "  redact <file> <page> <json> <output>\n"
                "                  take what lies in areas out of the file ({\"areas\":[[x0,y0,x1,y1]],\"fill\":[0,0,0]};\n"
@@ -844,6 +846,70 @@ int cmd_edit_text(std::span<char* const> args) {
   return save_capi(document, args[4]);
 }
 
+// text --json: the page's text as the C API gives it (capi/README.md: blocks, lines, words, characters).
+int cmd_text_json(const char* path, std::uint64_t page_number, capriole::text::Order order) {
+  if (page_number == 0 || page_number > 0xFFFFFFFFULL) {
+    print_usage();
+    return kExitUsage;
+  }
+  capriole_document* document = open_capi(path);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  char* json = nullptr;
+  const int capi_order = order == capriole::text::Order::kLayout ? CAPRIOLE_TEXT_ORDER_LAYOUT : CAPRIOLE_TEXT_ORDER_CONTENT;
+  const capriole_status status = capriole_document_page_text_json(document, static_cast<std::uint32_t>(page_number - 1), capi_order, &json);
+  capriole_document_close(document);
+  if (status != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: text: {}\n", path, capriole_last_error_message());
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  return kExitOk;
+}
+
+// edit-paragraph [--shrink] <file> <page> <x0,y0,x1,y1> <text> <output>: the paragraph whose lines the
+// area touches written anew with the text (\n in it: a line break), laid out inside it; how, as JSON.
+int cmd_edit_paragraph(std::span<char* const> args) {
+  bool shrink = false;
+  if (!args.empty() && std::string_view(args[0]) == "--shrink") {
+    shrink = true;
+    args = args.subspan(1);
+  }
+  if (args.size() != 5) {
+    print_usage();
+    return kExitUsage;
+  }
+  const auto page = parse_uint(args[1]);
+  if (!page || *page == 0 || *page > 0xFFFFFFFFULL) {
+    print_usage();
+    return kExitUsage;
+  }
+  capriole_document* document = open_capi(args[0]);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  // The text as a JSON string: \n written in the argument is a line break.
+  std::string text_json;
+  for (const char c : std::string_view(args[3])) {
+    if (c == '"') {
+      text_json += '\\';
+    }
+    text_json += c;
+  }
+  const std::string spec = std::format(R"({{"area":[{}],"text":"{}","shrink":{}}})", args[2], text_json, shrink ? "true" : "false");
+  char* json = nullptr;
+  if (capriole_document_page_replace_paragraph(document, static_cast<std::uint32_t>(*page - 1), spec.c_str(), &json) != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: edit-paragraph: {}\n", args[0], capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  return save_capi(document, args[4]);
+}
+
 // pdfa <file> <output> [part]: the document converted to PDF/A (part 2 or 3; default: 2, or 3 with
 // embedded files), what was put right printed as JSON.
 int cmd_pdfa(std::span<char* const> args) {
@@ -1307,12 +1373,16 @@ int run(std::span<char*> args) {
   }
   if (command == "text") {
     bool words = false;
+    bool json = false;
     auto order = capriole::text::Order::kContent;
     std::string_view resources_dir;
     std::size_t i = 2;
     while (i < args.size()) {
       if (std::string_view(args[i]) == "--words") {
         words = true;
+        ++i;
+      } else if (std::string_view(args[i]) == "--json") {
+        json = true;
         ++i;
       } else if (std::string_view(args[i]) == "--order" && i + 1 < args.size()) {
         const std::string_view name = args[i + 1];
@@ -1327,6 +1397,9 @@ int run(std::span<char*> args) {
     }
     if (i + 2 == args.size()) {
       if (const auto page = parse_uint(args[i + 1])) {
+        if (json) {
+          return cmd_text_json(args[i], *page, order);
+        }
         return cmd_text(args[i], *page, words, order, resources_dir);
       }
     }
@@ -1371,6 +1444,9 @@ int run(std::span<char*> args) {
   }
   if (command == "edit-text" && args.size() == 7) {
     return cmd_edit_text(args.subspan(2));
+  }
+  if (command == "edit-paragraph" && (args.size() == 7 || args.size() == 8)) {
+    return cmd_edit_paragraph(args.subspan(2));
   }
   if (command == "pdfa" && (args.size() == 4 || args.size() == 5)) {
     return cmd_pdfa(args.subspan(2));

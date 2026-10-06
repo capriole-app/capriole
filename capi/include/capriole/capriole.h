@@ -239,6 +239,17 @@ capriole_status capriole_document_page_apply_redactions(capriole_document* docum
 capriole_status capriole_document_page_replace_text(capriole_document* document, uint32_t page_index, const char* spec_json, char** json);
 
 /*
+ * Replaces the text of a paragraph — the lines whose characters lie in an area, consecutive lines of one
+ * block — and lays it out anew inside the paragraph (PLAN.md phase 9a; edit/paragraph_edit.hpp):
+ * spec_json {"area": [x0,y0,x1,y1] (the page as shown), "text": "…" (a line break starts a new line;
+ * empty: deleted), "shrink": false (true: smaller text when it does not fit)}. *json: {"method":
+ * "sameFont" | "similarFont", "font", "replaced", "oldLines", "lines", "size", "scale", "alignment":
+ * "left" | "justified" | "centre" | "right"}. New text that does not fit is refused
+ * (CAPRIOLE_ERROR_UNSUPPORTED, "no room: the new text needs N lines, M fit").
+ */
+capriole_status capriole_document_page_replace_paragraph(capriole_document* document, uint32_t page_index, const char* spec_json, char** json);
+
+/*
  * Converts the document to PDF/A (PLAN.md phase 8i; edit/pdfa.hpp): spec_json {"part": 2 | 3 | 0 (2, or 3
  * with embedded files), "date": PDF date (required)}. *data receives the file, written in full; *json what
  * was put right, {"part", "changes": [text…]}. The document is reopened from the file. A document that

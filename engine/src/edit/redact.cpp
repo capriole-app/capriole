@@ -34,6 +34,8 @@ namespace {
 
 using detail::name;
 using detail::num;
+using detail::path_bounds;
+using detail::transformed;
 using graphics::Matrix;
 using graphics::Point;
 using graphics::Rect;
@@ -75,25 +77,6 @@ Rect bounds_of(std::span<const Point> points) {
     r = {std::min(r.x0, p.x), std::min(r.y0, p.y), std::max(r.x1, p.x), std::max(r.y1, p.y)};
   }
   return r;
-}
-
-// A rectangle of some space, through a matrix, as its bounds.
-Rect transformed(const Rect& r, const Matrix& m) {
-  const std::array<Point, 4> corners = {m.apply(Point{r.x0, r.y0}), m.apply(Point{r.x1, r.y0}), m.apply(Point{r.x0, r.y1}), m.apply(Point{r.x1, r.y1})};
-  return bounds_of(corners);
-}
-
-std::optional<Rect> path_bounds(const graphics::Path& path) {
-  std::vector<Point> points;
-  path.for_each([&](graphics::SegmentKind kind, const Point* at) {
-    for (std::size_t i = 0; i < graphics::Path::points_of(kind); ++i) {
-      points.push_back(at[i]);  // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic): the path's own points
-    }
-  });
-  if (points.empty()) {
-    return std::nullopt;
-  }
-  return bounds_of(points);
 }
 
 // ── What changes in each content stream ─────────────────────────────────────────────────────────
