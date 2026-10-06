@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Capriole Inspector: the engine at work in the browser (WebAssembly), file by file.",
-  "license": "UNLICENSED",
+  "license": "0BSD",
   "type": "module",
   "engines": {
     "node": ">=22 <23"

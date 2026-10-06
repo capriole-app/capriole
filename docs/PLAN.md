@@ -1164,7 +1164,7 @@ annotazioni, 1 testo invisibile). Report `CORPORA/reports/text-edit-all-20261006
 
 | Decisione | Blocca | Nota |
 |---|---|---|
-| Licenza di Capriole | pubblicazione, OSS-Fuzz, contributi | proposta da discutere: Apache-2.0 o MPL-2.0 |
+| ~~Licenza di Capriole~~ | pubblicazione, OSS-Fuzz, contributi | **decisa: 0BSD** (ADR 0009) |
 | ~~Skia vs Blend2D~~ | fase 6 | **deciso: Blend2D** (ADR 0002) |
 | ~~Decodificatore JPEG (DCT)~~ | fase 6 | **deciso: libjpeg-turbo** (ADR 0003), sostituibile |
 | ~~Gestione del colore (ICC)~~ | fase 6 | **decisa: Little CMS + profilo SWOP** (ADR 0006) |

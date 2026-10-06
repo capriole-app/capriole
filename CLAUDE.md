@@ -63,7 +63,7 @@ cmake --preset fuzz && cmake --build --preset fuzz   # richiede clang
    aprire e salvare senza modifiche non cambia il significato del file (spec §5).
 5. **Mai presupporre il file intero in memoria.** Si legge tramite `ByteSource` (limite wasm32 4 GB).
 6. **Determinismo.** Stesso file, stesso risultato: niente dipendenza da ordine di hash, orari, thread.
-7. **Licenze.** Nessuna dipendenza copyleft linkata. Ogni dipendenza nuova va in
+7. **Licenze.** Capriole è 0BSD (`LICENSE`, ADR 0009). Nessuna dipendenza copyleft linkata. Ogni dipendenza nuova va in
    `cmake/Dependencies.cmake` (versione + SHA-256) e in `docs/DEPENDENCIES.md` PRIMA di usarla.
    MuPDF, PDFium, pdf.js, Poppler, qpdf sono solo strumenti di test esterni, mai linkati.
    Non copiare codice da quei progetti.

@@ -68,7 +68,7 @@ Tutto ciò che è specifico del PDF:
 - Crittografia per le firme (PAdES): X.509, CMS/PKCS#7, RSA/ECDSA, marche temporali RFC 3161. **Decisa: Mbed TLS 3.6 LTS** (Apache-2.0, fase 8h-1): primitive, X.509, cifratura delle chiavi PKCS#12; le strutture CMS, PKCS#12 e RFC 3161 sono del motore, lo stesso codice nel browser (WASM) e sul desktop.
 - FreeType ha doppia licenza (FTL o GPLv2): si usa sotto **FTL**.
 
-**Attenzione alle licenze delle dipendenze:** finché la licenza di Capriole non è decisa, evitare dipendenze copyleft linkate nel motore. Esempio concreto: jbig2dec (decoder JBIG2 molto diffuso) è di Artifex e AGPL; per JBIG2 e CCITT Fax serve un'implementazione propria o un'alternativa con licenza compatibile. Ogni nuova dipendenza va verificata prima di essere aggiunta.
+**Attenzione alle licenze delle dipendenze:** Capriole è 0BSD (ADR 0009); per poterlo distribuire tutto alle stesse condizioni, evitare dipendenze copyleft linkate nel motore. Esempio concreto: jbig2dec (decoder JBIG2 molto diffuso) è di Artifex e AGPL; per JBIG2 e CCITT Fax serve un'implementazione propria o un'alternativa con licenza compatibile. Ogni nuova dipendenza va verificata prima di essere aggiunta.
 
 ### 4.3 Dove sta la difficoltà
 
@@ -190,7 +190,7 @@ Ordine suggerito, in cui ogni fase produce qualcosa di verificabile. Il piano op
 
 ## 10. Questioni aperte
 
-- Licenza di Capriole (legata al modello di finanziamento, per ora rimandato).
+- ~~Licenza di Capriole~~: decisa, **0BSD**, la più permissiva (ADR 0009).
 - Libreria di rasterizzazione: Skia o Blend2D.
 - Implementazione di JBIG2 e CCITT Fax con licenza compatibile.
 - Framework per l'interfaccia utente e shell desktop (proposta Tauri, da confermare).
@@ -198,4 +198,4 @@ Ordine suggerito, in cui ogni fase produce qualcosa di verificabile. Il piano op
 - ~~Libreria crittografica per PAdES~~: decisa, Mbed TLS 3.6 LTS (§4.2).
 - Perimetro della firma nel browser rispetto al desktop (§6.1): da confermare la proposta "smart card solo su desktop".
 - Hosting della web app compatibile con gli header COOP/COEP, se il motore userà i thread (§3.1).
-- Licenza e contributi: finché la licenza non è decisa, il repository resta privato, non può accettare contributi esterni ed è escluso da OSS-Fuzz, che richiede un progetto open source.
+- Pubblicazione del repository (ora possibile: licenza 0BSD), contributi esterni e iscrizione a OSS-Fuzz.

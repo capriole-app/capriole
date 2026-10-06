@@ -36,4 +36,6 @@ scripts/check.sh          # full gate: format, ASan/UBSan build + tests, clang-t
 
 ## License
 
-Not decided yet. Until it is, all rights are reserved and external contributions cannot be accepted.
+[0BSD](LICENSE) (BSD Zero Clause License): use, copy, modify and distribute it for any purpose, with or
+without fee, with no conditions. Third-party components keep their own licenses: see
+[docs/DEPENDENCIES.md](docs/DEPENDENCIES.md). Rationale: [ADR 0009](docs/adr/0009-licenza.md).

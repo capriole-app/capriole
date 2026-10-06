@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Capriole desktop: the web app (apps/capriole) in a Tauri shell, with the system's file dialogs.",
-  "license": "UNLICENSED",
+  "license": "0BSD",
   "type": "module",
   "engines": {
     "node": ">=22 <23"

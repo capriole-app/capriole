@@ -3,6 +3,7 @@ name = "capriole-desktop"
 version = "0.1.0"
 description = "Capriole: PDF pages on the desktop (the web app in a Tauri shell)"
 edition = "2021"
+license = "0BSD"
 publish = false
 
 [lib]
