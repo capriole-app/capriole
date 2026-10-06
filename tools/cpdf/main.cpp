@@ -107,6 +107,7 @@ void print_usage() {
                "                  \"lines\":[…],\"reason\",\"location\",\"date\",\"timestamp\":false}; a time stamp in two runs\n"
                "  signatures <file> [anchors.pem]   the signatures, verified (identity against the roots given)\n"
                "  p12 <file>      the certificate of a PKCS#12 file\n"
+               "  edit-text <file> <page> <x0,y0,x1,y1> <text> <output>   replace the text in an area (one line)\n"
                "  pdfa <file> <output> [2|3]   convert to PDF/A-2b or -3b (refused, with reasons, when it cannot be)\n"
                "  redact <file> <page> <json> <output>\n"
                "                  take what lies in areas out of the file ({\"areas\":[[x0,y0,x1,y1]],\"fill\":[0,0,0]};\n"
@@ -812,6 +813,37 @@ bool write_file(std::string_view path, std::span<const std::uint8_t> bytes) {
   return true;
 }
 
+// edit-text <file> <page> <x0,y0,x1,y1> <text> <output>: the text of the characters in an area (the
+// page as shown, one line) replaced; how, printed as JSON.
+int cmd_edit_text(std::span<char* const> args) {
+  const auto page = parse_uint(args[1]);
+  if (!page || *page == 0 || *page > 0xFFFFFFFFULL) {
+    print_usage();
+    return kExitUsage;
+  }
+  capriole_document* document = open_capi(args[0]);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  std::string text_json;
+  for (const char c : std::string_view(args[3])) {
+    if (c == '"' || c == '\\') {
+      text_json += '\\';
+    }
+    text_json += c;
+  }
+  const std::string spec = std::format(R"({{"area":[{}],"text":"{}"}})", args[2], text_json);
+  char* json = nullptr;
+  if (capriole_document_page_replace_text(document, static_cast<std::uint32_t>(*page - 1), spec.c_str(), &json) != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: edit-text: {}\n", args[0], capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  return save_capi(document, args[4]);
+}
+
 // pdfa <file> <output> [part]: the document converted to PDF/A (part 2 or 3; default: 2, or 3 with
 // embedded files), what was put right printed as JSON.
 int cmd_pdfa(std::span<char* const> args) {
@@ -1336,6 +1368,9 @@ int run(std::span<char*> args) {
   }
   if (command == "signatures" && (args.size() == 3 || args.size() == 4)) {
     return cmd_signatures(args.subspan(2));
+  }
+  if (command == "edit-text" && args.size() == 7) {
+    return cmd_edit_text(args.subspan(2));
   }
   if (command == "pdfa" && (args.size() == 4 || args.size() == 5)) {
     return cmd_pdfa(args.subspan(2));

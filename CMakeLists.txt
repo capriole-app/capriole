@@ -27,6 +27,10 @@ if(EMSCRIPTEN)
   # corrupts memory. Parsing recurses up to ParseLimits::max_nesting_depth levels, so the stack must
   # hold that depth with margin. tests/ links with STACK_OVERFLOW_CHECK=2 to prove it does.
   add_link_options("-sSTACK_SIZE=1MB")
+  # Binaryen's constraint-analysis pass (emsdk 6.0.10) aborts on an assertion
+  # (constraint.cpp: "!constraints.provesEverything()") while optimizing edit/text_edit.cpp's code after
+  # inlining; which function trips it moves with the code. The pass is skipped until a fixed Binaryen.
+  add_link_options("-sBINARYEN_EXTRA_PASSES=--skip-pass=constraint-analysis")
 endif()
 
 if(CAPRIOLE_BUILD_TESTS)

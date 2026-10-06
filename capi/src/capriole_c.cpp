@@ -35,6 +35,7 @@
 #include "capriole/edit/pdfa.hpp"
 #include "capriole/edit/redact.hpp"
 #include "capriole/edit/sign.hpp"
+#include "capriole/edit/text_edit.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
 #include "capriole/model/text_string.hpp"
@@ -1641,6 +1642,39 @@ capriole_status capriole_document_convert_pdfa(capriole_document* document, cons
       return status;
     }
     return hand_over(result->file, data, size);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_replace_text(capriole_document* document, uint32_t page_index, const char* spec_json, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto spec = capriole::capi::parse_json(spec_json);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    auto area = rect_in(spec->get("area"), "area");
+    if (!area) {
+      return fail(area.error());
+    }
+    const auto* text = spec->get("text");
+    if (text == nullptr || text->string() == nullptr) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "text: a string expected");
+    }
+    auto result = capriole::edit::replace_text(document->document, page_index, *area, *text->string());
+    if (!result) {
+      return fail(result.error());
+    }
+    std::string out = std::format(R"({{"method":"{}","font":)", result->method == capriole::edit::TextEditMethod::kSameFont ? "sameFont" : "similarFont");
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(result->font));
+    out += R"(,"replaced":)";
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(result->replaced));
+    out += std::format(R"(,"scale":{}}})", capriole::writer::format_real(result->scale));
+    return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

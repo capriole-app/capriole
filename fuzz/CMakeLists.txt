@@ -63,3 +63,7 @@ target_link_libraries(fuzz_signatures PRIVATE capriole::capi)
 # The conversion to PDF/A through the C API.
 capriole_add_fuzzer(fuzz_pdfa fuzz_pdfa.cpp)
 target_link_libraries(fuzz_pdfa PRIVATE capriole::capi)
+
+# Editing a page's text through the C API.
+capriole_add_fuzzer(fuzz_text_edit fuzz_text_edit.cpp)
+target_link_libraries(fuzz_text_edit PRIVATE capriole::capi)

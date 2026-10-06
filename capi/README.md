@@ -179,6 +179,21 @@ removes them. A redacted document is saved fully, leaving out what nothing refer
 `capriole_document_save` with `incremental` is then `CAPRIOLE_ERROR_UNSUPPORTED` (it would keep the
 original bytes).
 
+## Editing text
+
+`capriole_document_page_replace_text(document, page, spec_json, &json)` replaces the text of the
+characters whose centres lie in an area, on one line: `{"area":[x0,y0,x1,y1] (the page as shown),
+"text":"…" (empty: deleted)}`. The answer says how: `{"method":"sameFont" | "similarFont", "font":"…",
+"replaced":"…", "scale":1}` — in the same font when the characters come from one text operator of the
+page's content and its font (an indirect object) draws every new character (only that operator's strings change, byte for
+byte; codes the font's /Widths left at 0 are given their program's width); else the old glyphs leave
+their strings without moving the rest and the new text is drawn where they began, in the nearest
+standard font (`font`), narrowed to keep to the room before the next text (`scale`, at least 0.5). What
+WinAnsi cannot write cannot be written the second way. Refused (`CAPRIOLE_ERROR_UNSUPPORTED`): characters
+of several lines, invisible text, an annotation's text (a form field, a signature), a line break in the
+new text; `CAPRIOLE_ERROR_OUT_OF_RANGE`: no text in
+the area.
+
 ## PDF/A
 
 `capriole_document_convert_pdfa(document, spec_json, &data, &size, &json)` converts the document to

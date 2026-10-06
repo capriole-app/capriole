@@ -743,8 +743,8 @@ desktop (Tauri, ADR 0008).
 Passi, ciascuno con il suo criterio di uscita: **8a** operazioni sulle pagine nel motore ✅ · **8b** web
 app `apps/capriole` (miniature, riordino, rotazione, eliminazione, unione, estrazione; il client del
 motore in `packages/engine-client`) ✅ · **8c** shell desktop Tauri `apps/desktop` ✅ · **8d** annotazioni (8d-1 motore ✅, 8d-2 app ✅) · **8e**
-moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app ✅) · **8i** PDF/A (8i-1 motore ✅, 8i-2 app ✅) · 8j editing del
-testo. I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
+moduli AcroForm (8e-1 motore ✅, 8e-2 app ✅) · **8f** allegati e Factur-X (8f-1 motore ✅, 8f-2 app ✅) · **8g** redaction reale (8g-1 motore ✅, 8g-2 app ✅) · **8h** firma PAdES (8h-1 motore ✅, 8h-2 app ✅) · **8i** PDF/A (8i-1 motore ✅, 8i-2 app ✅) · **8j** editing del
+testo (8j-1 motore ✅). I criteri dei passi da 8d in poi si fissano all'avvio di ciascuno.
 
 **8a (2026-10-01) — operazioni sulle pagine: uscita raggiunta.** `edit/pages.hpp`:
 `rotate_pages` (multipli di 90°, sopra la rotazione ereditata; tocca solo le pagine),
@@ -1134,6 +1134,29 @@ degli e2e, che si diceva valida per lo schema XSD e non lo è (non ha righe).
 Criterio: test e2e (conversione e salvataggio con identificazione PDF/A, output intent e font incorporato;
 annullata; rifiuto con il motivo in italiano; fattura resa PDF/A-3 dal suo pannello) verdi; file convertiti
 dall'app validati a parte con veraPDF: **PASS 2b** e **PASS 3b**.
+
+**8j-1 (2026-10-06) — modifica del testo nel motore: uscita raggiunta.** `edit/text_edit.hpp`:
+`replace_text` sostituisce il testo dei caratteri il cui centro cade in un'area (una riga sola; testo
+vuoto = cancellazione). Due vie, la prima che riesce: **stesso font** — se i caratteri vengono da un solo
+operatore di testo del contenuto della pagina (Tj, TJ, ', ") e il suo font (oggetto indiretto) ha ogni
+carattere nuovo (la codifica lo nomina, il programma ha il glifo), si riscrivono i soli codici di
+quell'operatore (il resto del contenuto identico byte per byte); i codici che `/Widths` lascia a 0 e che la
+pagina non mostra ricevono la larghezza del programma; testo più largo dello spazio prima del testo
+seguente della riga non si scrive così. **Font simile** — i glifi vecchi escono dalle loro stringhe senza
+spostare il resto (la redaction del 8g, solo testo, `detail::remove_glyphs`) e il testo nuovo è disegnato
+dove cominciavano, con stessa dimensione, colore e direzione, nel font standard più vicino (sans, serif,
+monospaziato; grassetto, corsivo), ristretto con Tz fino al 50% per stare nello spazio; solo ciò che
+WinAnsi codifica; gli stati grafici lasciati aperti dalla pagina si chiudono prima. Rifiuti: più righe,
+testo invisibile (lo strato di testo di una scansione), testo di un'annotazione (campo, firma), a capo nel
+testo nuovo; nessun testo nell'area: `kOutOfRange`. API C `capriole_document_page_replace_text`
+(`{"method":"sameFont"|"similarFont","font","replaced","scale"}`), export WASM, `cpdf edit-text`,
+target `fuzz_text_edit`. Corretto nella redaction: un glifo senza area (larghezza zero) risultava in ogni
+area (test di regressione).
+Criterio: `corpus-tools/check_text_edit.py` su 100 pagine dei corpora, una parola sostituita per pagina
+(alternando stessa lunghezza e più lunga): Capriole, Poppler e MuPDF leggono la parola nuova sulla riga e
+non più la vecchia, le altre righe invariate, il disegno fuori dalla riga uguale, qpdf non peggiore —
+**100/100** (61 stesso font, 39 font simile; 7 pagine rifiutate per scelta e sostituite: 6 testo di
+annotazioni, 1 testo invisibile). Report `CORPORA/reports/text-edit-all-20261006-105709`.
 
 ---
 

@@ -392,6 +392,28 @@ TEST(CApiDocument, AttachmentsAndFacturx) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, TextEdit) {
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>");
+  b.add_stream(4, "BT /F1 12 Tf 20 150 Td (Hello world) Tj ET");
+  b.add_object(5, "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>");
+  b.finish_table("/Size 6/Root 1 0 R");
+  capriole_document* document = open_document(b.str());
+  char* json = nullptr;
+  for (const char* bad : {"", "{}", R"({"area":[1,2,3],"text":"x"})", R"({"area":[0,0,10,10]})", R"({"area":[0,0,10,10],"text":1})"}) {
+    SCOPED_TRACE(bad);
+    EXPECT_NE(capriole_document_page_replace_text(document, 0, bad, &json), CAPRIOLE_OK);
+  }
+  EXPECT_EQ(capriole_document_page_replace_text(document, 0, R"({"area":[200,150,250,190],"text":"x"})", &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  ASSERT_EQ(capriole_document_page_replace_text(document, 0, R"({"area":[50,38,90,55],"text":"planet"})", &json), CAPRIOLE_OK) << capriole_last_error_message();
+  EXPECT_EQ(take_json(json), R"({"method":"sameFont","font":"Helvetica","replaced":"world","scale":1.0})");
+  ASSERT_EQ(capriole_document_page_text_json(document, 0, 0, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find("planet"), std::string::npos);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, Redaction) {
   capriole::test::PdfBuilder b;
   b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");

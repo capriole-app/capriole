@@ -107,6 +107,7 @@ export interface CaprioleModule {
     outSize: number,
     outJson: number,
   ): number;
+  _capriole_document_page_replace_text(document: number, pageIndex: number, spec: number, out: number): number;
   _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,

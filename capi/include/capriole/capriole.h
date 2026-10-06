@@ -231,6 +231,14 @@ capriole_status capriole_document_page_apply_redactions(capriole_document* docum
 /* ── Attachments and Factur-X (edit/attachments.hpp, edit/facturx.hpp) ────────────────────── */
 
 /*
+ * Replaces the text of a page's characters whose centres lie in an area, on one line (PLAN.md phase 8j;
+ * edit/text_edit.hpp): spec_json {"area": [x0,y0,x1,y1] (the page as shown), "text": "…" (empty:
+ * deleted)}. *json: {"method": "sameFont" | "similarFont", "font", "replaced", "scale"} — the same font
+ * when it can write the new text in place, else a similar standard font where the old text began.
+ */
+capriole_status capriole_document_page_replace_text(capriole_document* document, uint32_t page_index, const char* spec_json, char** json);
+
+/*
  * Converts the document to PDF/A (PLAN.md phase 8i; edit/pdfa.hpp): spec_json {"part": 2 | 3 | 0 (2, or 3
  * with embedded files), "date": PDF date (required)}. *data receives the file, written in full; *json what
  * was put right, {"part", "changes": [text…]}. The document is reopened from the file. A document that

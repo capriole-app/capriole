@@ -26,6 +26,7 @@
 #include "capriole/writer/serializer.hpp"
 #include "common.hpp"
 #include "sound.hpp"
+#include "text_removal.hpp"
 
 namespace capriole::edit {
 
@@ -764,8 +765,11 @@ Result<void> remove_widget(Document& document, const detail::Page& page, ObjectR
   return {};
 }
 
+// text_only: only the glyphs in the areas leave their strings (edit/text_edit: text written anew) —
+// paths, images and annotations stay, and the document is not redacted (its earlier revisions may keep
+// the old text: nothing is hidden).
 Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_index, const std::vector<Area>& areas,
-                                     const std::vector<ObjectRef>& marks_to_remove) {
+                                     const std::vector<ObjectRef>& marks_to_remove, bool text_only = false) {
   if (areas.empty()) {
     return make_error(ErrorCode::kUnsupported, "redaction needs an area");
   }
@@ -827,10 +831,13 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
                                     glyph.origin.y + (run.ascent * run.font_size)};
         const Rect view = transformed(box.normalized(), run.text_matrix.then(to_view));
         // In an area: its centre, or a fifth of its box (a glyph of the line next to an area, whose box
-        // only grazes it, stays).
+        // only grazes it, stays). A glyph of no area (no width: a zero-width space, text scaled to nothing)
+        // by its centre only: a fifth of nothing is anywhere.
         const Point centre{(view.x0 + view.x1) / 2, (view.y0 + view.y1) / 2};
-        if (std::ranges::none_of(areas,
-                                 [&](const Area& a) { return inside(centre, a.rect) || area_of(intersection(view, a.rect)) >= kGlyphShare * area_of(view); })) {
+        const double box_area = area_of(view);
+        if (std::ranges::none_of(areas, [&](const Area& a) {
+              return inside(centre, a.rect) || (box_area > 0 && area_of(intersection(view, a.rect)) >= kGlyphShare * box_area);
+            })) {
           continue;
         }
         const std::uint32_t end = g + 1 < run.glyphs.size() ? run.glyphs[g + 1].byte : static_cast<std::uint32_t>(run.bytes.size());
@@ -841,7 +848,7 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
         edit.cuts.push_back({.byte = glyph.byte, .length = end > glyph.byte ? end - glyph.byte : 1, .advance = glyph.advance});
         ++report.glyphs;
       }
-    } else if (std::holds_alternative<graphics::FillPath>(command) || std::holds_alternative<graphics::StrokePath>(command)) {
+    } else if (!text_only && (std::holds_alternative<graphics::FillPath>(command) || std::holds_alternative<graphics::StrokePath>(command))) {
       const auto* fill = std::get_if<graphics::FillPath>(&command);
       const graphics::Path& path = fill != nullptr ? fill->path : std::get<graphics::StrokePath>(command).path;
       const Matrix& ctm = fill != nullptr ? fill->ctm : std::get<graphics::StrokePath>(command).ctm;
@@ -886,7 +893,7 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
         }
         edit.clip = clip + " W* n";
       }
-    } else if (const auto* drawn = std::get_if<graphics::Boxed<graphics::DrawImage>>(&command)) {
+    } else if (const auto* drawn = text_only ? nullptr : std::get_if<graphics::Boxed<graphics::DrawImage>>(&command)) {
       const Rect view = transformed(Rect{0, 0, 1, 1}, (*drawn)->ctm.then(to_view));
       if (std::ranges::any_of(areas,
                               [&](const Area& a) { return view.x0 >= a.rect.x0 && view.y0 >= a.rect.y0 && view.x1 <= a.rect.x1 && view.y1 <= a.rect.y1; })) {
@@ -906,7 +913,7 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
   // 2. Annotations meeting an area, and the marks applied.
   auto annotations = list_annotations(document, page_index);
   std::vector<std::pair<ObjectRef, bool>> doomed;  // reference, widget
-  if (annotations) {
+  if (annotations && !text_only) {
     for (const AnnotationInfo& a : *annotations) {
       if (!a.ref) {
         continue;
@@ -999,7 +1006,11 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
       auto content = content::page_content(document, page->ref);
       source = content ? std::move(*content) : std::vector<std::byte>{};
     } else {
-      auto form = document.get(*invocations[inv].form);
+      const std::optional<ObjectRef> form_ref = invocations[inv].form;
+      if (!form_ref) {
+        continue;  // a form invocation always names its form
+      }
+      auto form = document.get(*form_ref);
       const model::Stream* stream = form && *form != nullptr ? (*form)->as_stream() : nullptr;
       auto decoded = stream != nullptr ? document.decode_stream(*stream) : Result<std::vector<std::byte>>(std::vector<std::byte>{});
       source = decoded ? std::move(*decoded) : std::vector<std::byte>{};
@@ -1020,7 +1031,10 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
         return std::unexpected(std::move(ref.error()));
       }
       const std::uint32_t parent = invocations[inv].parent;
-      added[parent].emplace_back(*plan[parent][invocations[inv].operation].replace_name, *ref);
+      const std::optional<std::string>& name = plan[parent][invocations[inv].operation].replace_name;
+      if (name) {
+        added[parent].emplace_back(*name, *ref);
+      }
       continue;
     }
     // The page: its content wrapped (a state left open must not reach the fill), then the areas filled.
@@ -1067,11 +1081,29 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
       ++report.annotations;
     }
   }
-  document.mark_redacted();
+  if (!text_only) {
+    document.mark_redacted();
+  }
   return report;
 }
 
 }  // namespace
+
+namespace detail {
+
+Result<std::uint32_t> remove_glyphs(Document& document, std::uint32_t page_index, std::span<const Rect> areas) {
+  std::vector<Area> list;
+  for (const Rect& r : areas) {
+    list.push_back({.rect = r.normalized(), .fill = std::nullopt});
+  }
+  auto report = redact_areas(document, page_index, list, {}, true);
+  if (!report) {
+    return std::unexpected(std::move(report.error()));
+  }
+  return report->glyphs;
+}
+
+}  // namespace detail
 
 Result<RedactionReport> redact(Document& document, std::uint32_t page_index, std::span<const Rect> areas, const RedactionOptions& options) {
   std::vector<Area> list;

@@ -147,6 +147,19 @@ TEST(Redaction, TextLeavesItsStringsAndTheRestStaysInPlace) {
   EXPECT_EQ(writer::save_incremental(document, sink).error().code, ErrorCode::kUnsupported);
 }
 
+// A glyph of no area (no width) anywhere on the page was taken as in every area: a fifth of nothing is
+// nothing, and nothing is ≥ it (found by corpus-tools/check_text_edit.py, 0000758.pdf's zero-width spaces).
+TEST(Redaction, AGlyphOfNoWidthElsewhereStays) {
+  Document document = open(page_pdf("BT /F1 12 Tf 20 150 Td (Hello secret) Tj ET\nBT /F1 12 Tf 0 Tz 20 60 Td (zero) Tj ET"));
+  const auto before = words(document);
+  const Rect secret = word(before, U"secret").box;
+  const auto report = redact(document, 0, std::vector<Rect>{Rect{secret.x0 - 1, secret.y0, secret.x1 + 1, secret.y1}});
+  ASSERT_TRUE(report.has_value()) << report.error().message;
+  EXPECT_LE(report->glyphs, 8U);  // the word and the spaces at its edges, not the four glyphs of no width
+  const std::string content = text_of(*content::page_content(document, (*document.page_refs())[0]));
+  EXPECT_NE(content.find("(zero) Tj"), std::string::npos) << content;
+}
+
 TEST(Redaction, FormsAreCopiedOnlyWhereTheyChange) {
   // One form drawn on two pages, and twice on the first: only the first drawing on page 1 is redacted.
   const std::string resources = "/XObject<</Fm 50 0 R>>";
