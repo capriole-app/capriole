@@ -1,9 +1,10 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
+import { licenses } from '../../packages/engine-client/scripts/licenses.mjs';
 
 export default defineConfig({
-  plugins: [tailwindcss(), sveltekit()],
+  plugins: [tailwindcss(), sveltekit(), licenses({ crates: false })],
   // The engine runs in a module worker (packages/engine-client/src/worker.ts), so that parsing a large
   // file never freezes the page.
   worker: { format: 'es' },

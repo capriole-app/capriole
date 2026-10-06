@@ -6,6 +6,7 @@
   import PageGrid from '$lib/components/PageGrid.svelte';
   import PageView from '$lib/components/PageView.svelte';
   import PasswordDialog from '$lib/components/PasswordDialog.svelte';
+  import LicensesDialog from '$lib/components/LicensesDialog.svelte';
   import PdfaDialog from '$lib/components/PdfaDialog.svelte';
   import SignaturesPanel from '$lib/components/SignaturesPanel.svelte';
   import SignDialog from '$lib/components/SignDialog.svelte';
@@ -24,7 +25,15 @@
       e.target instanceof HTMLTextAreaElement ||
       e.target instanceof HTMLSelectElement ||
       (e.target instanceof HTMLElement && e.target.isContentEditable);
-    if (!editor.name || editor.busy || typing || editor.typing || editor.signRequest || editor.pdfaDialog !== null)
+    if (
+      !editor.name ||
+      editor.busy ||
+      typing ||
+      editor.typing ||
+      editor.signRequest ||
+      editor.pdfaDialog !== null ||
+      editor.licensesOpen
+    )
       return;
     const command = e.ctrlKey || e.metaKey;
     if (editor.viewing !== null) {
@@ -64,6 +73,7 @@
 <PasswordDialog />
 <SignDialog />
 <PdfaDialog />
+<LicensesDialog />
 
 {#if !editor.name}
   <OpenCard />

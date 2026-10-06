@@ -16,6 +16,7 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import X from '@lucide/svelte/icons/x';
+  import Info from '@lucide/svelte/icons/info';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor } from '$lib/editor.svelte';
   import { choosesWhere, fromBrowser } from '$lib/platform';
@@ -224,6 +225,13 @@
       </button>
     {/if}
   </div>
+  <button
+    type="button"
+    class="flex size-9 items-center justify-center rounded-md border hover:bg-muted"
+    aria-label="Informazioni e licenze"
+    title="Informazioni e licenze"
+    onclick={() => (editor.licensesOpen = true)}><Info class="size-4" /></button
+  >
   <ThemeMenu />
   <button
     type="button"

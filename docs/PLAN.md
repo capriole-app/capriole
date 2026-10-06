@@ -1175,6 +1175,38 @@ Criterio: test e2e (una parola riscritta nel suo font, salvata, il resto della r
 annullata; Esc senza passo di «Annulla»; carattere che il font non ha → avviso del font simile, e la riga
 riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) verdi; gate verde.
 
+## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
+
+Tutto ciò che serve a rendere pubblico il repository, senza renderlo pubblico (lo decide il titolare:
+`docs/PUBBLICAZIONE.md`, con le decisioni ancora aperte e i passi del giorno della pubblicazione).
+
+- **P-1 licenze nei binari.** `scripts/gen_notices.py` copia i testi di licenza esatti dai sorgenti delle
+  dipendenze del motore in `THIRD_PARTY_NOTICES.md` e `third_party/notices.json` (il gate verifica che
+  siano aggiornati; la versione deve essere quella che `Dependencies.cmake` fissa); di Mbed TLS solo il
+  testo Apache-2.0, di libjpeg-turbo anche la licenza IJG. `scripts/gen_crate_notices.py`: i crate Rust
+  linkati nell'app desktop (Linux, da `cargo metadata` senza rete), raggruppati per testo, con il sorgente
+  dei crate MPL-2.0 portati da Tauri. Il plugin Vite `packages/engine-client/scripts/licenses.mjs` scrive
+  alla build `licenses.json`/`licenses.txt`: Capriole, motore, pacchetti npm presenti davvero nel bundle,
+  risorse, crate. `apps/capriole`: dialogo «Informazioni e licenze» (schermata iniziale e barre degli
+  strumenti); `apps/inspector`: link a `licenses.txt`.
+- **P-2 file pubblici.** README per l'esterno, `CONTRIBUTING.md` (DCO, `git commit -s`), `SECURITY.md`,
+  `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1, testo ufficiale), modelli di issue e PR in `.github/`
+  (nessun workflow: la CI resta Jenkins), `tests/data/signing/README.md` (chiavi di test, non segreti). Il
+  contatto è un segnaposto (`<<CONTACT-TBD>>`) finché non viene deciso.
+- **P-3 kit OSS-Fuzz** (`ci/oss-fuzz/`): `project.yaml`, `Dockerfile` (scarica gli archivi delle
+  dipendenze con `fetch_deps.py`, SHA-256 verificati), `build.sh` (i target con i flag e il motore di
+  OSS-Fuzz, corpus seme zippati). CMake: `CAPRIOLE_DEPS_DIR` (archivi già scaricati, nessuna rete),
+  `CAPRIOLE_FUZZING_ENGINE` (`$LIB_FUZZING_ENGINE`), `CAPRIOLE_FUZZ_INSTRUMENT` (spento quando la
+  strumentazione arriva dai flag); OpenJPEG senza `-fsanitize=function` anche con i flag UBSan di
+  OSS-Fuzz. `emulate.sh` prova il kit in locale senza Docker.
+- **P-4** `scripts/prepublish_check.sh`: segreti, percorsi privati e file > 5 MB in tutta la storia, file
+  pubblici presenti, nessun workflow, avvisi aggiornati, segnaposto rimasti (`--allow-pending` li elenca
+  senza fallire).
+
+Criterio: `prepublish_check.sh --allow-pending` verde (resta solo il contatto da decidere); e2e della
+pagina delle licenze verde; emulazione OSS-Fuzz: i 29 target compilati senza rete e ciascuno eseguito
+20 s sul suo corpus senza crash, con ASan e con UBSan; gate verde; nulla pubblicato.
+
 ---
 
 ## Decisioni aperte (con la fase in cui diventano bloccanti)

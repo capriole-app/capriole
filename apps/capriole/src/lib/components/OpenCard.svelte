@@ -72,5 +72,12 @@
         motore Capriole {editor.engineVersion} (WebAssembly)
       </p>
     {/if}
+    <p class="mt-2 text-center text-xs">
+      <button
+        type="button"
+        class="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        onclick={() => (editor.licensesOpen = true)}>Informazioni e licenze</button
+      >
+    </p>
   </div>
 </main>

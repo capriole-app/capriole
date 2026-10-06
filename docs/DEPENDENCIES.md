@@ -53,6 +53,10 @@ Java); `lxml` (BSD) per leggere gli XMP nella verifica. Per la verifica della re
 `certutil` (NSS). Per PDF/A (fase 8i): veraPDF 1.30.2 (`CORPORA/tools/verapdf`, installato senza rete
 dall'installer scaricato dall'utente).
 
+
+OSS-Fuzz (`ci/oss-fuzz/`, quando il progetto sarà iscritto): l'immagine `gcr.io/oss-fuzz-base/base-builder`
+di Google con `ninja-build`, `zip` e CMake ≥ 3.28 da pip; strumenti di build dell'immagine, nulla di linkato.
+
 ## Apps (`apps/inspector`, `apps/capriole`) — npm, devDependencies only
 
 Versions pinned by each app's `package-lock.json`; nothing is linked into the engine. The same stack in
@@ -75,6 +79,7 @@ them (MIT OR Apache-2.0).
 | `tauri` (Rust crate) | 2.x, pinned by `src-tauri/Cargo.lock` | MIT OR Apache-2.0 | the shell: a WebKitGTK webview around `apps/capriole` |
 | `tauri-build` | 2.x | MIT OR Apache-2.0 | build script (capabilities, context) |
 | `tauri-plugin-dialog`, `tauri-plugin-fs` | 2.x | MIT OR Apache-2.0 | system open/save dialogs; reading and writing the files picked in them |
+| Tauri's transitive crates | pinned by `src-tauri/Cargo.lock` | mostly MIT/Apache-2.0; **MPL-2.0**: `cssparser`, `cssparser-macros`, `selectors`, `dtoa-short` (via `tauri-utils` → `dom_query`), `option-ext` (via `dirs`) | brought by Tauri itself (ADR 0008); MPL-2.0 is file-level copyleft: used unmodified, their source linked in the app's «Licenze» page (`scripts/gen_crate_notices.py` → `apps/desktop/crate-notices.json`) |
 | `@tauri-apps/cli` (npm) | 2.12.1 | MIT OR Apache-2.0 | `tauri dev` / `tauri build` (prebuilt binary) |
 
 The crates' own dependencies (a few hundred, as for any Tauri app) are pinned by `Cargo.lock`; their

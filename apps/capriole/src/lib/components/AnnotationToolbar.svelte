@@ -20,6 +20,7 @@
   import Type from '@lucide/svelte/icons/type';
   import Underline from '@lucide/svelte/icons/underline';
   import Undo2 from '@lucide/svelte/icons/undo-2';
+  import Info from '@lucide/svelte/icons/info';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor, type Rgb, type Tool } from '$lib/editor.svelte';
   import { colors, css, sameColor } from '$lib/colors';
@@ -159,6 +160,13 @@
       class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
       disabled={editor.busy}
       onclick={() => editor.save()}><FileDown class="size-4" /> Salva</button
+    >
+    <button
+      type="button"
+      class="flex size-9 items-center justify-center rounded-md border hover:bg-muted"
+      aria-label="Informazioni e licenze"
+      title="Informazioni e licenze"
+      onclick={() => (editor.licensesOpen = true)}><Info class="size-4" /></button
     >
     <ThemeMenu />
   </div>

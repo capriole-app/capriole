@@ -5,10 +5,13 @@
 #
 # Every target takes the whole input as a file and must never crash, leak or hit UB, whatever the bytes.
 
+# The fuzzing engine's runtime: libFuzzer by default, $LIB_FUZZING_ENGINE under OSS-Fuzz.
+separate_arguments(_capriole_fuzzing_engine UNIX_COMMAND "${CAPRIOLE_FUZZING_ENGINE}")
+
 function(capriole_add_fuzzer name source)
   add_executable(${name} ${source})
   target_link_libraries(${name} PRIVATE capriole::engine)
-  target_link_options(${name} PRIVATE -fsanitize=fuzzer)
+  target_link_options(${name} PRIVATE ${_capriole_fuzzing_engine})
   capriole_set_warnings(${name})
 endfunction()
 

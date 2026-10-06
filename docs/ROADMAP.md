@@ -1,7 +1,7 @@
 # Stato del piano
 
 Quadro d'insieme, aggiornato a ogni passo (il dettaglio di ogni fase è in `PLAN.md`).
-Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⬜ da fare.
+Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in attesa di una decisione · ⬜ da fare.
 
 | Fase / tema | Stato | Note |
 |---|---|---|
@@ -30,5 +30,6 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⬜ da 
 | Firma con smart card (desktop), revoca OCSP/CRL | ⬜ | CAPRIOLE.md §6.1 |
 | Segnalazione anonimizzata dei file problematici | ⬜ | CAPRIOLE.md §8 |
 | Distribuzione: Flathub, hosting web, self-hosted | ⬜ | CAPRIOLE.md §3 |
-| Pubblicazione: repo pubblico, OSS-Fuzz, pagina licenze nelle app | ⬜ | possibile ora che la licenza c'è |
+| Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |
+| Pubblicazione: repo pubblico, OSS-Fuzz | ⏸ | la decide il titolare; prima: il contatto (`<<CONTACT-TBD>>`) |
 | Togliere lo skip del passo Binaryen `constraint-analysis` | ⬜ | al prossimo aggiornamento di emsdk |

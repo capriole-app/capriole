@@ -6,12 +6,28 @@
 
 include(FetchContent)
 
+# Where each archive comes from: its URL — or, with CAPRIOLE_DEPS_DIR set (builds without network, as
+# OSS-Fuzz's: ci/oss-fuzz/fetch_deps.py fills it), the file of the same name there. The SHA-256 is
+# checked either way.
+function(capriole_dependency_url out url)
+  if(CAPRIOLE_DEPS_DIR)
+    get_filename_component(_name ${url} NAME)
+    if(NOT EXISTS ${CAPRIOLE_DEPS_DIR}/${_name})
+      message(FATAL_ERROR "CAPRIOLE_DEPS_DIR: ${CAPRIOLE_DEPS_DIR}/${_name} is missing (ci/oss-fuzz/fetch_deps.py)")
+    endif()
+    set(${out} ${CAPRIOLE_DEPS_DIR}/${_name} PARENT_SCOPE)
+  else()
+    set(${out} ${url} PARENT_SCOPE)
+  endif()
+endfunction()
+
 # zlib 1.3.1 — Zlib license. FlateDecode (and, later, compression in the writer).
 # zlib's own CMakeLists is not used (global include_directories, a shared library, a CMake minimum
 # that newer CMake rejects): SOURCE_SUBDIR points nowhere so nothing is added, and the library is
 # built below from its sources. One pinned version on every platform, WASM included.
+capriole_dependency_url(_url https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz)
 FetchContent_Declare(zlib
-  URL https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
+  URL ${_url}
   URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_SUBDIR do-not-add-zlib-cmake)
@@ -39,14 +55,16 @@ set_target_properties(capriole_zlib PROPERTIES C_STANDARD 11 POSITION_INDEPENDEN
 # AsmJit is only fetched: Blend2D compiles it into itself from ASMJIT_DIR. The JIT runs in native release
 # builds; WebAssembly cannot generate code, and in sanitizer and fuzz builds the reference pipelines
 # (plain C++) are what the tools can check, so there Blend2D is built without it.
+capriole_dependency_url(_url https://github.com/asmjit/asmjit/archive/0d7f01052f2d3f6d6b9bb6714ef32bd7b80177eb.tar.gz)
 FetchContent_Declare(asmjit
-  URL https://github.com/asmjit/asmjit/archive/0d7f01052f2d3f6d6b9bb6714ef32bd7b80177eb.tar.gz
+  URL ${_url}
   URL_HASH SHA256=955a378fac217f0e9a57e61d55d869fffa21f3217e361d9402c5251bf91e1faa
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_SUBDIR do-not-add-asmjit-cmake)
 FetchContent_MakeAvailable(asmjit)
+capriole_dependency_url(_url https://github.com/blend2d/blend2d/archive/58ca9460b4138af6e793184682e9324e0a8053b2.tar.gz)
 FetchContent_Declare(blend2d
-  URL https://github.com/blend2d/blend2d/archive/58ca9460b4138af6e793184682e9324e0a8053b2.tar.gz
+  URL ${_url}
   URL_HASH SHA256=b7887f581dc1340ce4c7198a4ccc96c79fd832fe099367db065c3b9ff5dfffd8
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   EXCLUDE_FROM_ALL
@@ -62,6 +80,11 @@ else()
   set(BLEND2D_NO_JIT OFF CACHE BOOL "" FORCE)
 endif()
 FetchContent_MakeAvailable(blend2d)
+# Blend2D builds without RTTI: the vptr check cannot apply. Implied by -fsanitize=undefined it is dropped
+# quietly, but OSS-Fuzz's flags name it (ci/oss-fuzz/build.sh), which is an error with -fno-rtti.
+if(CMAKE_CXX_FLAGS MATCHES "vptr")
+  target_compile_options(blend2d PRIVATE -fno-sanitize=vptr)
+endif()
 
 # libjpeg-turbo 3.2.0 — IJG + BSD-3-Clause (ADR 0003). DCTDecode: JPEG images.
 # Its build refuses add_subdirectory() and asks for ExternalProject_Add(): it is built on its own, with
@@ -75,7 +98,7 @@ if(CAPRIOLE_SANITIZERS)
   list(JOIN CAPRIOLE_SANITIZERS "," _jpeg_sanitizers)
   string(APPEND _jpeg_c_flags " -fsanitize=${_jpeg_sanitizers} -fno-omit-frame-pointer -fno-sanitize-recover=all")
 endif()
-if(CAPRIOLE_BUILD_FUZZERS)
+if(CAPRIOLE_BUILD_FUZZERS AND CAPRIOLE_FUZZ_INSTRUMENT)
   string(APPEND _jpeg_c_flags " -fsanitize=fuzzer-no-link")
 endif()
 set(_jpeg_build_type "${CMAKE_BUILD_TYPE}")
@@ -83,8 +106,9 @@ if(NOT _jpeg_build_type)
   set(_jpeg_build_type Release)
 endif()
 set(_jpeg_library ${_jpeg_prefix}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}jpeg${CMAKE_STATIC_LIBRARY_SUFFIX})
+capriole_dependency_url(_url https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz)
 ExternalProject_Add(libjpeg_turbo
-  URL https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.2.0/libjpeg-turbo-3.2.0.tar.gz
+  URL ${_url}
   URL_HASH SHA256=6f30092cef9fb839779646608f4ee14ae3cbac989c47fa05e841b0841f09878e
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   PREFIX ${_jpeg_prefix}/build
@@ -124,12 +148,14 @@ set(_opj_prefix ${CMAKE_BINARY_DIR}/_deps/openjpeg)
 # parameter): undefined in C, harmless on every real ABI, and its design. Clang's -fsanitize=function
 # flags each call, so it is off for OpenJPEG alone; every other sanitizer stays on.
 set(_opj_c_flags "${_jpeg_c_flags}")
-if(CAPRIOLE_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+# (Under OSS-Fuzz the sanitizers come in the flags.)
+if((CAPRIOLE_SANITIZERS OR CMAKE_C_FLAGS MATCHES "-fsanitize=") AND CMAKE_C_COMPILER_ID MATCHES "Clang")
   string(APPEND _opj_c_flags " -fno-sanitize=function")
 endif()
 set(_opj_library ${_opj_prefix}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}openjp2${CMAKE_STATIC_LIBRARY_SUFFIX})
+capriole_dependency_url(_url https://github.com/uclouvain/openjpeg/archive/refs/tags/v2.5.4.tar.gz)
 ExternalProject_Add(openjpeg
-  URL https://github.com/uclouvain/openjpeg/archive/refs/tags/v2.5.4.tar.gz
+  URL ${_url}
   URL_HASH SHA256=a695fbe19c0165f295a8531b1e4e855cd94d0875d2f88ec4b61080677e27188a
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   PREFIX ${_opj_prefix}/build
@@ -164,8 +190,9 @@ add_library(capriole::openjpeg ALIAS capriole_openjpeg)
 # Glyph outlines of the fonts in PDFs: TrueType/OpenType, Type 1, CFF, CID-keyed. Built from its sources
 # like zlib (the tarball's GPG signature checked at the upgrade, the hash pinned here): only the font
 # drivers PDF needs, no rasterizers or hinters, our options and module list in cmake/freetype/.
+capriole_dependency_url(_url https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz)
 FetchContent_Declare(freetype
-  URL https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz
+  URL ${_url}
   URL_HASH SHA256=36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_SUBDIR do-not-add-freetype-cmake)
@@ -201,8 +228,9 @@ endif()
 # Little CMS 2.19.1 — MIT (ADR 0006). ICC colour management: the profiles in PDFs (ICCBased, output
 # intents), CalRGB/CalGray, and DeviceCMYK through a press profile. Built from its sources like zlib;
 # its own mutexes stay on (pthreads; stubs in WebAssembly): hosts may render on several threads.
+capriole_dependency_url(_url https://github.com/mm2/Little-CMS/releases/download/lcms2.19.1/lcms2-2.19.1.tar.gz)
 FetchContent_Declare(lcms2
-  URL https://github.com/mm2/Little-CMS/releases/download/lcms2.19.1/lcms2-2.19.1.tar.gz
+  URL ${_url}
   URL_HASH SHA256=bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_SUBDIR do-not-add-lcms2-build)
@@ -219,7 +247,7 @@ endif()
 # Like OpenJPEG, Little CMS calls its interpolation routines through pointers cast to a common signature
 # (found by fuzz_icc): harmless on every real ABI, its design. Clang's -fsanitize=function is off for it
 # alone; every other sanitizer stays on.
-if(CAPRIOLE_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+if((CAPRIOLE_SANITIZERS OR CMAKE_C_FLAGS MATCHES "-fsanitize=") AND CMAKE_C_COMPILER_ID MATCHES "Clang")
   target_compile_options(capriole_lcms2 PRIVATE -fno-sanitize=function)
 endif()
 
@@ -227,8 +255,9 @@ endif()
 # Apache-2.0). Digital signatures (PLAN.md phase 8h): X.509, RSA, ECDSA, hashes, the key encryption of
 # PKCS#12 files. Built from its sources like zlib, with our configuration (cmake/mbedtls/): no TLS, no
 # PSA, no entropy or clock of the platform. The CMS and PKCS#12 structures are the engine's own.
+capriole_dependency_url(_url https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2)
 FetchContent_Declare(mbedtls
-  URL https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2
+  URL ${_url}
   URL_HASH SHA256=a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_SUBDIR do-not-add-mbedtls-build)
@@ -246,8 +275,9 @@ set_target_properties(capriole_mbedtls PROPERTIES C_STANDARD 99 POSITION_INDEPEN
 # CFF programs with the metrics of Adobe's core fonts — taken from the pdfjs-dist 2.16.105 package on
 # npm, the last one that carries all fourteen (with its LICENSE_FOXIT). Only data: built into the engine
 # by engine/CMakeLists.txt (cmake/EmbedFiles.cmake); nothing of pdf.js is used.
+capriole_dependency_url(_url https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-2.16.105.tgz)
 FetchContent_Declare(foxit_fonts
-  URL https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-2.16.105.tgz
+  URL ${_url}
   URL_HASH SHA256=b14d705aa185c548af0381d6835fc4f917451985a6358c2dae0ba8dd01355141
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   SOURCE_SUBDIR do-not-add-pdfjs)
@@ -256,8 +286,9 @@ set(CAPRIOLE_FOXIT_FONTS_DIR ${foxit_fonts_SOURCE_DIR}/standard_fonts CACHE INTE
 
 if(CAPRIOLE_BUILD_TESTS)
   # GoogleTest 1.17.0 — BSD-3-Clause. Test-only, never linked into the engine.
+  capriole_dependency_url(_url https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz)
   FetchContent_Declare(googletest
-    URL https://github.com/google/googletest/releases/download/v1.17.0/googletest-1.17.0.tar.gz
+    URL ${_url}
     URL_HASH SHA256=65fab701d9829d38cb77c14acdc431d2108bfdbf8979e40eb8ae567edf10b27c
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     EXCLUDE_FROM_ALL)

@@ -119,6 +119,8 @@ export class Editor {
   /** What the last conversion put right, or why it was refused (the engine's reasons). */
   pdfaReport = $state.raw<PdfaReport | null>(null);
   pdfaRefusal = $state.raw<string[] | null>(null);
+  /** The «Informazioni e licenze» dialog. */
+  licensesOpen = $state(false);
   /** The size of the next free text (points). */
   fontSize = $state(12);
   /** The free text being written on the page (null: none). */

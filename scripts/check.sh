@@ -42,6 +42,9 @@ cmake --preset asan >/dev/null
 cmake --build --preset asan
 ctest --preset asan
 
+step "third-party notices up to date (scripts/gen_notices.py)"
+python3 scripts/gen_notices.py --check --build-dir build/asan
+
 if [[ "$SKIP_TIDY" != 1 ]]; then
   step "clang-tidy"
   # Needs clang-tidy >= 19: Clang 18 cannot see std::expected in libstdc++ 13 (it gates it on
@@ -100,6 +103,7 @@ if [[ "${SKIP_DESKTOP:-1}" != 1 ]]; then
     cd apps/desktop/src-tauri
     cargo clippy --locked --all-targets -- -D warnings
   )
+  PATH="$HOME/.cargo/bin:$PATH" python3 scripts/gen_crate_notices.py --check
 fi
 
 printf '\n\033[1;32mGate green.\033[0m\n'

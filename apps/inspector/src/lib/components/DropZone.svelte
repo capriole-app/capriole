@@ -1,6 +1,7 @@
 <script lang="ts">
   // The first screen: a card to drop or choose a PDF. Nothing leaves the browser.
   import FolderOpen from '@lucide/svelte/icons/folder-open';
+  import { base } from '$app/paths';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getInspector } from '$lib/inspector.svelte';
 
@@ -76,5 +77,14 @@
         motore Capriole {inspector.engineVersion} (WebAssembly)
       </p>
     {/if}
+    <p class="mt-2 text-center text-xs text-muted-foreground">
+      Capriole è 0BSD ·
+      <a
+        class="underline underline-offset-2 hover:text-foreground"
+        href="{base}/licenses.txt"
+        target="_blank"
+        rel="noopener">licenze delle componenti</a
+      >
+    </p>
   </div>
 </main>
