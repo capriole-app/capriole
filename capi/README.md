@@ -203,14 +203,18 @@ and lays the text out inside it: word by word to its margins (a word wider than 
 hyphenation), its first line's indent kept, on its baselines, aligned as it was. `{"area":[x0,y0,x1,y1],
 "text":"…" (\n: a new line; empty: deleted), "shrink":false}`. The answer: `{"method":"sameFont" |
 "similarFont", "font":"…", "replaced":"…" (the old lines joined by spaces), "oldLines":3, "lines":4,
-"size":10.0, "scale":1.0, "alignment":"left" | "justified" | "centre" | "right"}` — in the paragraph's
-own font when it draws every new character, else in the nearest standard font (what WinAnsi encodes).
+"size":10.0, "scale":1.0, "alignment":"left" | "justified" | "centre" | "right", "styles":2,
+"sameFontStyles":2}`. The new text is plain; its styles (fonts, sizes, colours) come from the old text
+word by word — a word kept keeps its letters' styles, a word in place of an old one takes that one's, a
+word added the previous word's — and each style is written in its own font when it draws every letter of
+it, else in the standard font nearest it (bold, italic kept; what WinAnsi encodes): `sameFontStyles` of
+the `styles` in their own font (`method` is `sameFont` when all are).
 The rest of the page does not move: lines beyond the old ones are taken only where the page is empty
 below the paragraph down to the next thing drawn, or the bottom of what contains it; else the edit is
 refused (`CAPRIOLE_ERROR_UNSUPPORTED`, "no room: the new text needs N lines, M fit") — unless `shrink`,
 which makes the text and its pitch smaller (by 2.5% steps, down to 70%) until it fits. Refused too:
-lines of two blocks, text that is not horizontal, invisible text, an annotation's text, a paragraph of
-more than one font, size or colour. `CAPRIOLE_ERROR_OUT_OF_RANGE`: no text in the area.
+lines of two blocks, text that is not horizontal, invisible text, an annotation's text, superscripts and
+subscripts. `CAPRIOLE_ERROR_OUT_OF_RANGE`: no text in the area.
 
 ## PDF/A
 

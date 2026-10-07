@@ -180,7 +180,11 @@ export function paragraphArea(paragraph: ParagraphText): Box {
 export function paragraphNotice(report: ParagraphEditReport): string | null {
   const parts: string[] = [];
   if (report.method === 'similarFont')
-    parts.push(`il font del paragrafo non ha tutti i caratteri nuovi: scritto con un font simile (${report.font})`);
+    parts.push(
+      report.styles > 1 || report.sameFontStyles === 0
+        ? 'i caratteri che i font del paragrafo non hanno sono scritti con un font simile'
+        : `il font del paragrafo non ha tutti i caratteri nuovi: scritto con un font simile (${report.font})`,
+    );
   if (report.scale < 0.995) parts.push(`ridotto ${toPercent(report.scale)} per farlo stare`);
   if (parts.length === 0) return null;
   const text = parts.join('; ');
@@ -197,8 +201,8 @@ const refusals: [RegExp, string][] = [
   [/several lines|one line at a time: the area/, 'Si modifica una riga alla volta.'],
   [/one paragraph at a time/, 'Si modifica un paragrafo alla volta: qui le righe sono di più paragrafi.'],
   [
-    /more than one font/,
-    'Il paragrafo ha più stili (grassetto, corsivo, dimensioni o colori diversi): modificalo riga per riga.',
+    /superscripts or subscripts/,
+    'Il paragrafo ha apici o pedici, che il testo semplice non sa dire: modificalo riga per riga.',
   ],
   [/only horizontal/, 'Si reimpaginano solo i paragrafi orizzontali: modificalo riga per riga.'],
   [/line break/, 'Il testo nuovo deve stare su una riga.'],

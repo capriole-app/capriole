@@ -79,6 +79,8 @@ struct Metrics {
 [[nodiscard]] const Metrics& helvetica();
 // Text as WinAnsi codes for Helvetica: characters it lacks become '?'.
 [[nodiscard]] std::string win_ansi_bytes(std::u32string_view text);
+// A lowercase letter (Latin, Greek, Cyrillic): what continues a word broken at a line's end.
+[[nodiscard]] bool lowercase(char32_t c);
 // /Font << /Helv Helvetica >>, for an appearance's resources.
 [[nodiscard]] model::Dict helvetica_font();
 

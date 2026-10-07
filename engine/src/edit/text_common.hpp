@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "capriole/core/error.hpp"
 #include "capriole/document/document.hpp"
@@ -26,10 +27,14 @@ namespace capriole::edit::detail {
 [[nodiscard]] std::string similar_font(Document& document, const std::optional<model::ObjectRef>& ref);
 
 // The codes that write a text in a font: each character's code, the one whose glyph the font draws and
-// whose meaning (ToUnicode, encoding) is that character. nullopt when a character has none. widths: the
+// whose meaning (ToUnicode, encoding; a composite font's ToUnicode alone, when it has one: what every
+// reader reads) is that character. nullopt when a character has none. widths: the
 // codes whose width the dictionary leaves at 0 (a code the document never used), with the program's.
 [[nodiscard]] std::optional<std::string> encode_in(font::detail::Font& font, font::detail::FontContext& context, std::u32string_view text, bool two_byte,
                                                    std::map<std::uint32_t, double>& widths);
+// The same, letter by letter: each one's code, or none when the font cannot write it.
+[[nodiscard]] std::vector<std::optional<std::string>> encode_each(font::detail::Font& font, font::detail::FontContext& context, std::u32string_view text,
+                                                                  bool two_byte, std::map<std::uint32_t, double>& widths);
 
 // Whether the widths of codes a font's /Widths leaves at 0 can be given: its FirstChar and Widths are
 // there and hold the codes, and the page shows none of them in that font (a damaged font draws its text

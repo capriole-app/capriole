@@ -1175,9 +1175,9 @@ Criterio: test e2e (una parola riscritta nel suo font, salvata, il resto della r
 annullata; Esc senza passo di «Annulla»; carattere che il font non ha → avviso del font simile, e la riga
 riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) verdi; gate verde.
 
-## Fase 9 — Editing avanzato del testo — 🔜 in corso (9a ✅)
+## Fase 9 — Editing avanzato del testo — 🔜 in corso (9a ✅, 9b ✅)
 
-Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅). Gli altri (estendere i sottoinsiemi dei font
+Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅. Gli altri (estendere i sottoinsiemi dei font
 incorporati, paragrafi con più stili, spostare il contenuto che segue su scelta esplicita) si fissano dopo.
 
 **9a-1 (2026-10-06) — reflow dei paragrafi nel motore: uscita raggiunta.** `edit/paragraph_edit.hpp`: `replace_paragraph` riscrive le
@@ -1225,6 +1225,32 @@ paragrafo lasciava, fino a un'interlinea (test di regressione); verifica sul cor
 Criterio: test e2e (paragrafo riscritto con una riga in più nello spazio libero, salvato, il resto della
 pagina byte per byte, annullato; testo che non ci sta → «Torna al testo» → «Riduci», la riga sotto ferma;
 Esc senza passo di «Annulla») verdi; gate verde.
+
+**9b (2026-10-07) — paragrafi con più stili: uscita raggiunta.** `edit/paragraph_edit`: i paragrafi con più
+font, dimensioni, colori o scale orizzontali si modificano (prima erano rifiutati: nel corpus sono la
+maggioranza). Il testo nuovo è semplice; gli stili vengono dal vecchio parola per parola (sequenza comune più
+lunga tra le parole, con le parole spezzate a fine riga riunite come nell'app): una parola rimasta tiene
+lo stile delle sue lettere, una che ne sostituisce un'altra prende quello prevalente di quella, una
+aggiunta quello della parola prima (all'inizio, della prima rimasta dopo). L'impaginazione misura ogni
+lettera nel suo font e il disegno cambia font, dimensione, scala e colore dove cambiano. Per ogni stile, le
+lettere che il suo font sa scrivere restano in quel font, le altre vanno nel font standard più vicino *a
+quello stile* (grassetto → Helvetica-Bold, corsivo → …): un paragrafo greco non perde più le lettere greche
+per una «h» latina che il sottoinsieme non ha. Rifiutati ora: apici e pedici (fuori dalla linea di base:
+il testo semplice non li dice). Risposta con `styles` e `sameFontStyles`.
+Corretto (anche per la 8j, `text_common`): in un font composito si scrive un carattere solo con un codice
+che la sua /ToUnicode elenca — il motore leggeva anche il cmap del programma, Poppler e MuPDF no, e la
+lettera era invisibile per loro (test di regressione con `square.ttf` come CIDFontType2).
+App: aiuto del modo Paragrafo su come restano gli stili, messaggio per apici e pedici, avviso quando solo
+alcuni caratteri usano un font simile.
+Criterio: `check_paragraph_edit.py --mixed` su 100 paragrafi con almeno due stili: **100/100** (68 tutti
+nei loro font, 32 con qualche carattere nel font simile; 49 giustificati; 233 stili scritti, 197 nei loro
+font; **3681 parole rimaste controllate: tutte con il loro stile**; a parte: 5 con apici o pedici, 4 con
+caratteri che nessun font sa scrivere), report `CORPORA/reports/paragraph-edit-mixed-20261007-130248`;
+senza `--mixed` ancora 100/100 (`paragraph-edit-all-20261007-130038`), la 8j ancora 100/100
+(`text-edit-all-20261007-130125`); e2e (una parola in grassetto resta in grassetto nel file salvato; la
+sua sostituta è in grassetto) verdi; gate verde. Lo script conta ora le righe per vicinanza dei centri
+(parole di font diversi sulla stessa linea di base hanno riquadri diversi), ignora le parole fatte solo di
+spazi e raddoppia le barre rovesciate passate a `cpdf`.
 
 ---
 

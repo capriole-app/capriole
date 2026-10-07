@@ -7,6 +7,7 @@
 #include <format>
 #include <memory>
 #include <span>
+#include <string>
 #include <vector>
 
 #include "capriole/content/content_parser.hpp"
@@ -70,10 +71,24 @@ std::string similar_font(Document& document, const std::optional<ObjectRef>& ref
 
 std::optional<std::string> encode_in(font::detail::Font& font, font::detail::FontContext& context, std::u32string_view text, bool two_byte,
                                      std::map<std::uint32_t, double>& widths) {
+  std::string out;
+  for (const auto& code : encode_each(font, context, text, two_byte, widths)) {
+    if (!code) {
+      return std::nullopt;
+    }
+    out += *code;
+  }
+  return out;
+}
+
+std::vector<std::optional<std::string>> encode_each(font::detail::Font& font, font::detail::FontContext& context, std::u32string_view text, bool two_byte,
+                                                    std::map<std::uint32_t, double>& widths) {
   std::map<char32_t, std::string> codes;
   const auto add = [&](std::uint32_t code, std::uint8_t length) {
     const font::detail::Font::Code c{.code = code, .length = length, .cid = code};
-    const std::u32string meaning = font.text(c);
+    // A composite font's code means, for every reader, what its /ToUnicode says (the engine also reads
+    // the program's cmap; other readers do not): written only so.
+    const std::u32string meaning = length == 2 && font.has_to_unicode() ? font.to_unicode_text(c) : font.text(c);
     if (meaning.size() != 1 || codes.contains(meaning[0])) {
       return;
     }
@@ -96,13 +111,14 @@ std::optional<std::string> encode_in(font::detail::Font& font, font::detail::Fon
       add(code, 1);
     }
   }
-  std::string out;
+  std::vector<std::optional<std::string>> out;
+  out.reserve(text.size());
   for (const char32_t c : text) {
     const auto found = codes.find(c);
     if (found == codes.end()) {
-      return std::nullopt;
+      out.emplace_back();
+      continue;
     }
-    out += found->second;
     if (!two_byte && font.kind() == font::detail::Font::Kind::kSimple) {
       const auto code = static_cast<std::uint8_t>(found->second.back());
       const font::detail::Font::Code fc{.code = code, .length = 1, .cid = code};
@@ -110,11 +126,13 @@ std::optional<std::string> encode_in(font::detail::Font& font, font::detail::Fon
         const auto source = font.glyph_source(fc, context);
         const auto advance = source.program != nullptr ? source.program->advance(source.glyph) : std::nullopt;
         if (!advance || *advance <= 0) {
-          return std::nullopt;
+          out.emplace_back();
+          continue;
         }
         widths[code] = *advance;
       }
     }
+    out.emplace_back(found->second);
   }
   return out;
 }

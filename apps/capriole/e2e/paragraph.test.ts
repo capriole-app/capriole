@@ -34,6 +34,49 @@ function pdf(): Buffer {
   return Buffer.from(text, 'latin1');
 }
 
+/**
+ * One page, 400 × 400 points: a paragraph of three lines in 12 pt Helvetica (/F1) with one word in
+ * Helvetica-Bold (/F2): "importante".
+ */
+function styledPdf(): Buffer {
+  const content =
+    'BT /F1 12 Tf 14 TL 30 360 Td (Questo paragrafo contiene una parola ) Tj /F2 12 Tf (importante) Tj /F1 12 Tf T* ' +
+    '(scritta in grassetto, e il resto del testo) Tj T* (resta normale come prima.) Tj ET';
+  const bodies = [
+    '<</Type/Catalog/Pages 2 0 R>>',
+    '<</Type/Pages/Kids[3 0 R]/Count 1>>',
+    '<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 400]/Contents 4 0 R/Resources<</Font<</F1 5 0 R/F2 6 0 R>>>>>>',
+    `<</Length ${content.length}>>\nstream\n${content}\nendstream`,
+    '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>',
+    '<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold>>',
+  ];
+  let text = '%PDF-1.7\n';
+  const offsets: number[] = [];
+  bodies.forEach((body, i) => {
+    offsets.push(text.length);
+    text += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xref = text.length;
+  text += `xref\n0 ${bodies.length + 1}\n0000000000 65535 f \n`;
+  text += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  text += `trailer\n<</Size ${bodies.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(text, 'latin1');
+}
+
+/**
+ * Whether a word of the saved file is drawn in the bold font: the font resource set (Tf) last before its
+ * codes is the object the page's /F2 names (object numbers may change in a full save; the reference stays
+ * one).
+ */
+function inBold(saved: string, word: string): boolean {
+  const at = saved.indexOf(`<${hex(word)}>`);
+  if (at < 0) return false;
+  const keys = [...saved.slice(0, at).matchAll(/\/(\w+) [\d.]+ tf/g)];
+  const key = keys.at(-1)?.[1];
+  const bold = /\/f2 (\d+) 0 r/.exec(saved)?.[1];
+  return key !== undefined && bold !== undefined && new RegExp(`/${key} ${bold} 0 r`).test(saved);
+}
+
 /** Every stream of a file, decoded when it is Flate (else as it is), and the rest of the file. */
 function everything(file: Buffer): string {
   const text = file.toString('latin1');
@@ -55,12 +98,12 @@ async function at(page: Page, x: number, y: number): Promise<{ x: number; y: num
   return { x: box.x + (x * box.width) / 400, y: box.y + (y * box.height) / 400 };
 }
 
-async function open(page: Page) {
+async function open(page: Page, data = pdf()) {
   await page.goto('/');
   await expect(page.getByText(/motore Capriole \d+\.\d+\.\d+/)).toBeVisible();
   await page
     .getByTestId('open-file')
-    .setInputFiles({ name: 'paragrafi.pdf', mimeType: 'application/pdf', buffer: pdf() });
+    .setInputFiles({ name: 'paragrafi.pdf', mimeType: 'application/pdf', buffer: data });
   await page.getByTestId('page').first().dblclick();
   await page.getByRole('button', { name: 'Modifica testo' }).click();
   await page.getByRole('radio', { name: 'Paragrafo' }).click();
@@ -143,4 +186,32 @@ test('Esc leaves the paragraph as it was, with no step of undo', async ({ page }
   await expect(box).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Annulla' })).toBeDisabled();
   await editParagraph(page, 60, 54, first);
+});
+
+const styled =
+  'Questo paragrafo contiene una parola importante scritta in grassetto, e il resto del testo resta normale come prima.';
+
+async function savedAfter(page: Page, x: number, y: number, from: string, to: string): Promise<string> {
+  const box = page.getByTestId('paragraph-editor');
+  await editParagraph(page, x, y, from);
+  await box.fill(to);
+  await box.press('Control+Enter');
+  await expect(box).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Salva' }).click();
+  return everything(readFileSync(await (await download).path())).toLowerCase();
+}
+
+test('words keep their styles: the bold word stays bold, and its replacement is bold', async ({ page }) => {
+  await open(page, styledPdf());
+  const kept = await savedAfter(page, 60, 54, styled, styled.replace('contiene', 'ha'));
+  expect(inBold(kept, 'importante')).toBe(true);
+  expect(inBold(kept, 'ha')).toBe(false);
+  expect(inBold(kept, 'grassetto,')).toBe(false);
+
+  await page.getByRole('button', { name: 'Annulla' }).click();
+  const replaced = await savedAfter(page, 60, 54, styled, styled.replace('importante', 'decisiva'));
+  expect(inBold(replaced, 'decisiva')).toBe(true);
+  expect(inBold(replaced, 'parola')).toBe(false);
 });

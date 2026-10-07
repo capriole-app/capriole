@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -224,6 +226,54 @@ TEST(TextEdit, ALineEditedInASimilarFontIsStillOneLine) {
   const auto after = page_text(document);
   EXPECT_EQ(word(after, U"120"), nullptr);
   EXPECT_NE(word(after, U"Other"), nullptr);
+}
+
+std::string font_fixture(const std::string& name) {
+  std::ifstream file(std::string(CAPRIOLE_TEST_DATA_DIR) + "/fonts/" + name, std::ios::binary);
+  return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
+
+// A composite font (Identity-H, the TrueType program square.ttf: A is glyph 1, B glyph 2) whose
+// /ToUnicode says what CID 1 is and not CID 2. The program's cmap says CID 2 is B, and the engine read it
+// so — other readers (Poppler, MuPDF) only read /ToUnicode: B written in this font was no text for them.
+// A letter is written in a composite font only when its /ToUnicode says so (found by
+// corpus-tools/check_paragraph_edit.py --mixed, on a Calibri subset).
+TEST(TextEdit, ACompositeFontWritesOnlyWhatItsToUnicodeSays) {
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>");
+  b.add_stream(4, "BT /F1 20 Tf 20 150 Td <00010001> Tj ET");
+  b.add_object(5, "<</Type/Font/Subtype/Type0/BaseFont/Square/Encoding/Identity-H/DescendantFonts[6 0 R]/ToUnicode 9 0 R>>");
+  b.add_object(6,
+               "<</Type/Font/Subtype/CIDFontType2/BaseFont/Square/CIDSystemInfo<</Registry(Adobe)/Ordering(Identity)/Supplement 0>>"
+               "/FontDescriptor 7 0 R/CIDToGIDMap/Identity/DW 700>>");
+  b.add_object(7,
+               "<</Type/FontDescriptor/FontName/Square/Flags 32/FontBBox[0 0 700 700]/ItalicAngle 0/Ascent 700/Descent 0/CapHeight 700"
+               "/StemV 80/FontFile2 8 0 R>>");
+  b.add_stream(8, font_fixture("square.ttf"));
+  b.add_stream(9,
+               "/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /Square def 1 begincodespacerange <0000> <FFFF> "
+               "endcodespacerange 1 beginbfchar <0001> <0041> endbfchar endcmap CMapName currentdict /CMap defineresource pop end end");
+  b.finish_table("/Root 1 0 R");
+  {
+    Document document = open(b.str());
+    const auto before = page_text(document);
+    const auto* aa = word(before, U"AA");
+    ASSERT_NE(aa, nullptr);
+    auto same = replace_text(document, 0, around(*aa), "A");
+    ASSERT_TRUE(same.has_value()) << same.error().message;
+    EXPECT_EQ(same->method, TextEditMethod::kSameFont);  // A: what /ToUnicode says
+  }
+  {
+    Document document = open(b.str());
+    const auto before = page_text(document);
+    const auto* aa = word(before, U"AA");
+    ASSERT_NE(aa, nullptr);
+    auto other = replace_text(document, 0, around(*aa), "AB");
+    ASSERT_TRUE(other.has_value()) << other.error().message;
+    EXPECT_EQ(other->method, TextEditMethod::kSimilarFont);  // B: only the program's cmap says it
+  }
 }
 
 // The text of an annotation's appearance (a signature's, here a free-text annotation's) is not the page's

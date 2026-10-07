@@ -435,7 +435,7 @@ TEST(CApiDocument, ParagraphEdit) {
       << capriole_last_error_message();
   EXPECT_EQ(
       take_json(json),
-      R"({"method":"sameFont","font":"Helvetica","replaced":"Hello world, a paragraph of two lines.","oldLines":2,"lines":3,"size":12.0,"scale":1.0,"alignment":"left"})");
+      R"({"method":"sameFont","font":"Helvetica","replaced":"Hello world, a paragraph of two lines.","oldLines":2,"lines":3,"size":12.0,"scale":1.0,"alignment":"left","styles":1,"sameFontStyles":1})");
   capriole_document_close(document);
 }
 

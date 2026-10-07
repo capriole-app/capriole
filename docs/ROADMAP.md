@@ -26,7 +26,8 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | **Fase 9 — editing avanzato del testo** | | |
 | 9a-1 Reflow dei paragrafi nel motore | ✅ | 100/100 paragrafi del corpus |
 | 9a-2 «Modifica testo» › Paragrafo nell'app | ✅ | |
-| Paragrafi con più stili; spostare ciò che segue su scelta | ⬜ | dopo la 9a |
+| 9b Paragrafi con più stili | ✅ | 100/100, 3681 parole con il loro stile |
+| Spostare ciò che segue su scelta | ⬜ | |
 | Font: estendere i sottoinsiemi incorporati | ⬜ | CAPRIOLE.md §5.4 |
 | Modello alto del documento (vista semantica) | ⬜ | da valutare, CAPRIOLE.md §5.2 |
 | Firma con smart card (desktop), revoca OCSP/CRL | ⬜ | CAPRIOLE.md §6.1 |

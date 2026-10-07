@@ -251,6 +251,9 @@ export interface ParagraphEditReport {
   size: number;
   scale: number;
   alignment: 'left' | 'justified' | 'centre' | 'right';
+  /** The styles (fonts, sizes, colours) the new text keeps from the old, and of them those all in their own font. */
+  styles: number;
+  sameFontStyles: number;
 }
 
 /** What a redaction took out of a page. */

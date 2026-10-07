@@ -122,6 +122,10 @@ class Font {
   // collection's Unicode mapping (CJK) or the embedded program's cmap; else the code itself when it is a
   // printable character. Empty when nothing says.
   [[nodiscard]] std::u32string text(const Code& code);
+  // What /ToUnicode alone says a code stands for (empty: it says nothing, or there is none) — the one
+  // mapping every reader of a composite font agrees on.
+  [[nodiscard]] bool has_to_unicode() const noexcept { return to_unicode_ != nullptr; }
+  [[nodiscard]] std::u32string to_unicode_text(const Code& code) const;
   // Ascent and descent in text space for a font size of 1 (for the boxes of glyphs).
   [[nodiscard]] double ascent() const noexcept { return ascent_; }
   [[nodiscard]] double descent() const noexcept { return descent_; }

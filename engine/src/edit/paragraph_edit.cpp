@@ -58,8 +58,25 @@ double median(std::vector<double> values) {
   return values[values.size() / 2];
 }
 
+// A style of the paragraph's text: font, size, colour and horizontal scaling.
+struct Style {
+  std::optional<ObjectRef> font;
+  double size = 0;
+  graphics::Rgb colour{0, 0, 0};
+  double th = 1;
+};
+
+// A word of the old text (words broken at a line's end joined back), and the style of each of its letters.
+struct OldWord {
+  std::u32string text;
+  std::vector<std::size_t> styles;
+};
+
 // The paragraph as it is on the page (as shown: y down).
 struct Paragraph {
+  std::vector<Style> styles;
+  std::size_t main_style = 0;  // the one most letters have
+  std::vector<OldWord> words;
   std::vector<std::size_t> lines;  // in the page's text
   std::vector<std::size_t> chars;
   std::vector<double> baselines;  // of each line
@@ -89,15 +106,14 @@ struct Placed {
   double gap = 0;
 };
 
-// The text in a font: the codes of each letter (`length` bytes each) and its width at size 1, horizontal
-// scaling included.
+// Letters in a font: each one's code (empty: the font cannot write it) and its width at size 1,
+// horizontal scaling included.
 struct Written {
   TextEditMethod method = TextEditMethod::kSameFont;
   std::string font;  // its name, for the result
   std::optional<ObjectRef> ref;
   Dict standard;  // the standard font's dictionary (similar font)
-  std::string codes;
-  std::size_t length = 1;
+  std::vector<std::string> codes;
   std::vector<double> widths;
   std::map<std::uint32_t, double> missing_widths;
 };
@@ -146,7 +162,8 @@ ParagraphAlignment alignment_of(const text::PageText& text, const Paragraph& p) 
   return ParagraphAlignment::kLeft;
 }
 
-// The text's letters in the paragraph's own font (nullopt when it cannot write them all).
+// The text's letters in the paragraph's own font: those it can write (nullopt when none, or its widths
+// cannot be given).
 std::optional<Written> in_own_font(Document& document, const graphics::DisplayList& list, ObjectRef ref, std::u32string_view letters, double th) {
   font::detail::FontContext context(nullptr);
   std::vector<std::string> warnings;
@@ -164,20 +181,28 @@ std::optional<Written> in_own_font(Document& document, const graphics::DisplayLi
   Written w;
   w.font = std::string(font::detail::without_subset_tag(name_of(dict->find("BaseFont"))));
   w.ref = ref;
-  w.length = two_byte ? 2U : 1U;
-  auto codes = detail::encode_in(*font, context, letters, two_byte, w.missing_widths);
-  if (!codes || !detail::widths_writable(document, ref, w.missing_widths, list)) {
+  auto codes = detail::encode_each(*font, context, letters, two_byte, w.missing_widths);
+  if (!detail::widths_writable(document, ref, w.missing_widths, list)) {
     return std::nullopt;
   }
-  w.codes = std::move(*codes);
   std::vector<font::detail::Font::Code> split;
-  font->codes(w.codes, split);
-  if (split.size() != letters.size()) {
-    return std::nullopt;
+  for (auto& code : codes) {
+    double width = 0;
+    if (code) {
+      split.clear();
+      font->codes(*code, split);
+      if (split.size() != 1) {
+        code.reset();
+      } else {
+        const auto given = w.missing_widths.find(split.front().code);
+        width = (given != w.missing_widths.end() ? given->second : font->width(split.front())) * font->scale() * th;
+      }
+    }
+    w.codes.push_back(code.value_or(std::string()));
+    w.widths.push_back(width);
   }
-  for (const auto& c : split) {
-    const auto given = w.missing_widths.find(c.code);
-    w.widths.push_back((given != w.missing_widths.end() ? given->second : font->width(c)) * font->scale() * th);
+  if (std::ranges::all_of(w.codes, [](const std::string& c) { return c.empty(); })) {
+    return std::nullopt;
   }
   return w;
 }
@@ -193,7 +218,9 @@ Result<Written> in_similar_font(Document& document, const std::optional<ObjectRe
   Written w;
   w.method = TextEditMethod::kSimilarFont;
   w.font = detail::similar_font(document, ref);
-  w.codes = codes;
+  for (const char c : codes) {
+    w.codes.emplace_back(1, c);
+  }
   w.standard.set("Type", name("Font"));
   w.standard.set("Subtype", name("Type1"));
   w.standard.set("BaseFont", name(w.font));
@@ -211,14 +238,14 @@ Result<Written> in_similar_font(Document& document, const std::optional<ObjectRe
   return w;
 }
 
-// Lays the words out in lines (segments: the text's lines, each its words), the text at `size`.
-std::vector<Placed> lay_out(const std::vector<std::vector<Piece>>& segments, const Written& w, const Paragraph& p, double size, double gap) {
+// Lays the words out in lines (segments: the text's lines, each its words); points: each letter's width.
+std::vector<Placed> lay_out(const std::vector<std::vector<Piece>>& segments, const std::vector<double>& points, const Paragraph& p, double gap) {
   const auto width_of = [&](const Piece& piece) {
     double sum = 0;
     for (std::size_t i = piece.from; i < piece.from + piece.count; ++i) {
-      sum += w.widths[i];
+      sum += points[i];
     }
-    return sum * size;
+    return sum;
   };
   const auto start_of = [&](std::size_t line) { return line == 0 ? p.left + p.indent : p.left; };
   std::vector<Placed> out;
@@ -252,8 +279,8 @@ std::vector<Placed> lay_out(const std::vector<std::vector<Piece>>& segments, con
         const double line_room = p.right - start_of(out.size());
         std::size_t take = 0;
         double used = 0;
-        while (take < rest.count && used + (w.widths[rest.from + take] * size) <= line_room + 0.01) {
-          used += w.widths[rest.from + take] * size;
+        while (take < rest.count && used + points[rest.from + take] <= line_room + 0.01) {
+          used += points[rest.from + take];
           ++take;
         }
         take = std::max<std::size_t>(take, 1);
@@ -367,18 +394,46 @@ Result<Paragraph> paragraph_in(const text::PageText& text, const graphics::Displ
   }
   p.lines.assign(touched.begin(), touched.end());
   const auto operators = detail::content_operators(list);
-  std::optional<std::tuple<std::optional<ObjectRef>, long, graphics::Rgb>> style;
+  // The run each character was shown by (its colour and horizontal scaling).
+  std::map<std::pair<std::optional<std::uint32_t>, std::uint32_t>, const graphics::ShowText*> runs;
+  for (const auto& command : list.commands) {
+    if (const auto* t = std::get_if<graphics::Boxed<graphics::ShowText>>(&command)) {
+      runs.emplace(std::pair{(*t)->stream ? std::optional((*t)->stream->number) : std::nullopt, (*t)->operation}, &**t);
+    }
+  }
+  const auto style_of = [&](const text::Char& ch) {
+    Style style{.font = ch.provenance.font, .size = ch.size};
+    const auto found = runs.find({ch.provenance.stream ? std::optional(ch.provenance.stream->number) : std::nullopt, ch.provenance.operation});
+    if (found != runs.end()) {
+      if (found->second->fill < list.colors.size()) {
+        style.colour = list.colors[found->second->fill].rgb;
+      }
+      style.th = found->second->horizontal_scale > 0 ? found->second->horizontal_scale : 1;
+    }
+    const auto same = [&](const Style& o) {
+      return o.font == style.font && std::abs(o.size - style.size) < 0.05 && std::abs(o.colour.r - style.colour.r) < 0.004 &&
+             std::abs(o.colour.g - style.colour.g) < 0.004 && std::abs(o.colour.b - style.colour.b) < 0.004 && std::abs(o.th - style.th) < 0.005;
+    };
+    const auto at = std::ranges::find_if(p.styles, same);
+    if (at != p.styles.end()) {
+      return static_cast<std::size_t>(at - p.styles.begin());
+    }
+    p.styles.push_back(style);
+    return p.styles.size() - 1;
+  };
+  std::vector<std::size_t> letters_of_style;
   std::vector<double> ascents;
   std::vector<double> descents;
   std::vector<double> gaps;
   for (const std::size_t l : p.lines) {
     const text::Line& line = text.lines[l];
-    std::optional<double> baseline;
+    std::vector<double> origins;
     for (std::size_t w = line.first; w < line.first + line.count && w < text.words.size(); ++w) {
       const text::Word& word = text.words[w];
       if (w > line.first) {
         gaps.push_back(word.box.x0 - text.words[w - 1].box.x1);
       }
+      OldWord old;
       for (std::size_t c = word.first; c < word.first + word.count && c < text.chars.size(); ++c) {
         const text::Char& ch = text.chars[c];
         if (ch.invisible) {
@@ -390,22 +445,43 @@ Result<Paragraph> paragraph_in(const text::PageText& text, const graphics::Displ
         if (ch.angle != 0) {
           return make_error(ErrorCode::kUnsupported, "only horizontal paragraphs are laid out anew");
         }
-        const auto key = std::make_tuple(ch.provenance.font, std::lround(ch.size * 10), detail::fill_of(list, ch.provenance));
-        if (style && *style != key) {
-          return make_error(ErrorCode::kUnsupported, "the paragraph has more than one font, size or colour: edit its lines one by one");
+        const std::size_t style = style_of(ch);
+        if (letters_of_style.size() < p.styles.size()) {
+          letters_of_style.resize(p.styles.size());
         }
-        style = key;
-        if (!baseline) {
-          baseline = ch.origin.y;
-        }
+        letters_of_style[style] += ch.text.size();
+        old.text += ch.text;
+        old.styles.insert(old.styles.end(), ch.text.size(), style);
+        origins.push_back(ch.origin.y);
         ascents.push_back(ch.origin.y - ch.box.y0);
         descents.push_back(ch.box.y1 - ch.origin.y);
         p.chars.push_back(c);
       }
+      // A word broken at the previous line's end ("infor-" + "mazione"): one word again.
+      const bool continues = w == line.first && !p.words.empty() && !p.words.back().text.empty() &&
+                             (p.words.back().text.back() == U'-' || p.words.back().text.back() == U'\u00AD') && !old.text.empty() &&
+                             detail::lowercase(old.text.front());
+      if (continues) {
+        p.words.back().text.pop_back();
+        p.words.back().styles.pop_back();
+        p.words.back().text += old.text;
+        p.words.back().styles.insert(p.words.back().styles.end(), old.styles.begin(), old.styles.end());
+      } else if (!old.text.empty()) {
+        p.words.push_back(std::move(old));
+      }
     }
-    p.baselines.push_back(baseline.value_or(line.box.y1));
+    const double baseline = origins.empty() ? line.box.y1 : median(origins);
+    // Superscripts and subscripts: off the baseline, which plain text cannot say.
+    for (std::size_t i = p.chars.size() - origins.size(); i < p.chars.size(); ++i) {
+      const text::Char& ch = text.chars[p.chars[i]];
+      if (std::abs(ch.origin.y - baseline) > 0.15 * ch.size) {
+        return make_error(ErrorCode::kUnsupported, "the paragraph has superscripts or subscripts: edit its lines one by one");
+      }
+    }
+    p.baselines.push_back(baseline);
   }
-  p.size = text.chars[p.chars.front()].size;
+  p.main_style = static_cast<std::size_t>(std::ranges::max_element(letters_of_style) - letters_of_style.begin());
+  p.size = p.styles[p.main_style].size;
   p.ascent = *std::ranges::max_element(ascents);
   p.descent = *std::ranges::max_element(descents);
   const Rect& first = text.lines[p.lines.front()].box;
@@ -445,6 +521,92 @@ Result<Paragraph> paragraph_in(const text::PageText& text, const graphics::Displ
   return p;
 }
 
+// The style of each letter of the new text (its words, each its letters): a word kept from the old text
+// keeps its letters' styles; a word in place of an old one takes that one's (the style most of its letters
+// have); a word added takes the previous word's last letter's (at the start, the next kept word's).
+std::vector<std::size_t> styles_for(const Paragraph& p, const std::vector<std::u32string>& words) {
+  const std::size_t n = p.words.size();
+  const std::size_t m = words.size();
+  // The longest run of words both share (in order), word for word; on very long texts only what they
+  // share at the start and the end.
+  std::vector<std::optional<std::size_t>> kept(m);
+  if ((n + 1) * (m + 1) <= 4'000'000) {
+    std::vector<std::uint32_t> table((n + 1) * (m + 1), 0);
+    const auto at = [&](std::size_t i, std::size_t j) -> std::uint32_t& { return table[(i * (m + 1)) + j]; };
+    for (std::size_t i = n; i-- > 0;) {
+      for (std::size_t j = m; j-- > 0;) {
+        at(i, j) = p.words[i].text == words[j] ? at(i + 1, j + 1) + 1 : std::max(at(i + 1, j), at(i, j + 1));
+      }
+    }
+    for (std::size_t i = 0, j = 0; i < n && j < m;) {
+      if (p.words[i].text == words[j]) {
+        kept[j] = i++;
+        ++j;
+      } else if (at(i + 1, j) >= at(i, j + 1)) {
+        ++i;
+      } else {
+        ++j;
+      }
+    }
+  } else {
+    std::size_t front = 0;
+    while (front < n && front < m && p.words[front].text == words[front]) {
+      kept[front] = front;
+      ++front;
+    }
+    for (std::size_t back = 1; back <= n - front && back <= m - front && p.words[n - back].text == words[m - back]; ++back) {
+      kept[m - back] = n - back;
+    }
+  }
+  const auto most = [&](const OldWord& w) {
+    std::map<std::size_t, std::size_t> count;
+    for (const std::size_t s : w.styles) {
+      ++count[s];
+    }
+    return std::ranges::max_element(count, {}, [](const auto& e) { return e.second; })->first;
+  };
+  std::vector<std::vector<std::size_t>> styles(m);
+  std::optional<std::size_t> previous_old;  // the last old word kept so far
+  std::size_t in_gap = 0;                   // words since it
+  for (std::size_t j = 0; j < m; ++j) {
+    if (kept[j]) {
+      styles[j] = p.words[*kept[j]].styles;
+      previous_old = kept[j];
+      in_gap = 0;
+      continue;
+    }
+    // The old words between the kept ones around it: the k-th new word there replaces the k-th old one.
+    const std::size_t from = previous_old ? *previous_old + 1 : 0;
+    std::size_t to = n;
+    for (std::size_t k = j + 1; k < m; ++k) {
+      if (kept[k]) {
+        to = *kept[k];
+        break;
+      }
+    }
+    std::size_t style = p.main_style;
+    if (from < to) {
+      style = most(p.words[std::min(from + in_gap, to - 1)]);
+    } else if (j > 0 && !styles[j - 1].empty()) {
+      style = styles[j - 1].back();
+    } else {
+      for (std::size_t k = j + 1; k < m; ++k) {
+        if (kept[k]) {
+          style = p.words[*kept[k]].styles.front();
+          break;
+        }
+      }
+    }
+    styles[j].assign(words[j].size(), style);
+    ++in_gap;
+  }
+  std::vector<std::size_t> out;
+  for (const auto& w : styles) {
+    out.insert(out.end(), w.begin(), w.end());
+  }
+  return out;
+}
+
 }  // namespace
 
 Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t page_index, const Rect& area, std::string_view text,
@@ -471,28 +633,26 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
     return std::unexpected(std::move(selected.error()));
   }
   const Paragraph& p = *selected;
-  const text::Char& start = page_text.chars[p.chars.front()];
 
-  // The old text, its lines joined.
+  // The old text, its words joined.
   std::string replaced;
-  for (const std::size_t l : p.lines) {
-    const text::Line& line = page_text.lines[l];
-    for (std::size_t w = line.first; w < line.first + line.count && w < page_text.words.size(); ++w) {
-      if (!replaced.empty()) {
-        replaced += ' ';
-      }
-      replaced += model::to_utf8(page_text.words[w].text);
+  for (const OldWord& w : p.words) {
+    if (!replaced.empty()) {
+      replaced += ' ';
     }
+    replaced += model::to_utf8(w.text);
   }
 
   // The new text: its lines, their words, its letters.
   const std::u32string replacement = model::from_utf8(text);
   std::u32string letters;
   std::vector<std::vector<Piece>> segments(1);
+  std::vector<std::u32string> words;
   std::optional<Piece> word;
   const auto end_word = [&] {
     if (word) {
       segments.back().push_back(*word);
+      words.push_back(letters.substr(word->from, word->count));
       word.reset();
     }
   };
@@ -500,7 +660,7 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
     if (c == U'\n') {
       end_word();
       segments.emplace_back();
-    } else if (c == U' ' || c == U'\t' || c == U'\r' || c == U' ') {
+    } else if (c == U' ' || c == U'\t' || c == U'\r' || c == U'\u00A0') {
       end_word();
     } else {
       if (!word) {
@@ -512,29 +672,68 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
   }
   end_word();
 
-  // The horizontal scaling of the paragraph's text.
-  double th = 1;
-  for (const auto& command : list->commands) {
-    const auto* t = std::get_if<graphics::Boxed<graphics::ShowText>>(&command);
-    if (t != nullptr && (*t)->stream == start.provenance.stream && (*t)->operation == start.provenance.operation) {
-      th = (*t)->horizontal_scale > 0 ? (*t)->horizontal_scale : 1;
-      break;
+  // Each letter's style; each style's letters written in its own font when it can, those it cannot in
+  // the standard font nearest it. A writer: 2 · style (its own font), 2 · style + 1 (the similar one).
+  const std::vector<std::size_t> style_of = styles_for(p, words);
+  std::vector<std::string> codes(letters.size());
+  std::vector<double> widths(letters.size());  // at size 1, horizontal scaling included
+  std::vector<std::size_t> writer_of(letters.size());
+  std::map<std::size_t, Written> writers;
+  for (std::size_t s = 0; s < p.styles.size(); ++s) {
+    std::u32string own;
+    std::vector<std::size_t> at;
+    for (std::size_t i = 0; i < letters.size(); ++i) {
+      if (style_of[i] == s) {
+        own += letters[i];
+        at.push_back(i);
+      }
     }
-  }
-  std::optional<Written> written;
-  if (start.provenance.font && !letters.empty()) {
-    written = in_own_font(document, *list, *start.provenance.font, letters, th);
-  }
-  if (!written) {
-    auto similar = in_similar_font(document, start.provenance.font, letters, th);
+    if (own.empty()) {
+      continue;
+    }
+    const Style& style = p.styles[s];
+    std::optional<Written> written;
+    if (style.font) {
+      written = in_own_font(document, *list, *style.font, own, style.th);
+    }
+    std::u32string rest;
+    std::vector<std::size_t> rest_at;
+    for (std::size_t k = 0; k < at.size(); ++k) {
+      if (written && !written->codes[k].empty()) {
+        codes[at[k]] = written->codes[k];
+        widths[at[k]] = written->widths[k];
+        writer_of[at[k]] = 2 * s;
+      } else {
+        rest += own[k];
+        rest_at.push_back(at[k]);
+      }
+    }
+    if (written) {
+      writers.emplace(2 * s, std::move(*written));
+    }
+    if (rest.empty()) {
+      continue;
+    }
+    auto similar = in_similar_font(document, style.font, rest, style.th);
     if (!similar) {
       return std::unexpected(std::move(similar.error()));
     }
-    written = std::move(*similar);
+    for (std::size_t k = 0; k < rest_at.size(); ++k) {
+      codes[rest_at[k]] = similar->codes[k];
+      widths[rest_at[k]] = similar->widths[k];
+      writer_of[rest_at[k]] = (2 * s) + 1;
+    }
+    writers.emplace((2 * s) + 1, std::move(*similar));
   }
-  const Written& w = *written;
+  const auto points_at = [&](double f) {
+    std::vector<double> points(letters.size());
+    for (std::size_t i = 0; i < letters.size(); ++i) {
+      points[i] = widths[i] * p.styles[style_of[i]].size * f;
+    }
+    return points;
+  };
 
-  // Laid out at the paragraph's size, or smaller when allowed and needed; it must fit.
+  // Laid out at the paragraph's sizes, or smaller when allowed and needed; it must fit.
   // New lines keep above what follows the space the paragraph left before it, up to a line's pitch: the
   // paragraph stays apart from what is below (else it reads as one with it, and touches it).
   const double below = room_below(page_text, *list, *page, p);
@@ -545,7 +744,7 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
     return first + (static_cast<double>(lines - 1) * p.pitch * f) + (p.descent * f);
   };
   double factor = 1;
-  std::vector<Placed> placed = lay_out(segments, w, p, p.size, p.gap);
+  std::vector<Placed> placed = lay_out(segments, points_at(1), p, p.gap);
   const auto fits = [&](const std::vector<Placed>& lines, double f) { return lines.size() <= kMaxLines && bottom_of(lines.size(), f) <= limit + 0.01; };
   if (!fits(placed, 1)) {
     bool done = false;
@@ -555,7 +754,7 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
         if (f < kMinShrink - 1e-9) {
           break;
         }
-        auto attempt = lay_out(segments, w, p, p.size * f, p.gap * f);
+        auto attempt = lay_out(segments, points_at(f), p, p.gap * f);
         if (fits(attempt, f)) {
           placed = std::move(attempt);
           factor = f;
@@ -586,35 +785,52 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
   if (!removed) {
     return std::unexpected(std::move(removed.error()));
   }
-  ParagraphEditResult result{.method = w.method,
-                             .font = w.font,
+  // Styles written, and of them those all in their own font.
+  std::set<std::size_t> written_styles;
+  std::set<std::size_t> partly_similar;
+  for (const auto& entry : writers) {
+    written_styles.insert(entry.first / 2);
+    if (entry.first % 2 == 1) {
+      partly_similar.insert(entry.first / 2);
+    }
+  }
+  const std::size_t same_fonts = written_styles.size() - partly_similar.size();
+  const auto main = writers.contains(2 * p.main_style) ? writers.find(2 * p.main_style) : writers.begin();
+  ParagraphEditResult result{.method = partly_similar.empty() ? TextEditMethod::kSameFont : TextEditMethod::kSimilarFont,
+                             .font = main != writers.end() ? main->second.font : std::string(),
                              .replaced = std::move(replaced),
                              .old_lines = static_cast<std::uint32_t>(p.lines.size()),
                              .lines = letters.empty() ? 0U : static_cast<std::uint32_t>(placed.size()),
                              .size = p.size * factor,
                              .scale = factor,
-                             .alignment = p.alignment};
+                             .alignment = p.alignment,
+                             .styles = static_cast<std::uint32_t>(written_styles.size()),
+                             .same_font_styles = static_cast<std::uint32_t>(same_fonts)};
   if (letters.empty()) {
     return result;
   }
 
-  // The new text: its font a resource of the page, its lines drawn on the paragraph's baselines.
-  ObjectRef font_ref{};
-  if (w.ref) {
-    font_ref = *w.ref;
-    if (auto set = detail::set_widths(document, font_ref, w.missing_widths); !set) {
-      return std::unexpected(std::move(set.error()));
+  // Each style's font a resource of the page.
+  std::map<std::size_t, std::string> keys;
+  for (auto& [s, w] : writers) {
+    ObjectRef font_ref{};
+    if (w.ref) {
+      font_ref = *w.ref;
+      if (auto set = detail::set_widths(document, font_ref, w.missing_widths); !set) {
+        return std::unexpected(std::move(set.error()));
+      }
+    } else {
+      auto added = document.add(Object(w.standard));
+      if (!added) {
+        return std::unexpected(std::move(added.error()));
+      }
+      font_ref = *added;
     }
-  } else {
-    auto added = document.add(Object(w.standard));
-    if (!added) {
-      return std::unexpected(std::move(added.error()));
+    auto key = detail::add_font_resource(document, page_index, font_ref);
+    if (!key) {
+      return std::unexpected(std::move(key.error()));
     }
-    font_ref = *added;
-  }
-  auto key = detail::add_font_resource(document, page_index, font_ref);
-  if (!key) {
-    return std::unexpected(std::move(key.error()));
+    keys.emplace(s, std::move(*key));
   }
   auto updated = detail::page_at(document, page_index, "the page's text");
   if (!updated) {
@@ -624,26 +840,41 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
   // Rightwards and upwards on the page as shown, in page space.
   const Point along{m.a, m.b};
   const Point up{-m.c, -m.d};
-  const double size = p.size * factor;
-  const graphics::Rgb colour = detail::fill_of(*list, start.provenance);
-  std::string operators =
-      std::format("q {} rg BT /{} {} Tf {} Tz 0 Tc 0 Tw 0 Ts 0 Tr\n", detail::rgb_operands({colour.r, colour.g, colour.b}), *key, num(size), num(th * 100));
+
+  // The lines on the paragraph's baselines; the font, size, scaling and colour set where the writer changes.
+  std::string operators = "q BT 0 Tc 0 Tw 0 Ts 0 Tr\n";
+  std::optional<std::size_t> current;
   for (std::size_t k = 0; k < placed.size(); ++k) {
     const Placed& line = placed[k];
     if (line.words.empty()) {
       continue;
     }
     const Point origin = updated->user(Point{line.x, p.top + (p.ascent * factor) + (static_cast<double>(k) * p.pitch * factor)});
-    operators += std::format("{} {} {} {} {} {} Tm [", num(along.x), num(along.y), num(up.x), num(up.y), num(origin.x), num(origin.y));
+    operators += std::format("{} {} {} {} {} {} Tm\n", num(along.x), num(along.y), num(up.x), num(up.y), num(origin.x), num(origin.y));
     for (std::size_t i = 0; i < line.words.size(); ++i) {
       const Piece& piece = line.words[i];
-      if (i > 0) {
-        // The gap, in thousandths of text space (TJ moves left by a positive number).
-        operators += num(-line.gap / (size * th) * 1000) + " ";
+      for (std::size_t at = piece.from; at < piece.from + piece.count;) {
+        const std::size_t id = writer_of[at];
+        std::size_t end = at;
+        std::string run;
+        while (end < piece.from + piece.count && writer_of[end] == id) {
+          run += codes[end++];
+        }
+        const Style& style = p.styles[id / 2];
+        if (current != id) {
+          operators += std::format("/{} {} Tf {} Tz {} rg\n", keys.at(id), num(style.size * factor), num(style.th * 100),
+                                   detail::rgb_operands({style.colour.r, style.colour.g, style.colour.b}));
+          current = id;
+        }
+        operators += "[";
+        if (i > 0 && at == piece.from) {
+          // The gap before the word, in thousandths of its text space (TJ moves left by a positive number).
+          operators += num(-line.gap / (style.size * factor * style.th) * 1000) + " ";
+        }
+        operators += detail::hex(run) + "] TJ\n";
+        at = end;
       }
-      operators += detail::hex(std::string_view(w.codes).substr(piece.from * w.length, piece.count * w.length)) + " ";
     }
-    operators += "] TJ\n";
   }
   operators += "ET Q\n";
   if (auto appended = detail::append_content(document, page_index, operators); !appended) {

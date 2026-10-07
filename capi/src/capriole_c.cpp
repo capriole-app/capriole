@@ -1716,9 +1716,9 @@ capriole_status capriole_document_page_replace_paragraph(capriole_document* docu
     capriole::capi::append_json_text(out, capriole::model::from_utf8(result->font));
     out += R"(,"replaced":)";
     capriole::capi::append_json_text(out, capriole::model::from_utf8(result->replaced));
-    out += std::format(R"(,"oldLines":{},"lines":{},"size":{},"scale":{},"alignment":"{}"}})", result->old_lines, result->lines,
+    out += std::format(R"(,"oldLines":{},"lines":{},"size":{},"scale":{},"alignment":"{}","styles":{},"sameFontStyles":{}}})", result->old_lines, result->lines,
                        capriole::writer::format_real(result->size), capriole::writer::format_real(result->scale),
-                       kAlignments.at(static_cast<std::size_t>(result->alignment)));
+                       kAlignments.at(static_cast<std::size_t>(result->alignment)), result->styles, result->same_font_styles);
     return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");

@@ -732,6 +732,8 @@ char32_t Font::unicode_of_code(const Code& code) const {
   return (c >= 0x20 && c <= 0x10FFFF && (c < 0xD800 || c > 0xDFFF)) ? c : 0;
 }
 
+std::u32string Font::to_unicode_text(const Code& code) const { return to_unicode_ ? to_unicode_->text(code.code, code.length) : std::u32string(); }
+
 std::u32string Font::lookup_text(const Code& code) {
   if (to_unicode_) {
     if (std::u32string t = to_unicode_->text(code.code, code.length); !t.empty()) {

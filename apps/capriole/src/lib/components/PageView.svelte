@@ -543,7 +543,7 @@
       <p class="text-muted-foreground">
         {editor.tool === 'edittext'
           ? editor.editMode === 'paragraph'
-            ? 'Doppio clic su un paragrafo per riscriverlo: il testo va a capo dentro il paragrafo, con i suoi margini e il suo allineamento; il resto della pagina non si sposta. Ctrl+Invio per scrivere, Esc per lasciarlo com’era.'
+            ? 'Doppio clic su un paragrafo per riscriverlo: il testo va a capo dentro il paragrafo, con i suoi margini e il suo allineamento; il resto della pagina non si sposta. Gli stili (grassetto, corsivo, colori) restano sulle parole che non cambi; una parola che ne sostituisce un’altra ne prende lo stile, una aggiunta quello della parola prima. Ctrl+Invio per scrivere, Esc per lasciarlo com’era.'
             : 'Doppio clic su una riga del testo della pagina per modificarla: Invio per scrivere, Esc per lasciarla com’era. Si cambia solo ciò che modifichi; se il font del testo non ha i caratteri nuovi, si usa un font simile.'
           : editor.tool === 'sign'
             ? 'Disegna il riquadro in cui comparirà la firma; poi scegli il certificato. Per una firma invisibile: Pagine › Firme.'

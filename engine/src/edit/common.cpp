@@ -396,4 +396,19 @@ Result<void> write_annots(Document& document, const Page& page, Annots annots) {
   return document.set(page.ref.number, model::Object(std::move(dict)));
 }
 
+bool lowercase(char32_t c) {
+  if (c >= U'a' && c <= U'z') {
+    return true;
+  }
+  if (c >= 0xDF && c <= 0xFF) {
+    return c != 0xF7;  // ß…ÿ, but ÷
+  }
+  if (c >= 0x100 && c <= 0x17F) {
+    // Latin Extended-A pairs its letters, the lowercase odd — but where the pairs shift by one.
+    const bool shifted = (c >= 0x139 && c <= 0x148) || (c >= 0x179 && c <= 0x17E);
+    return c == 0x138 || c == 0x149 || c == 0x17F || (shifted ? c % 2 == 0 : c % 2 == 1);
+  }
+  return (c >= 0x3B1 && c <= 0x3C9) || (c >= 0x430 && c <= 0x45F);
+}
+
 }  // namespace capriole::edit::detail

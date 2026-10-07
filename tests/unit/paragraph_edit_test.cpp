@@ -9,10 +9,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "capriole/content/interpreter.hpp"
+#include "capriole/content/page_content.hpp"
 #include "capriole/core/byte_source.hpp"
 #include "capriole/document/document.hpp"
 #include "capriole/model/text_string.hpp"
@@ -213,6 +215,102 @@ TEST(ParagraphEdit, FallsBackOnASimilarFontAndKeepsLineBreaks) {
   EXPECT_NE(text.find("Total: 10 \xE2\x82\xAC\nPaid in full."), std::string::npos) << text;
 }
 
+// The style of each word of a new text: kept words keep theirs, a word in place of an old one takes that
+// one's, an added word the previous one's (phase 9b).
+std::optional<model::ObjectRef> font_of(const text::PageText& t, const std::u32string& w) {
+  const auto* found = word(t, w);
+  return found != nullptr ? t.chars[found->first].provenance.font : std::nullopt;
+}
+
+TEST(ParagraphEdit, WordsKeepTheirStyles) {
+  // "brown" in bold (/F2, object 6), "lazy" in red; the rest in Helvetica (/F1, object 5).
+  const std::string mixed =
+      "BT /F1 10 Tf 12 TL 20 360 Td (The quick ) Tj /F2 10 Tf (brown) Tj /F1 10 Tf ( fox jumps over the) Tj T* (very ) Tj 1 0 0 rg (lazy) Tj 0 g "
+      "( dog and runs far away into) Tj T* (the deep dark woods.) Tj ET\n";
+  const model::ObjectRef regular{5, 0};
+  const model::ObjectRef bold{6, 0};
+  {
+    // A word kept keeps its style; a word changed elsewhere takes the one it replaces.
+    Document document = open(page_pdf(mixed));
+    auto result = replace_paragraph(document, 0, kArea, "The slow brown fox jumps over the very lazy dog and runs far away into the deep dark woods.");
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    EXPECT_EQ(result->method, TextEditMethod::kSameFont);
+    EXPECT_EQ(result->styles, 3U);
+    EXPECT_EQ(result->same_font_styles, 3U);
+    const auto after = page_text(document);
+    EXPECT_EQ(font_of(after, U"brown"), bold);
+    EXPECT_EQ(font_of(after, U"slow"), regular);
+    EXPECT_EQ(font_of(after, U"fox"), regular);
+    auto pages = document.page_refs();
+    const auto content = content::page_content(document, (*pages)[0]);
+    ASSERT_TRUE(content.has_value());
+    EXPECT_NE(
+        std::string(reinterpret_cast<const char*>(content->data()), content->size()).find(" 1 0 0 rg"),  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        std::string::npos);                                                                              // "lazy", red still
+  }
+  {
+    // The bold word replaced: its replacement is bold; a word added after it, too.
+    Document document = open(page_pdf(mixed));
+    auto result = replace_paragraph(document, 0, kArea, "The quick black cat jumps over the very lazy dog and runs far away into the deep dark woods.");
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    const auto after = page_text(document);
+    EXPECT_EQ(font_of(after, U"black"), bold);
+    EXPECT_EQ(font_of(after, U"cat"), regular);  // in place of "fox"
+    EXPECT_EQ(font_of(after, U"quick"), regular);
+  }
+  {
+    Document document = open(page_pdf(mixed));
+    auto result =
+        replace_paragraph(document, 0, kArea, "The quick brown and grey fox jumps over the very lazy dog and runs far away into the deep dark woods.");
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    const auto after = page_text(document);
+    EXPECT_EQ(font_of(after, U"and"), bold);  // added after "brown"
+    EXPECT_EQ(font_of(after, U"grey"), bold);
+    EXPECT_EQ(font_of(after, U"fox"), regular);
+  }
+}
+
+// A style whose font lacks a letter goes to the standard font nearest it — bold stays bold — while the
+// others keep their own; a word broken at a line's end is one word of the old text.
+TEST(ParagraphEdit, EachStyleItsOwnFontOrTheNearest) {
+  const std::string mixed =
+      "BT /F1 10 Tf 12 TL 20 360 Td (Pay the ) Tj /F2 10 Tf (whole) Tj /F1 10 Tf ( amount as soon as possible, with all the infor-) Tj T* "
+      "(mation needed to find it.) Tj ET\n";
+  Document document = open(page_pdf(mixed));
+  auto result = replace_paragraph(document, 0, kArea,
+                                  "Pay the \xE2\x82\xAC"
+                                  "10 amount as soon as possible, with all the information needed to find it.");
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_NE(result->replaced.find("information needed"), std::string::npos) << result->replaced;
+  EXPECT_EQ(result->styles, 2U);
+  EXPECT_EQ(result->same_font_styles, 1U);  // the euro sign: the bold style, which Helvetica-Bold's standard encoding lacks
+  EXPECT_EQ(result->method, TextEditMethod::kSimilarFont);
+  const auto after = page_text(document);
+  const auto euro = font_of(after, U"\u20AC10");
+  ASSERT_TRUE(euro.has_value());
+  auto font = document.get(*euro);
+  ASSERT_TRUE(font.has_value() && (*font)->as_dict() != nullptr);
+  const model::Object* base = (*font)->as_dict()->find("BaseFont");
+  ASSERT_NE(base, nullptr);
+  EXPECT_EQ(base->as_name()->bytes, "Helvetica-Bold");
+  EXPECT_EQ(font_of(after, U"amount"), (model::ObjectRef{5, 0}));
+}
+
+// Only the letters a style's font cannot write go to the similar one: the rest of its letters stay in
+// its own font (a Greek paragraph lost every Greek letter to a Latin "h" its subset lacked, found by
+// corpus-tools/check_paragraph_edit.py --mixed).
+TEST(ParagraphEdit, OnlyTheLettersAFontLacksGoToTheSimilarOne) {
+  Document document = open(page_pdf(kParagraph));
+  auto result = replace_paragraph(document, 0, kArea, "The quick brown fox costs 10\xE2\x82\xAC and runs far away into the deep dark woods.");
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_EQ(result->method, TextEditMethod::kSimilarFont);
+  EXPECT_EQ(result->styles, 1U);
+  EXPECT_EQ(result->same_font_styles, 0U);
+  const auto after = page_text(document);
+  EXPECT_EQ(font_of(after, U"10\u20AC"), (model::ObjectRef{5, 0}));  // "1" and "0": Helvetica's own
+  EXPECT_EQ(font_of(after, U"quick"), (model::ObjectRef{5, 0}));
+}
+
 // Two lines say nothing of justification: the first ends at the margin because the margin is where the
 // longer ends. A two-line paragraph was laid out justified (found by the C API's test).
 TEST(ParagraphEdit, TwoLinesAreNotTakenForJustified) {
@@ -223,12 +321,12 @@ TEST(ParagraphEdit, TwoLinesAreNotTakenForJustified) {
 }
 
 TEST(ParagraphEdit, DeletesAndRefuses) {
-  Document document = open(page_pdf(kParagraph + "BT /F1 10 Tf 20 200 Td (Elsewhere) Tj /F2 10 Tf ( bold) Tj ET\n"
+  Document document = open(page_pdf(kParagraph + "BT /F1 10 Tf 20 200 Td (E = mc) Tj 4 Ts (2) Tj ET\n"
                                                  "BT 3 Tr /F1 10 Tf 20 100 Td (hidden layer) Tj ET"));
-  // Mixed styles; invisible text; nothing there; two paragraphs.
-  auto mixed = replace_paragraph(document, 0, graphics::Rect{15, 190, 390, 205}, "x");
-  ASSERT_FALSE(mixed.has_value());
-  EXPECT_NE(mixed.error().message.find("more than one font"), std::string::npos) << mixed.error().message;
+  // A superscript; invisible text; nothing there; two paragraphs.
+  auto raised = replace_paragraph(document, 0, graphics::Rect{15, 190, 390, 205}, "x");
+  ASSERT_FALSE(raised.has_value());
+  EXPECT_NE(raised.error().message.find("superscripts"), std::string::npos) << raised.error().message;
   auto hidden = replace_paragraph(document, 0, graphics::Rect{15, 290, 390, 305}, "x");
   ASSERT_FALSE(hidden.has_value());
   EXPECT_NE(hidden.error().message.find("invisible"), std::string::npos);
@@ -244,7 +342,7 @@ TEST(ParagraphEdit, DeletesAndRefuses) {
   EXPECT_EQ(deleted->lines, 0U);
   const std::string text = plain(document);
   EXPECT_EQ(text.find("quick"), std::string::npos) << text;
-  EXPECT_NE(text.find("Elsewhere"), std::string::npos) << text;
+  EXPECT_NE(text.find("mc"), std::string::npos) << text;
 }
 
 }  // namespace
