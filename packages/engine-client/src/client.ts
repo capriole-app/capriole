@@ -10,6 +10,7 @@ import type {
   FieldInfo,
   RedactionReport,
   TextEditReport,
+  ParagraphEditReport,
   CertificateInfo,
   SignatureInfo,
   SignSpec,
@@ -200,6 +201,21 @@ export class EngineClient {
    */
   replaceText(index: number, area: [number, number, number, number], text: string): Promise<TextEditReport> {
     return this.#call({ kind: 'replaceText', index, area, text });
+  }
+
+  /**
+   * Replaces a paragraph's text — the lines area touches (the page as shown), whole — laid out anew inside
+   * it ("\n": a new line; empty: deleted). Refused (Status.unsupported) when it does not fit ("no room: …
+   * needs N lines, M fit") unless shrink, and for paragraphs of several styles, invisible or an
+   * annotation's text; Status.outOfRange when there is no text there.
+   */
+  replaceParagraph(
+    index: number,
+    area: [number, number, number, number],
+    text: string,
+    shrink: boolean,
+  ): Promise<ParagraphEditReport> {
+    return this.#call({ kind: 'replaceParagraph', index, area, text, shrink });
   }
 
   /** The certificate of a PKCS#12 file (.p12, .pfx); Status.passwordRequired for a wrong password. The bytes are transferred. */

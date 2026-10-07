@@ -21,7 +21,18 @@ import {
 } from '@capriole/engine-client';
 import { baseName, dateTime, pdfDateNow } from './files';
 import { parseInvoice, type Invoice } from './invoice';
-import { lineText, replacementFor, textEditNotice, textEditRefusal, type LineText } from './textedit';
+import {
+  lineText,
+  noRoom,
+  paragraphArea,
+  paragraphNotice,
+  paragraphText,
+  replacementFor,
+  textEditNotice,
+  textEditRefusal,
+  type LineText,
+  type ParagraphText,
+} from './textedit';
 import { fromBrowser, pickPdf, saveFile, savePdf, type PickedFile } from './platform';
 
 /**
@@ -34,6 +45,20 @@ export type Tool = 'form' | 'select' | 'sign' | 'edittext' | AnnotationSpec['kin
 export interface LineEditing {
   line: LineText;
   page: PageText;
+}
+
+/** A paragraph of the page's text being written again: as read, and the text the box starts with. */
+export interface ParagraphEditing {
+  paragraph: ParagraphText;
+  text: string;
+}
+
+/** A paragraph's new text that did not fit: kept, to write it smaller or to go back to it. */
+export interface NoRoom {
+  paragraph: ParagraphText;
+  text: string;
+  needed: number;
+  fit: number;
 }
 
 /** A signature to make: on page (from 0), visible in rect (the page as shown), or invisible (null). */
@@ -127,6 +152,11 @@ export class Editor {
   typing = $state.raw<Typing | null>(null);
   /** The line of the page's text being written again (null: none). */
   editingLine = $state.raw<LineEditing | null>(null);
+  /** What a double click writes again with the edittext tool: a line, or a paragraph laid out anew. */
+  editMode = $state<'line' | 'paragraph'>('line');
+  /** The paragraph being written again (null: none), and a new text that did not fit in it. */
+  editingParagraph = $state.raw<ParagraphEditing | null>(null);
+  noRoom = $state.raw<NoRoom | null>(null);
   /** How the last edit of the page's text was written, when worth saying (a similar font). */
   textNotice = $state<string | null>(null);
   /** An existing free text being written again: the document before (for undo) and its text then. */
@@ -694,6 +724,8 @@ export class Editor {
     this.typing = null;
     this.#retyping = null;
     this.editingLine = null;
+    this.editingParagraph = null;
+    this.noRoom = null;
     this.textNotice = null;
     this.selectedAnnotation = null;
     this.tool = 'select';
@@ -841,6 +873,65 @@ export class Editor {
       } catch (error) {
         if (error instanceof EngineError && (error.status === Status.unsupported || error.status === Status.outOfRange))
           throw new Error(textEditRefusal(error.message));
+        throw error;
+      }
+    });
+  }
+
+  /** Starts writing again paragraph `block` of the page shown (page: its text as laid out, read now). */
+  startEditingParagraph(page: PageText, block: number, text?: string): void {
+    if (this.viewing === null || this.typing || this.editingLine || this.editingParagraph) return;
+    const paragraph = paragraphText(page, block);
+    this.textNotice = null;
+    this.noRoom = null;
+    this.error = null;
+    this.editingParagraph = { paragraph, text: text ?? paragraph.text };
+  }
+
+  /**
+   * Ends writing the paragraph: text replaces it, laid out anew inside it (one step of undo; unchanged:
+   * none); null leaves it. A text that does not fit goes to noRoom (to write it smaller, or go back to it).
+   */
+  async finishEditingParagraph(text: string | null): Promise<void> {
+    const editing = this.editingParagraph;
+    this.editingParagraph = null;
+    if (!editing || text === null || text === editing.paragraph.text) return;
+    await this.#writeParagraph(editing.paragraph, text, false);
+  }
+
+  /** The text that did not fit, written smaller (down to 70%). */
+  shrinkParagraph(): Promise<void> {
+    const pending = this.noRoom;
+    if (!pending) return Promise.resolve();
+    return this.#writeParagraph(pending.paragraph, pending.text, true);
+  }
+
+  /** Back to writing the text that did not fit, in the paragraph's box. */
+  backToParagraph(): void {
+    const pending = this.noRoom;
+    if (!pending || this.viewing === null) return;
+    this.noRoom = null;
+    this.error = null;
+    this.editingParagraph = { paragraph: pending.paragraph, text: pending.text };
+  }
+
+  async #writeParagraph(paragraph: ParagraphText, text: string, shrink: boolean): Promise<void> {
+    const pageIndex = this.viewing;
+    if (pageIndex === null) return;
+    this.noRoom = null;
+    await this.#editPage(async () => {
+      try {
+        const report = await this.engine.replaceParagraph(pageIndex, paragraphArea(paragraph), text, shrink);
+        this.textNotice = paragraphNotice(report);
+      } catch (error) {
+        if (
+          error instanceof EngineError &&
+          (error.status === Status.unsupported || error.status === Status.outOfRange)
+        ) {
+          const room = noRoom(error.message);
+          if (room) this.noRoom = { paragraph, text, ...room };
+          throw new Error(textEditRefusal(error.message));
+        }
         throw error;
       }
     });

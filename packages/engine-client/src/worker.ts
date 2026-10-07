@@ -397,6 +397,18 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         ),
         transfer: [],
       };
+    case 'replaceParagraph':
+      return {
+        value: withString(
+          m,
+          JSON.stringify({ area: request.area, text: request.text, shrink: request.shrink }),
+          (spec) =>
+            takeJson(m, (out) =>
+              m._capriole_document_page_replace_paragraph(requireDocument(), request.index, spec, out),
+            ),
+        ),
+        transfer: [],
+      };
     case 'pkcs12Info':
       return {
         value: withSecret(m, new Uint8Array(request.p12), (p12, size) =>

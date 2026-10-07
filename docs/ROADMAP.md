@@ -25,7 +25,7 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | Licenza | ✅ | 0BSD (ADR 0009) |
 | **Fase 9 — editing avanzato del testo** | | |
 | 9a-1 Reflow dei paragrafi nel motore | ✅ | 100/100 paragrafi del corpus |
-| 9a-2 «Modifica testo» › Paragrafo nell'app | 🔜 | prossimo |
+| 9a-2 «Modifica testo» › Paragrafo nell'app | ✅ | |
 | Paragrafi con più stili; spostare ciò che segue su scelta | ⬜ | dopo la 9a |
 | Font: estendere i sottoinsiemi incorporati | ⬜ | CAPRIOLE.md §5.4 |
 | Modello alto del documento (vista semantica) | ⬜ | da valutare, CAPRIOLE.md §5.2 |

@@ -2,17 +2,18 @@
   // The page shown large, to annotate: the engine's drawing of it, and over it a layer in the page's
   // coordinates (points as shown — those of the text and of the annotations the engine lists) where the
   // pointer makes annotations with the tool chosen, or selects and moves them, or writes a line of the
-  // page's own text again (edittext: a double click on it). Beside it, the selected
+  // page's own text again (edittext: a double click on a line, or on a paragraph laid out anew). Beside it, the selected
   // annotation (its text, colour, removal) and the list of the page's annotations (the keyboard's way).
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import FormLayer from './FormLayer.svelte';
   import LineEditor from './LineEditor.svelte';
+  import ParagraphEditor from './ParagraphEditor.svelte';
   import TextBoxEditor from './TextBoxEditor.svelte';
   import type { AnnotationInfo, FieldInfo, PageRaster, PageText } from '@capriole/engine-client';
   import { tick } from 'svelte';
   import { colors, css, sameColor } from '$lib/colors';
   import { getEditor, type Rgb } from '$lib/editor.svelte';
-  import { lineAt } from '$lib/textedit';
+  import { lineAt, paragraphAt } from '$lib/textedit';
 
   const editor = getEditor();
   const index = $derived(editor.viewing ?? 0);
@@ -49,11 +50,16 @@
   const page = $derived(read?.index === index ? read.page : null);
   /** The text shown is the page's now (not the one before an edit, still being read again). */
   const fresh = $derived(read !== null && read.from === text);
-  /** edittext: the line under the pointer, and its box. */
+  /** edittext: the line (or paragraph) under the pointer, and its box. */
   let hovered = $state<number | null>(null);
   const hoveredBox = $derived(
-    editor.tool === 'edittext' && hovered !== null && page ? (page.lines[hovered] ?? null) : null,
+    editor.tool === 'edittext' && hovered !== null && page
+      ? ((editor.editMode === 'paragraph' ? page.blocks[hovered] : page.lines[hovered]) ?? null)
+      : null,
   );
+  /** Under a point: the line, or the paragraph (edittext's mode). */
+  const textAt = (page: PageText, p: Point) =>
+    editor.editMode === 'paragraph' ? paragraphAt(page, p[0], p[1]) : lineAt(page, p[0], p[1]);
   // Sharp enough for a page on a screen; drawn again after each edit (the annotations are in it).
   const dpi = Math.round(Math.min(220, 110 * Math.min(globalThis.devicePixelRatio || 1, 2)));
   const raster = $derived.by(() => {
@@ -180,7 +186,7 @@
   function move(event: PointerEvent, page: PageText) {
     if (editor.tool === 'edittext') {
       const p = pointOf(event);
-      hovered = editor.editingLine ? null : lineAt(page, p[0], p[1]);
+      hovered = editor.editingLine || editor.editingParagraph ? null : textAt(page, p);
     }
     if (!drag) return;
     const p = pointOf(event);
@@ -359,12 +365,13 @@
           ondblclick={(e) => {
             const p = pointOf(e);
             if (editor.tool === 'edittext') {
-              // A double click on a line of the page's text writes it again, in place.
-              const line = lineAt(page, p[0], p[1]);
+              // A double click on a line (or paragraph) of the page's text writes it again, in place.
+              const hit = textAt(page, p);
               // Only on the text as it is now: a line read before the last edit would be replaced wrongly.
-              if (line !== null && !editor.busy && fresh) {
+              if (hit !== null && !editor.busy && fresh) {
                 hovered = null;
-                editor.startEditingLine(page, line);
+                if (editor.editMode === 'paragraph') editor.startEditingParagraph(page, hit);
+                else editor.startEditingLine(page, hit);
               }
               return;
             }
@@ -475,6 +482,11 @@
             <LineEditor editing={editor.editingLine} width={page.width} height={page.height} />
           {/key}
         {/if}
+        {#if editor.editingParagraph}
+          {#key editor.editingParagraph}
+            <ParagraphEditor editing={editor.editingParagraph} width={page.width} height={page.height} />
+          {/key}
+        {/if}
         {#if editor.tool === 'form'}
           <FormLayer width={page.width} height={page.height} />
         {/if}
@@ -530,7 +542,9 @@
     {:else}
       <p class="text-muted-foreground">
         {editor.tool === 'edittext'
-          ? 'Doppio clic su una riga del testo della pagina per modificarla: Invio per scrivere, Esc per lasciarla com’era. Si cambia solo ciò che modifichi; se il font del testo non ha i caratteri nuovi, si usa un font simile.'
+          ? editor.editMode === 'paragraph'
+            ? 'Doppio clic su un paragrafo per riscriverlo: il testo va a capo dentro il paragrafo, con i suoi margini e il suo allineamento; il resto della pagina non si sposta. Ctrl+Invio per scrivere, Esc per lasciarlo com’era.'
+            : 'Doppio clic su una riga del testo della pagina per modificarla: Invio per scrivere, Esc per lasciarla com’era. Si cambia solo ciò che modifichi; se il font del testo non ha i caratteri nuovi, si usa un font simile.'
           : editor.tool === 'sign'
             ? 'Disegna il riquadro in cui comparirà la firma; poi scegli il certificato. Per una firma invisibile: Pagine › Firme.'
             : editor.tool === 'redact'
@@ -541,6 +555,48 @@
                   ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
                   : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
       </p>
+      {#if editor.tool === 'edittext'}
+        <div class="flex rounded-md border p-0.5" role="radiogroup" aria-label="Cosa si modifica">
+          {#each [['line', 'Riga'], ['paragraph', 'Paragrafo']] as const as [mode, label] (mode)}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={editor.editMode === mode}
+              class={[
+                'flex-1 rounded px-2 py-1',
+                editor.editMode === mode ? 'bg-accent font-medium' : 'hover:bg-muted',
+              ]}
+              onclick={() => {
+                editor.editMode = mode;
+                hovered = null;
+              }}>{label}</button
+            >
+          {/each}
+        </div>
+      {/if}
+      {#if editor.tool === 'edittext' && editor.noRoom}
+        {@const room = editor.noRoom}
+        <section
+          class="flex flex-col gap-2 rounded-md bg-warning-background px-3 py-2 text-warning"
+          data-testid="no-room"
+        >
+          <p>
+            Il testo nuovo non ci sta: servono {room.needed} righe e sotto il paragrafo ce ne stanno {room.fit}, senza
+            spostare il resto della pagina.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="rounded-md border border-current px-2.5 py-1 font-medium disabled:opacity-60"
+              disabled={editor.busy}
+              onclick={() => editor.shrinkParagraph()}>Riduci il testo per farlo stare</button
+            >
+            <button type="button" class="rounded-md px-2.5 py-1 underline" onclick={() => editor.backToParagraph()}
+              >Torna al testo</button
+            >
+          </div>
+        </section>
+      {/if}
       {#if editor.tool === 'edittext' && editor.textNotice}
         <p class="rounded-md bg-warning-background px-3 py-2 text-warning" role="status" data-testid="text-edit-notice">
           {editor.textNotice}

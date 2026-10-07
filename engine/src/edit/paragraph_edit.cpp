@@ -535,7 +535,11 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
   const Written& w = *written;
 
   // Laid out at the paragraph's size, or smaller when allowed and needed; it must fit.
-  const double limit = std::max(p.bottom, room_below(page_text, *list, *page, p) - (0.1 * p.size));
+  // New lines keep above what follows the space the paragraph left before it, up to a line's pitch: the
+  // paragraph stays apart from what is below (else it reads as one with it, and touches it).
+  const double below = room_below(page_text, *list, *page, p);
+  const double keep = std::max(0.1 * p.size, std::min(std::max(below - p.bottom, 0.0), p.pitch));
+  const double limit = std::max(p.bottom, below - keep);
   const auto bottom_of = [&](std::size_t lines, double f) {
     const double first = p.top + (p.ascent * f);
     return first + (static_cast<double>(lines - 1) * p.pitch * f) + (p.descent * f);

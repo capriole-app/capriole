@@ -239,6 +239,20 @@ export interface TextEditReport {
   scale: number;
 }
 
+/** How capriole_document_page_replace_paragraph laid the new text out (capi/README.md). */
+export interface ParagraphEditReport {
+  method: 'sameFont' | 'similarFont';
+  font: string;
+  /** The text that was there, its lines joined by spaces. */
+  replaced: string;
+  oldLines: number;
+  lines: number;
+  /** The font size it is written in (points as shown), and that over the paragraph's (below 1: shrunk). */
+  size: number;
+  scale: number;
+  alignment: 'left' | 'justified' | 'centre' | 'right';
+}
+
 /** What a redaction took out of a page. */
 export interface RedactionReport {
   glyphs: number;
@@ -403,6 +417,7 @@ export type Request =
   | { kind: 'formFields' }
   | { kind: 'applyRedactions'; index: number }
   | { kind: 'replaceText'; index: number; area: [number, number, number, number]; text: string }
+  | { kind: 'replaceParagraph'; index: number; area: [number, number, number, number]; text: string; shrink: boolean }
   | { kind: 'pkcs12Info'; p12: ArrayBuffer; password: string }
   | { kind: 'sign'; spec: SignSpec; p12: ArrayBuffer; password: string }
   | { kind: 'signatures' }

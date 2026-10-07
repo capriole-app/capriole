@@ -1175,9 +1175,9 @@ Criterio: test e2e (una parola riscritta nel suo font, salvata, il resto della r
 annullata; Esc senza passo di «Annulla»; carattere che il font non ha → avviso del font simile, e la riga
 riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) verdi; gate verde.
 
-## Fase 9 — Editing avanzato del testo — 🔜 in corso
+## Fase 9 — Editing avanzato del testo — 🔜 in corso (9a ✅)
 
-Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app). Gli altri (estendere i sottoinsiemi dei font
+Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅). Gli altri (estendere i sottoinsiemi dei font
 incorporati, paragrafi con più stili, spostare il contenuto che segue su scelta esplicita) si fissano dopo.
 
 **9a-1 (2026-10-06) — reflow dei paragrafi nel motore: uscita raggiunta.** `edit/paragraph_edit.hpp`: `replace_paragraph` riscrive le
@@ -1208,6 +1208,23 @@ giustificati, 5 centrati; 18 senza spazio al primo tentativo, scritti ridotti; a
 scelta: 4 con più stili, 3 con caratteri che nessun font sa scrivere). Report
 `CORPORA/reports/paragraph-edit-all-20261006-230518`. Corretto strada facendo: un paragrafo di due righe
 veniva preso per giustificato (test di regressione).
+
+**9a-2 (2026-10-07) — «Modifica testo» › Paragrafo nell'app: uscita raggiunta.** `apps/capriole`: lo
+strumento «Modifica testo» ha la scelta **Riga / Paragrafo**; in modalità Paragrafo evidenzia il paragrafo
+sotto il puntatore (un blocco del testo come è disposto) e un doppio clic apre sopra di esso un'area di
+testo con il suo contenuto (`ParagraphEditor.svelte`; le parole spezzate a fine riga — «infor-» +
+«mazione» — riunite): Invio va a capo, Ctrl+Invio (o uscirne) scrive, Esc lascia com'era. Il testo che non
+ci sta dà un pannello («servono N righe e sotto il paragrafo ce ne stanno M») con «Riduci il testo per
+farlo stare» e «Torna al testo» (riapre l'area con quanto scritto); il font simile e la riduzione sono
+detti («ridotto all'85% per farlo stare»: l'articolo eliso davanti a 80–89 e 11, anche negli avvisi della
+8j); ogni modifica è un passo di «Annulla». Client del motore: `replaceParagraph`.
+Corretto nel motore (trovato dagli e2e): un paragrafo ridotto scendeva fino a toccare il testo sotto e si
+leggeva come un paragrafo solo con esso; ora le righe nuove lasciano sopra ciò che segue lo spazio che il
+paragrafo lasciava, fino a un'interlinea (test di regressione); verifica sul corpus ripetuta: ancora 100/100
+(21 scritti ridotti), `CORPORA/reports/paragraph-edit-all-20261007-113956`.
+Criterio: test e2e (paragrafo riscritto con una riga in più nello spazio libero, salvato, il resto della
+pagina byte per byte, annullato; testo che non ci sta → «Torna al testo» → «Riduci», la riga sotto ferma;
+Esc senza passo di «Annulla») verdi; gate verde.
 
 ---
 

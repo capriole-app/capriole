@@ -151,6 +151,13 @@ TEST(ParagraphEdit, AJustifiedParagraphStaysJustified) {
 TEST(ParagraphEdit, NoRoomIsRefusedUnlessShrinkingIsAllowed) {
   // Text right below the paragraph: no line can be added.
   Document document = open(page_pdf(kParagraph + "BT /F1 10 Tf 20 320 Td (Next paragraph, close below) Tj ET"));
+  const auto start = page_text(document);
+  double before_bottom = 0;
+  for (const auto& line : start.lines) {
+    if (line.box.y1 < 75) {
+      before_bottom = std::max(before_bottom, line.box.y1);
+    }
+  }
   const std::string longer =
       "The quick brown fox, much quicker than ever before and somewhat faster too, jumps over the lazy dog and runs far away into the deep "
       "dark woods where nobody can find it.";
@@ -165,12 +172,33 @@ TEST(ParagraphEdit, NoRoomIsRefusedUnlessShrinkingIsAllowed) {
   EXPECT_LT(shrunk->scale, 1);
   EXPECT_GE(shrunk->scale, kMinShrink);
   EXPECT_NEAR(shrunk->size, 10 * shrunk->scale, 1e-9);
+  // Shrunk, it keeps above the next paragraph the space it had.
   const auto after = page_text(document);
   const auto* next = word(after, U"Next");
   ASSERT_NE(next, nullptr);
+  const double gap_before = next->box.y0 - before_bottom;
   for (const auto* line : lines_of(after, 25, next->box.y0 - 0.01)) {
-    EXPECT_LT(line->box.y1, next->box.y0);
+    EXPECT_LE(line->box.y1, next->box.y0 - gap_before + 0.01);
   }
+  EXPECT_NE(after.plain().find("it.\n\nNext"), std::string::npos) << after.plain();
+}
+
+// Shrunk to fit, a paragraph keeps above the text below it the space it had: it ran into that text and
+// read as one paragraph with it (found by the app's e2e test, on this page).
+TEST(ParagraphEdit, AShrunkParagraphStaysApartFromTheTextBelow) {
+  Document document =
+      open(page_pdf("BT /F1 12 Tf 14 TL 30 250 Td (Il secondo paragrafo ha) Tj T* (subito sotto un altro) Tj T* (testo che non si sposta.) Tj ET\n"
+                    "BT /F1 12 Tf 30 200 Td (Testo che sta sotto.) Tj ET"));
+  const auto before = page_text(document);
+  ASSERT_EQ(before.blocks.size(), 2U);
+  const double gap = before.blocks[1].box.y0 - before.blocks[0].box.y1;
+  auto result = replace_paragraph(document, 0, graphics::Rect{25, 140, 200, 185},
+                                  "Il secondo paragrafo ha subito sotto un altro testo che non si sposta. Anche questo.", {.shrink = true});
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  EXPECT_LT(result->scale, 1);
+  const auto after = page_text(document);
+  ASSERT_EQ(after.blocks.size(), 2U) << after.plain();
+  EXPECT_GE(after.blocks[1].box.y0 - after.blocks[0].box.y1, gap - 0.5);
 }
 
 TEST(ParagraphEdit, FallsBackOnASimilarFontAndKeepsLineBreaks) {
