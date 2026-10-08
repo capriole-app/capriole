@@ -1,0 +1,49 @@
+%PDF-1.7
+1 0 obj
+<</Type/Catalog/Pages 2 0 R>>
+endobj
+2 0 obj
+<</Type/Pages/Kids[3 0 R]/Count 1>>
+endobj
+3 0 obj
+<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 400]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>/XObject<</Fm1 6 0 R>>>>/Annots[7 0 R]>>
+endobj
+4 0 obj
+<</Length 387>>
+stream
+BT /F1 10 Tf 12 TL 20 360 Td (The quick brown fox jumps over the lazy dog and runs) Tj T* (far away into the deep dark woods where) Tj T* (nobody can find it.) Tj 0 -30 Td (Belowtext follows here.) Tj ET
+20 280 200 4 re f
+q 20 0 0 20 20 250 cm BI /W 1 /H 1 /CS /G /BPC 8 ID € EI Q
+q 1 0 0 1 20 220 cm /Fm1 Do Q
+BT /F1 10 Tf 300 300 Td (Beside) Tj ET
+BT /F1 10 Tf 200 20 Td (Seven) Tj ET
+
+endstream
+endobj
+5 0 obj
+<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>
+endobj
+6 0 obj
+<</Type/XObject/Subtype/Form/BBox[0 0 50 10]/Length 14>>
+stream
+0 0 50 10 re f
+endstream
+endobj
+7 0 obj
+<</Type/Annot/Subtype/Link/Rect[20 200 120 210]/Border[0 0 0]>>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000054 00000 n 
+0000000105 00000 n 
+0000000253 00000 n 
+0000000689 00000 n 
+0000000752 00000 n 
+0000000856 00000 n 
+trailer
+<</Size 8/Root 1 0 R>>
+startxref
+935
+%%EOF

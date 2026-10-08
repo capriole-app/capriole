@@ -1,7 +1,7 @@
 // Fuzz target for editing a paragraph through the C API (capi/README.md), as the apps use it: the input is
 // a PDF (a document that needed repairs is saved fully and read back first, as the apps do); on its first
-// page the paragraphs in a few areas are written anew — longer (shrinking allowed or not), shorter, with a
-// line break, deleted — and the document is saved and read back. The seed corpus is
+// page the paragraphs in a few areas are written anew — longer (shrinking allowed or not, or moving what
+// follows down), shorter, with a line break, deleted — and the document is saved and read back. The seed corpus is
 // fuzz/corpus/paragraph_edit/.
 //
 // Invariants beyond "no crash, no UB, no hang": every call returns a status; an edited document saves and
@@ -32,11 +32,13 @@ capriole_document* reopen(capriole_document* document) {
   return reopened;
 }
 
-constexpr std::array<const char*, 4> kEdits = {
+constexpr std::array<const char*, 6> kEdits = {
     R"({"area":[0,60,600,200],"text":"Un testo pi\u00f9 lungo di quello che c'era, che deve andare a capo pi\u00f9 volte dentro il paragrafo \u20ac","shrink":true})",
     R"({"area":[0,200,600,400],"text":"Breve.\nDue righe.","shrink":false})",
     R"({"area":[0,0,300,120],"text":"Unaparolalunghissimachenonstainnessunarigaedeveesserespezzataneipunticheservono"})",
     R"({"area":[100,400,500,700],"text":""})",
+    R"({"area":[0,100,600,260],"text":"Un paragrafo molto pi\u00f9 lungo, che sposta in basso ci\u00f2 che lo segue: righe, tracciati, immagini, moduli e annotazioni","room":"move"})",
+    R"({"area":[0,0,600,80],"text":"Ancora pi\u00f9 lungo, di nuovo, perch\u00e9 ci\u00f2 che segue si sposti ancora una volta verso il fondo della pagina, finch\u00e9 c'\u00e8 posto","room":"move"})",
 };
 
 }  // namespace

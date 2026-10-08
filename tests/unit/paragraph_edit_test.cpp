@@ -345,5 +345,42 @@ TEST(ParagraphEdit, DeletesAndRefuses) {
   EXPECT_NE(text.find("mc"), std::string::npos) << text;
 }
 
+// A code beyond the font's /LastChar is written with its width in /Widths, /LastChar widened: readers that
+// keep to the standard take /MissingWidth (0 here) for it, and drew the letter after it on top of it (found
+// by corpus-tools/check_paragraph_move.py: MuPDF read "owrds").
+TEST(ParagraphEdit, ACodeBeyondTheLastCharGetsItsWidth) {
+  for (const bool indirect : {false, true}) {
+    SCOPED_TRACE(indirect ? "/Widths indirect" : "/Widths direct");
+    test::PdfBuilder b;
+    b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+    b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+    b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 400]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>");
+    b.add_stream(4, "BT /F1 10 Tf 12 TL 20 360 Td (aaa aaa aaa aaa aaa aaa aaa aaa aaa aaa) Tj T* (aaa aaa aaa) Tj ET");
+    // Widths for "a" to "c" only (97 to 99).
+    b.add_object(5, std::string("<</Type/Font/Subtype/TrueType/BaseFont/Arial/Encoding/WinAnsiEncoding/FirstChar 97/LastChar 99/Widths") +
+                        (indirect ? " 7 0 R" : "[556 556 500]") + "/FontDescriptor 6 0 R>>");
+    b.add_object(6,
+                 "<</Type/FontDescriptor/FontName/Arial/Flags 32/FontBBox[0 -200 1000 900]/ItalicAngle 0/Ascent 900/Descent -200/CapHeight 700"
+                 "/StemV 80/MissingWidth 0>>");
+    b.add_object(7, "[556 556 500]");
+    b.finish_table("/Root 1 0 R");
+    Document document = open(b.str());
+    auto result = replace_paragraph(document, 0, kArea, "aaa www aaa aaa aaa aaa aaa aaa aaa aaa aaa aaa aaa");
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    ASSERT_EQ(result->method, TextEditMethod::kSameFont);
+    auto font = document.get(model::ObjectRef{5, 0});
+    ASSERT_TRUE(font.has_value());
+    const model::Dict& dict = *(*font)->as_dict();
+    EXPECT_EQ(dict.find("FirstChar")->as_integer(), 97);  // the words' gaps are no spaces
+    EXPECT_EQ(dict.find("LastChar")->as_integer(), 119);
+    const auto* widths = dict.find("Widths")->as_array();
+    ASSERT_NE(widths, nullptr);
+    ASSERT_EQ(widths->size(), 23U);
+    EXPECT_GT((*widths)[119 - 97].as_number().value_or(0), 500);  // w
+    EXPECT_EQ((*widths)[0].as_number().value_or(0), 556);         // a, as it was
+    EXPECT_EQ((*widths)[100 - 97].as_number().value_or(-1), 0);   // d, not written: /MissingWidth
+  }
+}
+
 }  // namespace
 }  // namespace capriole::edit

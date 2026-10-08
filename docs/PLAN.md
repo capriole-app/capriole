@@ -1177,7 +1177,7 @@ riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) 
 
 ## Fase 9 — Editing avanzato del testo — 🔜 in corso (9a ✅, 9b ✅)
 
-Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅ · **9c** sottoinsiemi dei font estesi (9c-1 motore ✅, 9c-2 app ✅). Gli altri (estendere i sottoinsiemi dei font
+Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅ · **9c** sottoinsiemi dei font estesi (9c-1 motore ✅, 9c-2 app ✅) · **9d** spostare ciò che segue su scelta (9d-1 motore ✅, 9d-2 app). Gli altri (estendere i sottoinsiemi dei font
 incorporati, paragrafi con più stili, spostare il contenuto che segue su scelta esplicita) si fissano dopo.
 
 **9a-1 (2026-10-06) — reflow dei paragrafi nel motore: uscita raggiunta.** `edit/paragraph_edit.hpp`: `replace_paragraph` riscrive le
@@ -1301,6 +1301,43 @@ CprSquare; un `.cff` rifiutato in italiano, un font con licenza restrittiva elen
 `full.ttf` dal suggerimento, la stessa modifica dice «Aggiunta 1 lettera…» e il file salvato ha B nel
 sottoinsieme (/ToUnicode CID 2 → B, nessun font simile); il font resta dopo un ricaricamento e «Rimuovi» lo
 toglie anche dopo il successivo. Gate verde.
+
+**9d-1 (2026-10-08) — spostare ciò che segue un paragrafo, nel motore: uscita raggiunta.** Quando il testo
+nuovo non ci sta, su scelta (`replace_paragraph` con `move`; API C `"room": "move"`, `cpdf edit-paragraph
+--move`) ciò che sta sotto il paragrafo scende di quanto il paragrafo cresce (lo spazio che c'era resta).
+`edit/content_move`: ogni operatore disegnato lì si sposta com'è — il testo con una matrice di testo
+assoluta prima di sé (nel suo BT, da quello spostato in poi, ogni testo è posto dov'era o dove va: `'` e `"`
+diventano Tj), i tracciati con le loro coordinate (anche i ritagli che ritagliano solo ciò che si sposta),
+immagini, forme e sfumature con una traslazione attorno (q … cm … Q); una forma tutta spostata si sposta
+intera (la CTM del suo Do ora è nella `Invocation`), le altre sono copiate quando cambiano; le annotazioni
+(anche i widget dei moduli) con la loro geometria. Cosa si sposta: ciò che sta sotto il paragrafo e ne
+incrocia la larghezza; non ciò che è accanto (un'altra colonna), né il piè di pagina (nell'ultimo ottavo
+della pagina, staccato di due righe), né una cornice che contiene il paragrafo e ciò che si sposta (resta,
+e ciò che si sposta deve restarci dentro), né uno sfondo (un riempimento semplice, un'immagine di un solo
+colore sotto il paragrafo, una sfumatura, grandi quanto la pagina). Va con ciò che si sposta: il seguito
+della stessa riga disegnato da altri operatori (a uno spazio di distanza) e i segni piccoli accanto alla
+riga (pallini, numeri, caselle), un tracciato che tocca un tracciato che si sposta (il bordo di una
+tabella), ciò che sta tra cose che si spostano; ciò che comincia poco sopra il fondo del paragrafo (un
+quinto di riga) o accanto all'ultima riga senza toccarne le lettere, e la riga dopo stretta. Si può prendere
+metà del margine inferiore. Rifiuti, in inglese per l'app ("cannot move what follows: …"): oltre il fondo
+della pagina, il piè di pagina, ciò che contiene il paragrafo (un riquadro, una cella, un ritaglio), urti con
+ciò che è accanto, un'immagine o un disegno a cavallo del fondo del paragrafo (una pagina scansionata), una
+maschera o un ritaglio che non si spostano. Lo spostamento si pianifica prima (senza toccare il documento) e
+si applica solo se la modifica riesce. Fuzzing: `fuzz_paragraph_edit` con due spostamenti (5 minuti, 33 mila esecuzioni, nessun crash).
+Criterio: `corpus-tools/check_paragraph_move.py` — 100 paragrafi dei corpora con testo sotto, allungati di
+una o due righe: il testo nuovo letto al suo posto da Capriole, Poppler e MuPDF; ogni parola (MuPDF: ogni
+carattere) fuori dal paragrafo dov'era o spostata esattamente di Δ; il disegno sopra e accanto com'era, sotto
+uguale alla pagina originale traslata di Δ (pikepdf, disegnata dallo stesso renderer); qpdf non peggiore.
+**100/100.** Rifiuti: 147 su 247 tentativi, 111 per pagine piene (senza passare alla pagina dopo, che è
+fuori da questo passo; tutto il margine ne recupererebbe pochi: 57% invece di 61%, misurato) e 36 per gli
+altri motivi, esaminati uno per uno (riquadri e celle che contengono il paragrafo, pagine scansionate, sfondi
+disegnati, filetti a tutta pagina, colonne piene). L'esame dei rifiuti ha portato cinque regole (con test).
+Corretti strada facendo, ognuno con un test di regressione: righe spezzate fra più operatori, bordi di
+tabelle e caselle rimasti indietro, moduli scansionati presi per sfondi, cornici di pagina, widget non visti,
+la colonna accanto trascinata da una regola troppo larga; e un difetto della 8j/9a: un codice oltre
+`/LastChar` era scritto senza larghezza (MuPDF sovrapponeva le lettere) — ora `/Widths` si allarga, i codici
+in mezzo con `/MissingWidth` (riverificate 9a e 9b: 100/100 e 100/100). Report
+`CORPORA/reports/paragraph-move-all-20261008-224729`.
 
 ---
 

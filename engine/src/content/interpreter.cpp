@@ -211,7 +211,7 @@ class Interpreter {
   std::uint32_t enter(graphics::Invocation::Kind kind, std::optional<model::ObjectRef> form) {
     const std::uint32_t parent = invocation_;
     invocation_ = static_cast<std::uint32_t>(out_->invocations.size());
-    out_->invocations.push_back(graphics::Invocation{.kind = kind, .parent = parent, .form = form, .operation = op_index_});
+    out_->invocations.push_back(graphics::Invocation{.kind = kind, .parent = parent, .form = form, .operation = op_index_, .ctm = {}});
     return parent;
   }
 
@@ -856,6 +856,7 @@ class Interpreter {
     }
     // §8.10.1: q, cm /Matrix, clip to /BBox, the content, Q.
     save();
+    const Matrix drawn_with = state_.ctm;  // the CTM of the Do
     if (const Object* matrix = form.dict.find("Matrix")) {
       if (auto m = document_->resolve(*matrix); m && m->as_array() != nullptr && m->as_array()->size() == 6) {
         std::vector<double> v;
@@ -918,6 +919,7 @@ class Interpreter {
     // annotation, is not content the page's edits rewrite.
     const bool content_form = role == FormRole::kDo && !in_annotations_;
     const std::uint32_t outer = enter(content_form ? graphics::Invocation::Kind::kForm : graphics::Invocation::Kind::kOther, ref);
+    out_->invocations.back().ctm = drawn_with;
     run(*content, resources, form_depth + 1, ref);
     invocation_ = outer;
     path_ = saved_path;

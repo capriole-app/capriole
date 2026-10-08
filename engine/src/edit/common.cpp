@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "capriole/content/appearance.hpp"
 #include "capriole/content/content_parser.hpp"
 #include "capriole/graphics/display_list.hpp"
 #include "capriole/model/text_string.hpp"
@@ -409,6 +410,38 @@ bool lowercase(char32_t c) {
     return c == 0x138 || c == 0x149 || c == 0x17F || (shifted ? c % 2 == 0 : c % 2 == 1);
   }
   return (c >= 0x3B1 && c <= 0x3C9) || (c >= 0x430 && c <= 0x45F);
+}
+
+// Moves the coordinates of an annotation's geometry by (dx, dy) in page space.
+void shift_annotation(Document& document, model::Dict& annotation, double dx, double dy) {
+  for (const std::string_view key : {"Rect", "QuadPoints", "L", "Vertices", "CL"}) {
+    std::vector<double> v = content::numbers(document, annotation, key);
+    if (v.empty()) {
+      continue;
+    }
+    model::Array moved;
+    for (std::size_t i = 0; i < v.size(); ++i) {
+      moved.emplace_back(number_object(v[i] + (i % 2 == 0 ? dx : dy)));
+    }
+    annotation.set(std::string(key), std::move(moved));
+  }
+  if (const model::Object* ink = annotation.find("InkList")) {
+    auto resolved = document.resolve(*ink);
+    if (resolved && resolved->as_array() != nullptr) {
+      model::Array strokes;
+      for (const model::Object& stroke : *resolved->as_array()) {
+        auto points = document.resolve(stroke);
+        model::Array moved;
+        if (points && points->as_array() != nullptr) {
+          for (std::size_t i = 0; i < points->as_array()->size(); ++i) {
+            moved.emplace_back(number_object((*points->as_array())[i].as_number().value_or(0) + (i % 2 == 0 ? dx : dy)));
+          }
+        }
+        strokes.emplace_back(std::move(moved));
+      }
+      annotation.set("InkList", std::move(strokes));
+    }
+  }
 }
 
 }  // namespace capriole::edit::detail

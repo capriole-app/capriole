@@ -61,6 +61,10 @@ struct Page {
 // A page to read, or to edit (the structure must be sound, sound.hpp; what names the edits refused).
 [[nodiscard]] Result<Page> page_at(Document& document, std::uint32_t index, std::optional<std::string_view> edit);
 
+// Moves the coordinates of an annotation's geometry (/Rect, /QuadPoints, /L, /Vertices, /CL, /InkList) by
+// (dx, dy) in page space: its appearance follows /Rect.
+void shift_annotation(Document& document, model::Dict& annotation, double dx, double dy);
+
 // /Subtype of an annotation; empty when it has none.
 [[nodiscard]] std::string subtype_of(const model::Dict& annotation);
 // A text string entry as UTF-8; empty when absent.

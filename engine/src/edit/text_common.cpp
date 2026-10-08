@@ -122,7 +122,9 @@ std::vector<std::optional<std::string>> encode_each(font::detail::Font& font, fo
     if (!two_byte && font.kind() == font::detail::Font::Kind::kSimple) {
       const auto code = static_cast<std::uint8_t>(found->second.back());
       const font::detail::Font::Code fc{.code = code, .length = 1, .cid = code};
-      if (font.width(fc) == 0 && c != U' ') {
+      // No width (but a space), or none in /Widths — a code beyond /LastChar: readers that keep to the
+      // standard take /MissingWidth for it, often 0 — the program's advance, written into /Widths.
+      if ((font.width(fc) == 0 && c != U' ') || !font.width_listed(fc)) {
         const auto source = font.glyph_source(fc, context);
         const auto advance = source.program != nullptr ? source.program->advance(source.glyph) : std::nullopt;
         if (!advance || *advance <= 0) {
@@ -156,13 +158,7 @@ bool widths_writable(Document& document, ObjectRef font_ref, const std::map<std:
   if (!array || array->as_array() == nullptr) {
     return false;
   }
-  const std::int64_t first = *first_char;
-  for (const auto& entry : widths) {
-    const std::int64_t at = static_cast<std::int64_t>(entry.first) - first;
-    if (at < 0 || std::cmp_greater_equal(at, array->as_array()->size())) {
-      return false;
-    }
-  }
+  // Codes outside /FirstChar … /LastChar are written by widening them (set_widths).
   for (const auto& command : list.commands) {
     const auto* t = std::get_if<graphics::Boxed<graphics::ShowText>>(&command);
     if (t != nullptr && (*t)->font_ref == font_ref && std::ranges::any_of((*t)->glyphs, [&](const graphics::Glyph& g) { return widths.contains(g.code); })) {
@@ -188,14 +184,37 @@ Result<void> set_widths(Document& document, ObjectRef font_ref, const std::map<s
     return make_error(ErrorCode::kUnsupported, "the font gives no widths");
   }
   Array array = *resolved->as_array();
-  for (const auto& [code, width] : widths) {
-    const std::int64_t at = static_cast<std::int64_t>(code) - first;
-    if (at < 0 || std::cmp_greater_equal(at, array.size())) {
-      return make_error(ErrorCode::kUnsupported, "a code outside the font's widths");
-    }
-    array[static_cast<std::size_t>(at)] = detail::number_object(std::round(width * 1000) / 1000);
+  // Codes outside /FirstChar … /LastChar widen them; the codes between, which readers took /MissingWidth
+  // for, keep it.
+  std::int64_t start = first;
+  bool widened = false;
+  const std::int64_t lowest = std::min<std::int64_t>(first, static_cast<std::int64_t>(widths.begin()->first));
+  const std::int64_t highest = std::max<std::int64_t>(first + static_cast<std::int64_t>(array.size()) - 1, static_cast<std::int64_t>(widths.rbegin()->first));
+  if (lowest < 0 || highest > 255) {
+    return make_error(ErrorCode::kUnsupported, "a code outside a simple font's codes");
   }
-  if (const auto ref = entry->as_ref()) {
+  if (lowest < first || std::cmp_greater(highest - first + 1, array.size())) {
+    double missing = 0;
+    if (const Object* descriptor = font.find("FontDescriptor")) {
+      if (auto d = document.resolve(*descriptor); d && d->as_dict() != nullptr && d->as_dict()->find("MissingWidth") != nullptr) {
+        missing = d->as_dict()->find("MissingWidth")->as_number().value_or(0);
+      }
+    }
+    Array wider;
+    for (std::int64_t code = lowest; code <= highest; ++code) {
+      const std::int64_t at = code - first;
+      wider.push_back(at >= 0 && std::cmp_less(at, array.size()) ? array[static_cast<std::size_t>(at)] : detail::number_object(missing));
+    }
+    array = std::move(wider);
+    start = lowest;
+    widened = true;
+    font.set("FirstChar", Object(lowest));
+    font.set("LastChar", Object(highest));
+  }
+  for (const auto& [code, width] : widths) {
+    array[static_cast<std::size_t>(static_cast<std::int64_t>(code) - start)] = detail::number_object(std::round(width * 1000) / 1000);
+  }
+  if (const auto ref = entry->as_ref(); ref && !widened) {
     return document.set(ref->number, Object(std::move(array)));
   }
   font.set("Widths", std::move(array));

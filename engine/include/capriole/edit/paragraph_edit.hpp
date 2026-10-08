@@ -45,6 +45,10 @@ enum class ParagraphAlignment : std::uint8_t { kLeft, kJustified, kCentre, kRigh
 struct ParagraphOptions {
   // When the new text does not fit, make it smaller (with its line pitch) until it does, down to kMinShrink.
   bool shrink = false;
+  // Or move what is below it down the page (not what is beside it, nor a footer): what follows stays as far
+  // below it as it was. Refused when there is no room on the page, something lies across the paragraph's
+  // bottom, or what moves would run into what stays (edit/content_move).
+  bool move = false;
   // Fonts the host gave: an embedded subset that lacks a letter gets its glyph from the same font in it
   // (edit/font_library.hpp), else the letter goes to a similar font.
   const FontLibrary* fonts = nullptr;
@@ -64,6 +68,9 @@ struct ParagraphEditResult {
   std::uint32_t added_glyphs = 0;      // to embedded fonts, from the library
   // The fonts (their names) that lacked letters written in a similar font: what the host could give.
   std::vector<std::string> missing_fonts;
+  double moved = 0;               // how far what follows was moved down (points as shown; 0: not)
+  std::uint32_t moved_items = 0;  // drawing operators moved
+  std::uint32_t moved_annotations = 0;
 };
 
 // text: UTF-8; a line break starts a new line; empty: the paragraph is deleted.

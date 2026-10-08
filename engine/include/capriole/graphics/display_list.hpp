@@ -403,6 +403,7 @@ struct Invocation {
   std::uint32_t parent = 0;
   std::optional<model::ObjectRef> form;  // kForm: the form XObject
   std::uint32_t operation = 0;           // kForm: the Do's ordinal among the parent's operators
+  Matrix ctm;                            // kForm: the CTM of the Do (the form's /Matrix not applied)
 };
 
 struct Origin {

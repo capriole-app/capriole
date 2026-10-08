@@ -109,7 +109,7 @@ void print_usage() {
                "  p12 <file>      the certificate of a PKCS#12 file\n"
                "  edit-text [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>\n"
                "                  replace the text in an area (one line)\n"
-               "  edit-paragraph [--shrink] [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>\n"
+               "  edit-paragraph [--shrink | --move] [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>\n"
                "                  replace a paragraph's text, laid out anew inside it; --font: full TrueType fonts\n"
                "                  whose glyphs embedded subsets that lack a letter get\n"
                "  pdfa <file> <output> [2|3]   convert to PDF/A-2b or -3b (refused, with reasons, when it cannot be)\n"
@@ -895,14 +895,14 @@ int cmd_text_json(const char* path, std::uint64_t page_number, capriole::text::O
   return kExitOk;
 }
 
-// edit-paragraph [--shrink] [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>: the paragraph whose lines the
+// edit-paragraph [--shrink | --move] [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>: the paragraph whose lines the
 // area touches written anew with the text (\n in it: a line break), laid out inside it; how, as JSON.
 int cmd_edit_paragraph(std::span<char* const> args) {
-  bool shrink = false;
+  std::string_view room = "none";
   for (bool more = true; more;) {
     more = false;
-    if (!args.empty() && std::string_view(args[0]) == "--shrink") {
-      shrink = true;
+    if (!args.empty() && (std::string_view(args[0]) == "--shrink" || std::string_view(args[0]) == "--move")) {
+      room = std::string_view(args[0]).substr(2);
       args = args.subspan(1);
       more = true;
     }
@@ -934,7 +934,7 @@ int cmd_edit_paragraph(std::span<char* const> args) {
     }
     text_json += c;
   }
-  const std::string spec = std::format(R"({{"area":[{}],"text":"{}","shrink":{}}})", args[2], text_json, shrink ? "true" : "false");
+  const std::string spec = std::format(R"({{"area":[{}],"text":"{}","room":"{}"}})", args[2], text_json, room);
   char* json = nullptr;
   if (capriole_document_page_replace_paragraph(document, static_cast<std::uint32_t>(*page - 1), spec.c_str(), &json) != CAPRIOLE_OK) {
     std::cerr << std::format("cpdf: {}: edit-paragraph: {}\n", args[0], capriole_last_error_message());

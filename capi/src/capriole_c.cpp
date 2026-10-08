@@ -1739,6 +1739,14 @@ capriole_status capriole_document_page_replace_paragraph(capriole_document* docu
       }
       options.shrink = *b;
     }
+    if (const auto* room = spec->get("room")) {
+      const std::string* how = room->string();
+      if (how == nullptr || (*how != "none" && *how != "shrink" && *how != "move")) {
+        return fail(CAPRIOLE_ERROR_SYNTAX, R"(room: "none", "shrink" or "move" expected)");
+      }
+      options.shrink = *how == "shrink";
+      options.move = *how == "move";
+    }
     SharedFonts& fonts = shared_fonts();
     const std::shared_lock lock(fonts.mutex);
     options.fonts = &fonts.library;
@@ -1760,7 +1768,8 @@ capriole_status capriole_document_page_replace_paragraph(capriole_document* docu
       }
       capriole::capi::append_json_text(out, capriole::model::from_utf8(result->missing_fonts[i]));
     }
-    out += "]}";
+    out += std::format(R"(],"moved":{},"movedItems":{},"movedAnnotations":{}}})", capriole::writer::format_real(result->moved), result->moved_items,
+                       result->moved_annotations);
     return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");

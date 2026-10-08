@@ -22,6 +22,7 @@
 #include "capriole/model/text_string.hpp"
 #include "capriole/text/text.hpp"
 #include "common.hpp"
+#include "content_move.hpp"
 #include "font/font.hpp"
 #include "font_extend.hpp"
 #include "text_common.hpp"
@@ -785,7 +786,31 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
   double factor = 1;
   std::vector<Placed> placed = lay_out(segments, points_at(1), p, p.gap);
   const auto fits = [&](const std::vector<Placed>& lines, double f) { return lines.size() <= kMaxLines && bottom_of(lines.size(), f) <= limit + 0.01; };
-  if (!fits(placed, 1)) {
+  std::optional<detail::MovePlan> move;
+  if (!fits(placed, 1) && options.move && placed.size() <= kMaxLines) {
+    // What follows moves down as far as the paragraph grows (keeping the space it had above it), at least
+    // as far as the new lines need.
+    const double grown = static_cast<double>(placed.size()) - static_cast<double>(p.lines.size());
+    const double by = std::max(grown * p.pitch, bottom_of(placed.size(), 1) - limit);
+    std::vector<Rect> glyphs;
+    glyphs.reserve(p.chars.size());
+    for (const std::size_t i : p.chars) {
+      glyphs.push_back(page_text.chars[i].box);
+    }
+    auto planned = detail::plan_move(document, page_index,
+                                     {.top = p.top,
+                                      .cut = p.bottom,
+                                      .x0 = std::min(p.left, p.left + p.indent),
+                                      .x1 = p.right,
+                                      .by = by,
+                                      .bottom = bottom_of(placed.size(), 1),
+                                      .pitch = p.pitch,
+                                      .glyphs = glyphs});
+    if (!planned) {
+      return std::unexpected(std::move(planned.error()));
+    }
+    move = std::move(*planned);
+  } else if (!fits(placed, 1)) {
     bool done = false;
     if (options.shrink) {
       for (int step = 1;; ++step) {
@@ -818,6 +843,11 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
       return std::unexpected(std::move(committed.error()));
     }
     added_glyphs += extension.added;
+  }
+  if (move) {
+    if (auto moved = detail::apply_move(document, page_index, *move); !moved) {
+      return std::unexpected(std::move(moved.error()));
+    }
   }
   std::vector<Rect> areas;
   for (const std::size_t i : p.chars) {
@@ -853,7 +883,10 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
                              .styles = static_cast<std::uint32_t>(written_styles.size()),
                              .same_font_styles = static_cast<std::uint32_t>(same_fonts),
                              .added_glyphs = static_cast<std::uint32_t>(added_glyphs),
-                             .missing_fonts = std::vector<std::string>(missing_fonts.begin(), missing_fonts.end())};
+                             .missing_fonts = std::vector<std::string>(missing_fonts.begin(), missing_fonts.end()),
+                             .moved = move ? move->by : 0,
+                             .moved_items = move ? move->items : 0,
+                             .moved_annotations = move ? static_cast<std::uint32_t>(move->annotations.size()) : 0};
   if (letters.empty()) {
     return result;
   }

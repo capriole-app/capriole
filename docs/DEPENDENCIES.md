@@ -55,7 +55,9 @@ dall'installer scaricato dall'utente). Per l'estensione dei sottoinsiemi dei fon
 (`fc-list`, `fc-query`: i font installati e i loro caratteri), LibreOffice (MPL-2.0, `--convert-to pdf`) e il
 Chromium di Playwright (`page.pdf()`) per generare documenti con sottoinsiemi dei font installati
 (`corpus-tools/make_font_docs.py`, in `CORPORA/generated/`); i font installati (DejaVu, Liberation, Noto…) sono
-input di prova, mai nel repository.
+input di prova, mai nel repository. Per lo spostamento di ciò che segue un paragrafo (fase 9d): `pikepdf` (già sopra)
+scrive la pagina originale traslata, che Capriole e Poppler disegnano come riferimento
+(`corpus-tools/check_paragraph_move.py`).
 
 
 OSS-Fuzz (`ci/oss-fuzz/`, quando il progetto sarà iscritto): l'immagine `gcr.io/oss-fuzz-base/base-builder`

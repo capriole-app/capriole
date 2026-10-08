@@ -108,6 +108,10 @@ class Font {
   void codes(std::string_view bytes, std::vector<Code>& out) const;
   // The horizontal advance of a code, in glyph space.
   [[nodiscard]] double width(const Code& code) const;
+  // A simple font: the code's width is in /Widths (else readers take /MissingWidth, §9.6.2.1).
+  [[nodiscard]] bool width_listed(const Code& code) const noexcept {
+    return kind_ != Kind::kSimple || (code.code >= first_char_ && code.code - first_char_ < widths_.size());
+  }
   [[nodiscard]] VerticalMetrics vertical_metrics(const Code& code) const;
   // Word spacing applies to the single-byte code 32 only (§9.3.3).
   [[nodiscard]] static bool is_word_space(const Code& code) noexcept { return code.length == 1 && code.code == 32; }

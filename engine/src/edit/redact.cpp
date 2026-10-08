@@ -25,6 +25,7 @@
 #include "capriole/graphics/display_list.hpp"
 #include "capriole/writer/serializer.hpp"
 #include "common.hpp"
+#include "content_rewrite.hpp"
 #include "sound.hpp"
 #include "text_removal.hpp"
 
@@ -32,10 +33,15 @@ namespace capriole::edit {
 
 namespace {
 
+using detail::add_content;
+using detail::fresh_name;
 using detail::name;
 using detail::num;
+using detail::op_text;
+using detail::operand_text;
 using detail::path_bounds;
 using detail::transformed;
+using detail::with_xobjects;
 using graphics::Matrix;
 using graphics::Point;
 using graphics::Rect;
@@ -337,8 +343,6 @@ std::optional<Object> cleared_image(Document& document, const graphics::DrawImag
 
 // ── Rewriting a content stream ─────────────────────────────────────────────────────────────────
 
-std::string operand_text(const Object& operand) { return writer::serialize(operand); }
-
 // A text-showing operator without some of its glyphs, as TJ (after T* for ' and ", Tw and Tc for ").
 std::string text_without(const content::Operation& op, const OpEdit& edit) {
   std::string prefix;
@@ -396,25 +400,6 @@ std::string text_without(const content::Operation& op, const OpEdit& edit) {
   return out + "] TJ";
 }
 
-std::string op_text(const content::Operation& op) {
-  if (op.op == content::Operator::kInlineImage && op.image) {
-    std::string out = "BI";
-    for (const model::DictEntry& e : op.image->dict.entries()) {
-      out += " " + operand_text(Object(name(e.key))) + " " + operand_text(e.value);
-    }
-    out += " ID ";
-    for (const std::byte b : op.image->data) {
-      out.push_back(static_cast<char>(b));
-    }
-    return out + "\nEI";
-  }
-  std::string out;
-  for (const Object& operand : op.operands) {
-    out += operand_text(operand) + " ";
-  }
-  return out + op.name;
-}
-
 // The content without what the edits take out. Marked-content sequences in which something changed lose
 // the text they carry for it (/ActualText, /Alt, /E in an inline property list).
 // What a rewrite leaves: the content, the MCIDs of the marked content that changed, and the XObject names
@@ -430,16 +415,7 @@ Rewrite rewritten(std::span<const std::byte> content, const Edits& edits) {
   std::set<std::int64_t>& mcids = result.mcids;
   std::set<std::string> gone;   // names of Do operators replaced or dropped
   std::set<std::string> drawn;  // names the new content draws
-  const content::InterpreterLimits limits;
-  std::vector<content::Operation> ops;
-  content::ContentParser parser(content, limits.parse, parser::ParseMode::kTolerant);
-  for (;;) {
-    auto next = parser.next();
-    if (!next || !*next) {
-      break;
-    }
-    ops.push_back(std::move(**next));
-  }
+  const std::vector<content::Operation> ops = detail::operations_of(content);
   // Where each painted path starts (its first construction operator), and whether a clip (W, W*) is set
   // on it: a path painted clipped to outside the areas is wrapped in q … Q from there, unless it sets a
   // clip itself (Q would undo it) — it is then painted as it was.
@@ -544,62 +520,6 @@ Rewrite rewritten(std::span<const std::byte> content, const Edits& edits) {
   }
   result.content = std::move(out);
   return result;
-}
-
-Result<ObjectRef> add_content(Document& document, Dict dict, const std::string& content) {
-  std::vector<std::byte> raw(content.size());
-  std::ranges::transform(content, raw.begin(), [](char c) { return static_cast<std::byte>(c); });
-  auto packed = filters::flate_encode(raw);
-  if (!packed) {
-    return std::unexpected(std::move(packed.error()));
-  }
-  model::Stream stream;
-  stream.dict = std::move(dict);
-  for (const std::string_view key : {"Length", "Filter", "DecodeParms", "F", "FFilter", "FDecodeParms", "DL"}) {
-    stream.dict.erase(key);
-  }
-  stream.dict.set("Filter", name("FlateDecode"));
-  stream.memory_data = std::make_shared<const std::vector<std::byte>>(std::move(*packed));
-  return document.add(Object(std::move(stream)));
-}
-
-// Resources with new XObjects added (a copy: the original may be shared).
-Dict with_xobjects(Document& document, Dict resources, const std::vector<std::pair<std::string, ObjectRef>>& added, const std::set<std::string>& removed) {
-  if (added.empty() && removed.empty()) {
-    return resources;
-  }
-  Dict xobjects;
-  if (const Object* entry = resources.find("XObject")) {
-    auto resolved = document.resolve(*entry);
-    if (resolved && resolved->as_dict() != nullptr) {
-      xobjects = *resolved->as_dict();
-    }
-  }
-  for (const std::string& key : removed) {
-    xobjects.erase(key);
-  }
-  for (const auto& [key, ref] : added) {
-    xobjects.set(key, ref);
-  }
-  resources.set("XObject", std::move(xobjects));
-  return resources;
-}
-
-// A name not in the resources yet.
-std::string fresh_name(Document& document, const Dict& resources, std::set<std::string>& taken) {
-  Dict xobjects;
-  if (const Object* entry = resources.find("XObject")) {
-    auto resolved = document.resolve(*entry);
-    if (resolved && resolved->as_dict() != nullptr) {
-      xobjects = *resolved->as_dict();
-    }
-  }
-  for (std::size_t n = 1;; ++n) {
-    std::string candidate = std::format("CprRedacted{}", n);
-    if (!xobjects.contains(candidate) && taken.insert(candidate).second) {
-      return candidate;
-    }
-  }
 }
 
 // ── The structure tree ────────────────────────────────────────────────────────────────────────
@@ -952,7 +872,7 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
       ++report.images_removed;
       continue;
     }
-    edit.replace_name = fresh_name(document, resources_of(job.invocation), taken[job.invocation]);
+    edit.replace_name = fresh_name(document, resources_of(job.invocation), taken[job.invocation], "CprRedacted");
     new_images[job.invocation].push_back({.command = job.command, .name = *edit.replace_name});
     ++report.images_cleared;
   }
@@ -961,7 +881,7 @@ Result<RedactionReport> redact_areas(Document& document, std::uint32_t page_inde
   for (const std::uint32_t inv : std::views::reverse(needed)) {
     if (inv != 0) {
       const std::uint32_t parent = invocations[inv].parent;
-      plan[parent][invocations[inv].operation].replace_name = fresh_name(document, resources_of(parent), taken[parent]);
+      plan[parent][invocations[inv].operation].replace_name = fresh_name(document, resources_of(parent), taken[parent], "CprRedacted");
     }
   }
 

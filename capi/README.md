@@ -201,7 +201,7 @@ the area.
 the lines its area touches, whole: consecutive lines of one block of the page's text, as laid out —
 and lays the text out inside it: word by word to its margins (a word wider than a line is split, no
 hyphenation), its first line's indent kept, on its baselines, aligned as it was. `{"area":[x0,y0,x1,y1],
-"text":"…" (\n: a new line; empty: deleted), "shrink":false}`. The answer: `{"method":"sameFont" |
+"text":"…" (\n: a new line; empty: deleted), "room":"none"}`. The answer: `{"method":"sameFont" |
 "similarFont", "font":"…", "replaced":"…" (the old lines joined by spaces), "oldLines":3, "lines":4,
 "size":10.0, "scale":1.0, "alignment":"left" | "justified" | "centre" | "right", "styles":2,
 "sameFontStyles":2}`. The new text is plain; its styles (fonts, sizes, colours) come from the old text
@@ -212,7 +212,15 @@ the `styles` in their own font (`method` is `sameFont` when all are).
 The rest of the page does not move: lines beyond the old ones are taken only where the page is empty
 below the paragraph down to the next thing drawn, or the bottom of what contains it; else the edit is
 refused (`CAPRIOLE_ERROR_UNSUPPORTED`, "no room: the new text needs N lines, M fit") — unless `shrink`,
-which makes the text and its pitch smaller (by 2.5% steps, down to 70%) until it fits. Refused too:
+which makes the text and its pitch smaller (by 2.5% steps, down to 70%) until it fits (`"room":"shrink"`; the
+older `"shrink":true` says the same), or `"room":"move"`, which moves what is below the paragraph down the
+page as far as it grows (phase 9d): every operator drawn there — text set where it goes, paths by their
+coordinates, images, forms and shadings translated —, and the annotations there; not what is beside it
+(another column), nor a footer (in the page's last eighth, two lines below the rest). Half the bottom
+margin may be taken, and what moves stays a line above a footer. The answer says `"moved"` (points),
+`"movedItems"`, `"movedAnnotations"`. A move is refused ("cannot move what follows: …") when it would go
+past the page's bottom or reach the footer, run into what is beside it, leave a clip or a soft mask
+behind, or when something is drawn across the paragraph's bottom (a box, a table). Refused too:
 lines of two blocks, text that is not horizontal, invisible text, an annotation's text, superscripts and
 subscripts. `CAPRIOLE_ERROR_OUT_OF_RANGE`: no text in the area.
 
