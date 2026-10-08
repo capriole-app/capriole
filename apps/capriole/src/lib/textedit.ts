@@ -126,11 +126,35 @@ export function toPercent(scale: number): string {
   return /^(8\d|11)$/.test(String(n)) ? `all’${n}%` : `al ${n}%`;
 }
 
-/** How the text was written, when it is worth saying: in a similar font (null: in the same font). */
+/** "1 lettera", "3 lettere". */
+function letters(n: number): string {
+  return n === 1 ? '1 lettera' : `${n} lettere`;
+}
+
+/** Glyphs added to the embedded font from a font given, when there are. */
+function addedNotice(added: number, font: string | null): string | null {
+  if (added === 0) return null;
+  const to = font ? `al font incorporato (${font})` : 'ai font incorporati';
+  return `${added === 1 ? 'Aggiunta' : 'Aggiunte'} ${letters(added)} ${to} dal font che hai fornito.`;
+}
+
+/**
+ * How the text was written, when it is worth saying: in a similar font, or in its own font with glyphs
+ * added from a font given (null: in its own font, as it was).
+ */
 export function textEditNotice(report: TextEditReport): string | null {
-  if (report.method === 'sameFont') return null;
+  if (report.method === 'sameFont') return addedNotice(report.addedGlyphs, report.font);
   const narrowed = report.scale < 0.995 ? `, ristretto ${toPercent(report.scale)}` : '';
   return `Il font del testo non ha tutti i caratteri nuovi: scritto con un font simile (${report.font})${narrowed}.`;
+}
+
+/** What to give to write in the document's own fonts the letters that went to a similar one (null: none). */
+export function missingFontsHint(fonts: string[]): string | null {
+  if (fonts.length === 0) return null;
+  const names = fonts.join(', ');
+  return fonts.length === 1
+    ? `Per scriverli nel font del documento, aggiungi il font ${names} (il suo file .ttf) e rifai la modifica.`
+    : `Per scriverli nei font del documento, aggiungi i font ${names} (i loro file .ttf) e rifai la modifica.`;
 }
 
 // ── Paragraphs ───────────────────────────────────────────────────────────────────────────────
@@ -176,7 +200,10 @@ export function paragraphArea(paragraph: ParagraphText): Box {
   return [x0 - 0.3, y0 - 0.3, x1 + 0.3, y1 + 0.3];
 }
 
-/** How a paragraph was written, when it is worth saying: in a similar font, or smaller (null: neither). */
+/**
+ * How a paragraph was written, when it is worth saying: in a similar font, smaller, with glyphs added from
+ * a font given (null: none of these).
+ */
 export function paragraphNotice(report: ParagraphEditReport): string | null {
   const parts: string[] = [];
   if (report.method === 'similarFont')
@@ -186,9 +213,10 @@ export function paragraphNotice(report: ParagraphEditReport): string | null {
         : `il font del paragrafo non ha tutti i caratteri nuovi: scritto con un font simile (${report.font})`,
     );
   if (report.scale < 0.995) parts.push(`ridotto ${toPercent(report.scale)} per farlo stare`);
-  if (parts.length === 0) return null;
+  const added = addedNotice(report.addedGlyphs, report.styles === 1 ? report.font : null);
+  if (parts.length === 0) return added;
   const text = parts.join('; ');
-  return text.charAt(0).toUpperCase() + text.slice(1) + '.';
+  return text.charAt(0).toUpperCase() + text.slice(1) + '.' + (added ? ' ' + added : '');
 }
 
 /** "no room: the new text needs N lines, M fit": the numbers, or null for another refusal. */

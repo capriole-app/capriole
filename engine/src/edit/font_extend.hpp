@@ -41,11 +41,16 @@ struct FontExtension {
 
 // The embedded font at `font` with the glyphs of `letters` it lacks, from the library's face of the same
 // font. nullopt: none to add — no such face, or it is not the same (its name, units, outlines), its
-// permissions do not allow it, the font is not a kind extended (a CIDFontType2 with Identity-H and a
-// /ToUnicode, or a non-symbolic TrueType with WinAnsiEncoding), or the face has none of the letters.
+// permissions do not allow it, the font is not a kind extended (extendable), or the face has none of
+// the letters.
 [[nodiscard]] Result<std::optional<FontExtension>> extend_font(Document& document, model::ObjectRef font, std::u32string_view letters,
                                                                const FontLibrary& library);
 [[nodiscard]] Result<void> commit(Document& document, const FontExtension& extension);
+
+// True for an embedded font of a kind extend_font extends — a CIDFontType2 with Identity-H and a
+// /ToUnicode, a non-symbolic TrueType with WinAnsiEncoding, or a symbolic TrueType without /Encoding and
+// with a /ToUnicode, its program in /FontFile2 — whatever fonts the host has given.
+[[nodiscard]] bool extendable(Document& document, model::ObjectRef font);
 
 // The font's name for a person: its /BaseFont without the subset tag.
 [[nodiscard]] std::string font_name(Document& document, model::ObjectRef font);

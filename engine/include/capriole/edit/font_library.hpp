@@ -28,7 +28,8 @@ struct FontFace {
 class FontLibrary {
  public:
   FontLibrary();
-  // The faces of a font file, added (kUnsupported: not a TrueType font, PostScript outlines).
+  // The faces of a font file, added (kUnsupported: not a TrueType font, PostScript outlines, a variable
+  // font — its faces are left out).
   [[nodiscard]] Result<std::vector<FontFace>> add(std::vector<std::byte> data);
   [[nodiscard]] std::vector<FontFace> faces() const;
   void clear();

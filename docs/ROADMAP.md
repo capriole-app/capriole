@@ -29,7 +29,7 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 9b Paragrafi con più stili | ✅ | 100/100, 3681 parole con il loro stile |
 | Spostare ciò che segue su scelta | ⬜ | |
 | 9c-1 Sottoinsiemi dei font estesi, motore | ✅ | 42 pagine (16 dei corpora, 26 generate) |
-| 9c-2 Font forniti nell'app | 🔜 | |
+| 9c-2 Font forniti nell'app | ✅ | e2e: suggerimento, aggiunta, salvataggio, memoria |
 | Modello alto del documento (vista semantica) | ⬜ | da valutare, CAPRIOLE.md §5.2 |
 | Firma con smart card (desktop), revoca OCSP/CRL | ⬜ | CAPRIOLE.md §6.1 |
 | Segnalazione anonimizzata dei file problematici | ⬜ | CAPRIOLE.md §8 |

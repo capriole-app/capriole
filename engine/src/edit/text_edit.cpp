@@ -238,7 +238,8 @@ Result<void> set_content(Document& document, const detail::Page& page, const std
   return document.set(page.ref.number, Object(std::move(updated)));
 }
 
-// lacking: set to the font's name when it cannot write the new text (an app may offer to give it).
+// lacking: set to the font's name when it cannot write the new text and a font the host gives could (an app
+// may offer to give it).
 Result<std::optional<TextEditResult>> same_font(Document& document, const detail::Page& page, const text::PageText& text, const graphics::DisplayList& list,
                                                 const Selection& selection, std::u32string_view replacement, std::size_t line_end,
                                                 const TextEditOptions& options, std::string& lacking) {
@@ -305,7 +306,9 @@ Result<std::optional<TextEditResult>> same_font(Document& document, const detail
     }
   }
   if (!codes) {
-    lacking = base_font;
+    if (detail::extendable(document, font_ref)) {
+      lacking = base_font;
+    }
     return std::optional<TextEditResult>();
   }
   if (!widths_writable(document, font_ref, missing_widths, list)) {

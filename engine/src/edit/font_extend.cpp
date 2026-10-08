@@ -110,6 +110,7 @@ Result<std::vector<FontFace>> FontLibrary::add(std::vector<std::byte> data) {
     return std::unexpected(refused ? Error{.code = ErrorCode::kUnsupported, .message = "not a TrueType font"} : std::move(refused.error()));
   }
   std::vector<FontFace> out;
+  bool variable = false;
   for (std::uint32_t f = 0; f < count; ++f) {
     auto sfnt = font::detail::read_sfnt(data, f);
     if (!sfnt) {
@@ -119,6 +120,11 @@ Result<std::vector<FontFace>> FontLibrary::add(std::vector<std::byte> data) {
     face->sfnt = std::move(*sfnt);
     face->info.postscript_name = font::detail::postscript_name(face->sfnt).value_or("");
     if (face->info.postscript_name.empty()) {
+      continue;
+    }
+    // A variable font: its glyphs are those of no instance in particular (extend refuses them).
+    if (face->sfnt.tables.contains("fvar")) {
+      variable = true;
       continue;
     }
     face->info.family = font::detail::name_string(face->sfnt, 16).value_or(font::detail::name_string(face->sfnt, 1).value_or(""));
@@ -142,7 +148,7 @@ Result<std::vector<FontFace>> FontLibrary::add(std::vector<std::byte> data) {
     faces_.push_back(std::move(face));
   }
   if (out.empty()) {
-    return make_error(ErrorCode::kUnsupported, "a font without a PostScript name");
+    return make_error(ErrorCode::kUnsupported, variable ? "a variable font: the font of each style is needed" : "a font without a PostScript name");
   }
   return out;
 }
@@ -176,67 +182,104 @@ std::string font_name(Document& document, ObjectRef font) {
   return dict != nullptr ? std::string(font::detail::without_subset_tag(name_of(dict->find("BaseFont")))) : std::string();
 }
 
-Result<std::optional<FontExtension>> extend_font(Document& document, ObjectRef font_ref, std::u32string_view letters, const FontLibrary& library) {
-  const auto none = [] { return Result<std::optional<FontExtension>>(std::nullopt); };
+namespace {
+
+// The parts of a font that extend_font changes, when it is a kind it extends.
+struct Parts {
+  Dict top;
+  bool composite = false;
+  bool symbolic = false;
+  // The dictionary that holds the descriptor: the descendant (composite), or the font.
+  Dict holder;
+  std::optional<ObjectRef> holder_ref;
+  Dict descriptor;
+  ObjectRef descriptor_ref;
+  ObjectRef file_ref;
+};
+
+std::optional<Parts> parts_of(Document& document, ObjectRef font_ref) {
   auto loaded = document.get(font_ref);
   if (!loaded || (*loaded)->as_dict() == nullptr) {
-    return none();
+    return std::nullopt;
   }
   Dict top = *(*loaded)->as_dict();
-  const std::string base(font::detail::without_subset_tag(name_of(top.find("BaseFont"))));
-  const FontLibrary::Face* face = library.find(base);
-  if (face == nullptr || !face->info.embeddable) {
-    return none();
-  }
   const bool composite = name_of(top.find("Subtype")) == "Type0";
-  // The dictionary that holds the descriptor: the descendant (composite), or the font.
   Dict holder = top;
   std::optional<ObjectRef> holder_ref = font_ref;
   if (composite) {
     if (name_of(top.find("Encoding")) != "Identity-H" || top.find("ToUnicode") == nullptr) {
-      return none();
+      return std::nullopt;
     }
     auto list = entry(document, top, "DescendantFonts");
-    if (!list || list->value.as_array() == nullptr || list->value.as_array()->size() != 1 || !list->value.as_array()->front().as_ref()) {
-      return none();
+    if (!list || list->value.as_array() == nullptr || list->value.as_array()->size() != 1) {
+      return std::nullopt;
     }
-    holder_ref = *list->value.as_array()->front().as_ref();
+    holder_ref = list->value.as_array()->front().as_ref();
+    if (!holder_ref) {
+      return std::nullopt;
+    }
     auto descendant = document.get(*holder_ref);
     if (!descendant || (*descendant)->as_dict() == nullptr || name_of((*descendant)->as_dict()->find("Subtype")) != "CIDFontType2") {
-      return none();
+      return std::nullopt;
     }
     holder = *(*descendant)->as_dict();
   } else if (name_of(top.find("Subtype")) != "TrueType") {
-    return none();
+    return std::nullopt;
   }
   // A simple font: WinAnsiEncoding (its codes are WinAnsi's characters), or no /Encoding and symbolic (its
   // codes the program's own, a /ToUnicode saying what they are: as LibreOffice and Cairo embed subsets).
   const bool symbolic = !composite && top.find("Encoding") == nullptr;
   if (!composite && !symbolic && name_of(top.find("Encoding")) != "WinAnsiEncoding") {
-    return none();
+    return std::nullopt;
   }
   if (symbolic && top.find("ToUnicode") == nullptr) {
-    return none();
+    return std::nullopt;
   }
   const Object* descriptor_entry = holder.find("FontDescriptor");
-  if (descriptor_entry == nullptr || !descriptor_entry->as_ref()) {
-    return none();
+  const auto descriptor_ref = descriptor_entry != nullptr ? descriptor_entry->as_ref() : std::nullopt;
+  if (!descriptor_ref) {
+    return std::nullopt;
   }
-  const ObjectRef descriptor_ref = *descriptor_entry->as_ref();
-  auto descriptor_loaded = document.get(descriptor_ref);
+  auto descriptor_loaded = document.get(*descriptor_ref);
   if (!descriptor_loaded || (*descriptor_loaded)->as_dict() == nullptr) {
-    return none();
+    return std::nullopt;
   }
   Dict descriptor = *(*descriptor_loaded)->as_dict();
   const auto flags = descriptor.find("Flags") != nullptr ? descriptor.find("Flags")->as_integer().value_or(0) : 0;
   if (!composite && ((flags & 4) != 0) != symbolic) {
-    return none();  // WinAnsi codes in a symbolic font, or a font without an encoding that is not symbolic
+    return std::nullopt;  // WinAnsi codes in a symbolic font, or a font without an encoding that is not symbolic
   }
   const Object* file_entry = descriptor.find("FontFile2");
-  if (file_entry == nullptr || !file_entry->as_ref()) {
+  const auto file_ref = file_entry != nullptr ? file_entry->as_ref() : std::nullopt;
+  if (!file_ref) {
+    return std::nullopt;
+  }
+  return Parts{.top = std::move(top),
+               .composite = composite,
+               .symbolic = symbolic,
+               .holder = std::move(holder),
+               .holder_ref = holder_ref,
+               .descriptor = std::move(descriptor),
+               .descriptor_ref = *descriptor_ref,
+               .file_ref = *file_ref};
+}
+
+}  // namespace
+
+bool extendable(Document& document, ObjectRef font) { return parts_of(document, font).has_value(); }
+
+Result<std::optional<FontExtension>> extend_font(Document& document, ObjectRef font_ref, std::u32string_view letters, const FontLibrary& library) {
+  const auto none = [] { return Result<std::optional<FontExtension>>(std::nullopt); };
+  auto parts = parts_of(document, font_ref);
+  if (!parts) {
     return none();
   }
-  const ObjectRef file_ref = *file_entry->as_ref();
+  const auto& [top, composite, symbolic, holder, holder_ref, descriptor, descriptor_ref, file_ref] = *parts;
+  const std::string base(font::detail::without_subset_tag(name_of(top.find("BaseFont"))));
+  const FontLibrary::Face* face = library.find(base);
+  if (face == nullptr || !face->info.embeddable) {
+    return none();
+  }
   auto file = document.get(file_ref);
   if (!file) {
     return none();

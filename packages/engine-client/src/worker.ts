@@ -409,6 +409,19 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
         ),
         transfer: [],
       };
+    case 'fontAdd': {
+      const bytes = new Uint8Array(request.data);
+      const value = withScratch(m, Math.max(bytes.length, 1), (data) => {
+        m.HEAPU8.set(bytes, data);
+        return takeJson(m, (out) => m._capriole_font_add(data, bytes.length, out));
+      });
+      return { value, transfer: [] };
+    }
+    case 'fonts':
+      return { value: takeJson(m, (out) => m._capriole_fonts_json(out)), transfer: [] };
+    case 'fontsClear':
+      check(m, m._capriole_fonts_clear());
+      return { value: null, transfer: [] };
     case 'pkcs12Info':
       return {
         value: withSecret(m, new Uint8Array(request.p12), (p12, size) =>

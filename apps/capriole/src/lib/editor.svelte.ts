@@ -33,6 +33,7 @@ import {
   type LineText,
   type ParagraphText,
 } from './textedit';
+import { fontId, fontRefusal, forgetFont, loadFonts, rememberFont, type StoredFont } from './fonts';
 import { fromBrowser, pickPdf, saveFile, savePdf, type PickedFile } from './platform';
 
 /**
@@ -157,8 +158,16 @@ export class Editor {
   /** The paragraph being written again (null: none), and a new text that did not fit in it. */
   editingParagraph = $state.raw<ParagraphEditing | null>(null);
   noRoom = $state.raw<NoRoom | null>(null);
-  /** How the last edit of the page's text was written, when worth saying (a similar font). */
+  /** How the last edit of the page's text was written, when worth saying (a similar font, glyphs added). */
   textNotice = $state<string | null>(null);
+  /** The embedded fonts that lacked letters in the last edit, and that a font given could extend. */
+  missingFonts = $state.raw<string[]>([]);
+  /** The fonts given (lib/fonts.ts), in the engine and remembered on the device. */
+  fonts = $state.raw<StoredFont[]>([]);
+  /** Why fonts given were refused, or could not be remembered (null: nothing to say). */
+  fontError = $state<string | null>(null);
+  /** The fonts remembered, given to the engine (edits of text wait for them). */
+  #fontsReady: Promise<void>;
   /** An existing free text being written again: the document before (for undo) and its text then. */
   #retyping: { before: ArrayBuffer; text: string; rect: Typing['rect'] } | null = null;
 
@@ -179,6 +188,58 @@ export class Editor {
       .version()
       .then((version) => (this.engineVersion = version))
       .catch(() => {});
+    this.#fontsReady = this.#restoreFonts();
+  }
+
+  /** The fonts remembered on the device, given to the engine again (one it now refuses is forgotten). */
+  async #restoreFonts(): Promise<void> {
+    const kept: StoredFont[] = [];
+    for (const font of await loadFonts()) {
+      try {
+        kept.push({ ...font, faces: await this.engine.fontAdd(font.data.slice(0)) });
+      } catch {
+        await forgetFont(font.id);
+      }
+    }
+    this.fonts = kept;
+  }
+
+  /**
+   * Gives the engine font files (chosen or dropped) and remembers them on the device: an edit of text then
+   * adds to a document's embedded subset of the same font the glyphs it lacks. A file the engine refuses
+   * is said, in Italian, in fontError.
+   */
+  async addFonts(files: File[]): Promise<void> {
+    await this.#fontsReady;
+    const refused: string[] = [];
+    let unkept = false;
+    for (const file of files) {
+      const id = fontId(file.name, file.size);
+      try {
+        const data = await file.arrayBuffer();
+        const faces = await this.engine.fontAdd(data.slice(0));
+        const font: StoredFont = { id, name: file.name, data, faces };
+        this.fonts = [...this.fonts.filter((f) => f.id !== id), font];
+        if (!(await rememberFont(font))) unkept = true;
+      } catch (error) {
+        refused.push(
+          error instanceof EngineError ? fontRefusal(file.name, error.message) : `${file.name}: ${describe(error)}`,
+        );
+      }
+    }
+    if (unkept)
+      refused.push('Il browser non lascia ricordare i font su questo dispositivo: restano finché la pagina è aperta.');
+    this.fontError = refused.length > 0 ? refused.join(' ') : null;
+  }
+
+  /** Forgets a font given: the engine is given the others again. */
+  async removeFont(id: string): Promise<void> {
+    await this.#fontsReady;
+    this.fonts = this.fonts.filter((f) => f.id !== id);
+    this.fontError = null;
+    await forgetFont(id);
+    await this.engine.fontsClear();
+    for (const font of this.fonts) await this.engine.fontAdd(font.data.slice(0)).catch(() => {});
   }
 
   /** The selected pages, in page order. */
@@ -727,6 +788,7 @@ export class Editor {
     this.editingParagraph = null;
     this.noRoom = null;
     this.textNotice = null;
+    this.missingFonts = [];
     this.selectedAnnotation = null;
     this.tool = 'select';
   }
@@ -846,6 +908,7 @@ export class Editor {
     if (this.viewing === null || this.typing || this.editingLine) return;
     const read = lineText(page, line);
     this.textNotice = null;
+    this.missingFonts = [];
     if (read.invisible) {
       this.error = textEditRefusal('invisible');
       return;
@@ -868,8 +931,10 @@ export class Editor {
     if (!replacement) return;
     await this.#editPage(async () => {
       try {
+        await this.#fontsReady;
         const report = await this.engine.replaceText(pageIndex, replacement.area, replacement.text);
         this.textNotice = textEditNotice(report);
+        this.missingFonts = report.missingFont ? [report.missingFont] : [];
       } catch (error) {
         if (error instanceof EngineError && (error.status === Status.unsupported || error.status === Status.outOfRange))
           throw new Error(textEditRefusal(error.message));
@@ -883,6 +948,7 @@ export class Editor {
     if (this.viewing === null || this.typing || this.editingLine || this.editingParagraph) return;
     const paragraph = paragraphText(page, block);
     this.textNotice = null;
+    this.missingFonts = [];
     this.noRoom = null;
     this.error = null;
     this.editingParagraph = { paragraph, text: text ?? paragraph.text };
@@ -921,8 +987,10 @@ export class Editor {
     this.noRoom = null;
     await this.#editPage(async () => {
       try {
+        await this.#fontsReady;
         const report = await this.engine.replaceParagraph(pageIndex, paragraphArea(paragraph), text, shrink);
         this.textNotice = paragraphNotice(report);
+        this.missingFonts = report.missingFonts;
       } catch (error) {
         if (
           error instanceof EngineError &&

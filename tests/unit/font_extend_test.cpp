@@ -160,6 +160,13 @@ TEST(FontLibrary, ReadsFacesAndTheirPermissions) {
   EXPECT_FALSE(restricted->front().embeddable);
   EXPECT_EQ(library.faces().size(), 1U);  // the same name: replaced
   EXPECT_FALSE(library.add(bytes(fixture("square.cff"))).has_value());
+  // A variable font (Ubuntu as installed): its glyphs are of no style in particular — refused.
+  auto variable = font::detail::read_sfnt(bytes(fixture("full.ttf")));
+  ASSERT_TRUE(variable.has_value());
+  variable->tables["fvar"] = std::vector<std::byte>(16);
+  auto refused = library.add(font::detail::write_sfnt(*variable));
+  ASSERT_FALSE(refused.has_value());
+  EXPECT_NE(refused.error().message.find("variable"), std::string::npos);
 }
 
 TEST(FontExtend, ACompositeSubsetGetsTheGlyphItLacks) {
@@ -279,6 +286,32 @@ TEST(FontExtend, AnotherVersionRestrictedPermissionsOrNoFontGoToTheSimilarFont) 
     auto loaded = font::detail::FontProgram::open(std::make_shared<const std::vector<std::byte>>(program(document)));
     ASSERT_TRUE(loaded.has_value());
     EXPECT_EQ((*loaded)->glyph_count(), 2U);  // the subset as it was
+  }
+}
+
+// Only fonts a font given could extend are named as lacking: not a standard font that is not embedded.
+TEST(FontExtend, AFontNoFontGivenCouldExtendIsNotNamedAsLacking) {
+  const graphics::Rect below{15, 75, 100, 105};
+  const FontLibrary library;
+  {
+    Document document = open(page_pdf(true, "\nBT /F2 20 Tf 20 100 Td (AA) Tj ET"));
+    auto result = replace_text(document, 0, below, "A\u00E9", {.fonts = &library});
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    EXPECT_EQ(result->method, TextEditMethod::kSimilarFont);
+    EXPECT_EQ(result->missing_font, "");
+  }
+  {
+    Document document = open(page_pdf(true, "\nBT /F2 20 Tf 20 100 Td (AA) Tj ET"));
+    auto result = replace_paragraph(document, 0, below, "A\u00E9", {.fonts = &library});
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    EXPECT_EQ(result->method, TextEditMethod::kSimilarFont);
+    EXPECT_TRUE(result->missing_fonts.empty());
+  }
+  {
+    Document document = open(page_pdf(true));
+    auto result = replace_paragraph(document, 0, kLine, "CB", {.fonts = &library});
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    EXPECT_EQ(result->missing_fonts, std::vector<std::string>{"CprSquare"});
   }
 }
 

@@ -12,6 +12,7 @@ import type {
   TextEditReport,
   ParagraphEditReport,
   CertificateInfo,
+  FontFace,
   SignatureInfo,
   SignSpec,
   PdfaReport,
@@ -216,6 +217,26 @@ export class EngineClient {
     shrink: boolean,
   ): Promise<ParagraphEditReport> {
     return this.#call({ kind: 'replaceParagraph', index, area, text, shrink });
+  }
+
+  /**
+   * Gives the engine a full font (.ttf, .otf with TrueType outlines, .ttc): when an edit of text needs a
+   * letter an embedded subset of the same font lacks, its glyph comes from there (if the font's
+   * permissions allow it). Shared by every document, until fontsClear. Resolves to its faces; refused
+   * (Status.unsupported, Status.malformed) for a file that is not such a font. The bytes are transferred.
+   */
+  fontAdd(data: ArrayBuffer): Promise<FontFace[]> {
+    return this.#call({ kind: 'fontAdd', data }, [data]);
+  }
+
+  /** The faces of the fonts given. */
+  fonts(): Promise<FontFace[]> {
+    return this.#call({ kind: 'fonts' });
+  }
+
+  /** Forgets the fonts given. */
+  fontsClear(): Promise<void> {
+    return this.#call({ kind: 'fontsClear' });
   }
 
   /** The certificate of a PKCS#12 file (.p12, .pfx); Status.passwordRequired for a wrong password. The bytes are transferred. */

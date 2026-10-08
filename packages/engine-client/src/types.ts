@@ -237,6 +237,10 @@ export interface TextEditReport {
   replaced: string;
   /** similarFont: the horizontal scaling it is written with (1: none; at least 0.5). */
   scale: number;
+  /** Glyphs added to the embedded font from a font given with fontAdd. */
+  addedGlyphs: number;
+  /** similarFont: the embedded font that lacked letters, when a font given could add them ("": none). */
+  missingFont: string;
 }
 
 /** How capriole_document_page_replace_paragraph laid the new text out (capi/README.md). */
@@ -254,6 +258,19 @@ export interface ParagraphEditReport {
   /** The styles (fonts, sizes, colours) the new text keeps from the old, and of them those all in their own font. */
   styles: number;
   sameFontStyles: number;
+  /** Glyphs added to the embedded fonts from fonts given with fontAdd. */
+  addedGlyphs: number;
+  /** The embedded fonts that lacked letters (written in a similar font) and that a font given could extend. */
+  missingFonts: string[];
+}
+
+/** A face of a font given with fontAdd. */
+export interface FontFace {
+  postscriptName: string;
+  family: string;
+  style: string;
+  /** Its embedding permissions (OS/2 fsType) allow its glyphs in edited documents. */
+  embeddable: boolean;
 }
 
 /** What a redaction took out of a page. */
@@ -422,6 +439,9 @@ export type Request =
   | { kind: 'replaceText'; index: number; area: [number, number, number, number]; text: string }
   | { kind: 'replaceParagraph'; index: number; area: [number, number, number, number]; text: string; shrink: boolean }
   | { kind: 'pkcs12Info'; p12: ArrayBuffer; password: string }
+  | { kind: 'fontAdd'; data: ArrayBuffer }
+  | { kind: 'fonts' }
+  | { kind: 'fontsClear' }
   | { kind: 'sign'; spec: SignSpec; p12: ArrayBuffer; password: string }
   | { kind: 'signatures' }
   | { kind: 'summary' }

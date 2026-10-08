@@ -1177,7 +1177,7 @@ riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) 
 
 ## Fase 9 — Editing avanzato del testo — 🔜 in corso (9a ✅, 9b ✅)
 
-Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅ · **9c** sottoinsiemi dei font estesi (9c-1 motore ✅, 9c-2 app). Gli altri (estendere i sottoinsiemi dei font
+Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅ · **9c** sottoinsiemi dei font estesi (9c-1 motore ✅, 9c-2 app ✅). Gli altri (estendere i sottoinsiemi dei font
 incorporati, paragrafi con più stili, spostare il contenuto che segue su scelta esplicita) si fissano dopo.
 
 **9a-1 (2026-10-06) — reflow dei paragrafi nel motore: uscita raggiunta.** `edit/paragraph_edit.hpp`: `replace_paragraph` riscrive le
@@ -1283,6 +1283,24 @@ installato come font variabile). In tutto **42 pagine, tutte verdi**. Report
 `CORPORA/reports/font-extend-all-20261008-092536`, `font-extend-generated-20261008-092513`. Corretto strada
 facendo: le mappe CIDToGIDMap già piene davano CID oltre 0xFFFF; i simbolici di LibreOffice non erano un
 tipo esteso (entrambi con test di regressione).
+
+**9c-2 (2026-10-08) — i font forniti nell'app: uscita raggiunta.** Nel pannello dello strumento «Modifica
+testo», «Font forniti»: «Aggiungi font…» (o trascinandoli lì) dà al motore i file `.ttf`, `.ttc`, `.otf`;
+l'elenco mostra le facce e quelle la cui licenza non consente di aggiungerne lettere; «Rimuovi». I font sono
+ricordati sul dispositivo (`lib/fonts.ts`: IndexedDB, che la shell desktop tiene nei dati dell'app; dove il
+browser non lo concede, restano finché la pagina è aperta, e lo si dice) e ridati al motore all'avvio; non
+lasciano mai il dispositivo. Dopo una modifica: «Aggiunte N lettere al font incorporato (…)», oppure, se
+lettere sono andate a un font simile, quale font aggiungere per scriverle nel font del documento, con
+«Aggiungi font…» lì accanto. File rifiutati detti in italiano (CFF, font variabili, non TrueType). Client:
+`fontAdd`, `fonts`, `fontsClear`, `addedGlyphs` e `missingFont(s)` nelle risposte. Nel motore, due
+correzioni emerse qui: i font «a cui mancavano lettere» sono solo quelli che un font fornito potrebbe
+estendere (non Helvetica non incorporata, non i Type1: `detail::extendable`), e un font variabile è
+rifiutato già quando lo si aggiunge (le sue facce non sono di nessuno stile in particolare) — entrambe con
+test. Criterio: e2e `apps/capriole/e2e/fonts.test.ts` — senza font la B va nel font simile e l'app propone
+CprSquare; un `.cff` rifiutato in italiano, un font con licenza restrittiva elencato come tale; aggiunto
+`full.ttf` dal suggerimento, la stessa modifica dice «Aggiunta 1 lettera…» e il file salvato ha B nel
+sottoinsieme (/ToUnicode CID 2 → B, nessun font simile); il font resta dopo un ricaricamento e «Rimuovi» lo
+toglie anche dopo il successivo. Gate verde.
 
 ---
 

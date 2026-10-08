@@ -35,6 +35,16 @@ text or colour or remove it, drag it to move it; the panel also lists the page's
 keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
 annotation gets its appearance from the engine, so other readers show it the same.
 
+**The page's own text** (phases 8j, 9a–9c): the tool "Modifica testo" writes a line again (a double
+click; Enter writes it) or a paragraph, laid out anew inside its box with its margins, alignment and the
+styles of its words ("Paragrafo"; Ctrl+Enter). A text that does not fit is offered smaller. Letters the
+text's font lacks go to a similar standard font, and the side panel says so — unless the font is an
+embedded TrueType subset and the person has given the same font under "Font forniti" ("Aggiungi font…",
+or dropped there: .ttf, .ttc, .otf with TrueType outlines): the glyphs are then added to the subset from
+it, if its licence (OS/2 fsType) allows edited documents. After an edit that needed one, the panel names
+the font to give. The fonts given are remembered on the device (IndexedDB; the desktop shell keeps it
+in the app's data) and never leave it.
+
 **PDF/A** (phase 8i): "PDF/A" (in the pages' toolbar; it shows the part when the document declares one)
 opens a dialog that says what PDF/A is and converts: what was put right is listed (in Italian), or why it
 cannot be done, the document left as it was; "Salva il PDF/A" saves the converted document as a new file

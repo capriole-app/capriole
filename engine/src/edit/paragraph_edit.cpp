@@ -750,7 +750,7 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
     if (rest.empty()) {
       continue;
     }
-    if (style.font) {
+    if (style.font && detail::extendable(document, *style.font)) {
       missing_fonts.insert(detail::font_name(document, *style.font));  // a font the host could give
     }
     auto similar = in_similar_font(document, style.font, rest, style.th);

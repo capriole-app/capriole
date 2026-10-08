@@ -5,6 +5,7 @@
   // page's own text again (edittext: a double click on a line, or on a paragraph laid out anew). Beside it, the selected
   // annotation (its text, colour, removal) and the list of the page's annotations (the keyboard's way).
   import Trash2 from '@lucide/svelte/icons/trash-2';
+  import FontsSection from './FontsSection.svelte';
   import FormLayer from './FormLayer.svelte';
   import LineEditor from './LineEditor.svelte';
   import ParagraphEditor from './ParagraphEditor.svelte';
@@ -601,6 +602,9 @@
         <p class="rounded-md bg-warning-background px-3 py-2 text-warning" role="status" data-testid="text-edit-notice">
           {editor.textNotice}
         </p>
+      {/if}
+      {#if editor.tool === 'edittext'}
+        <FontsSection />
       {/if}
     {/if}
     {#if pageFields.length > 0}
