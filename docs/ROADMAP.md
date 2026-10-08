@@ -28,7 +28,8 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 9a-2 «Modifica testo» › Paragrafo nell'app | ✅ | |
 | 9b Paragrafi con più stili | ✅ | 100/100, 3681 parole con il loro stile |
 | Spostare ciò che segue su scelta | ⬜ | |
-| Font: estendere i sottoinsiemi incorporati | ⬜ | CAPRIOLE.md §5.4 |
+| 9c-1 Sottoinsiemi dei font estesi, motore | ✅ | 42 pagine (16 dei corpora, 26 generate) |
+| 9c-2 Font forniti nell'app | 🔜 | |
 | Modello alto del documento (vista semantica) | ⬜ | da valutare, CAPRIOLE.md §5.2 |
 | Firma con smart card (desktop), revoca OCSP/CRL | ⬜ | CAPRIOLE.md §6.1 |
 | Segnalazione anonimizzata dei file problematici | ⬜ | CAPRIOLE.md §8 |

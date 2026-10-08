@@ -37,6 +37,7 @@ add_library(capriole_engine STATIC
   src/edit/pages.cpp
   src/edit/redact.cpp
   src/edit/sign.cpp
+  src/edit/font_extend.cpp
   src/edit/paragraph_edit.cpp
   src/edit/text_common.cpp
   src/edit/text_edit.cpp
@@ -58,6 +59,7 @@ add_library(capriole_engine STATIC
   src/font/glyph_tables.cpp
   src/font/program.cpp
   src/font/resources.cpp
+  src/font/sfnt.cpp
   src/font/standard_fonts.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/generated/standard_fonts_data.cpp
   src/model/object.cpp

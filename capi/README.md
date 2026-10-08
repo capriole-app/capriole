@@ -216,6 +216,21 @@ which makes the text and its pitch smaller (by 2.5% steps, down to 70%) until it
 lines of two blocks, text that is not horizontal, invisible text, an annotation's text, superscripts and
 subscripts. `CAPRIOLE_ERROR_OUT_OF_RANGE`: no text in the area.
 
+## Fonts for embedded subsets
+
+`capriole_font_add(data, size, &json)` gives the engine a full TrueType font (a `.ttf`, an `.otf` with
+TrueType outlines, every face of a `.ttc`): `[{"postscriptName", "family", "style", "embeddable"}]`;
+`capriole_fonts_json` lists those given, `capriole_fonts_clear` forgets them. They are shared by every
+document. When an edit of text (`replace_text`, `replace_paragraph`) needs a letter an embedded TrueType
+subset lacks, its glyph is added to the subset from the face of the same font — the same PostScript name
+(letters and digits compared) and units per em, the subset's outlines found among the face's — when the
+face's embedding permissions allow edited documents (OS/2 fsType installable or editable, not "no
+subsetting", not bitmaps only) and the font is a kind extended: a CIDFontType2 with Identity-H and a
+/ToUnicode (new CIDs: /W, /ToUnicode, CIDToGIDMap and CIDSet when there are) or a non-symbolic TrueType
+with WinAnsiEncoding (the program's Unicode cmap, /Widths). Else the letter goes to a similar standard
+font, as without fonts. The fonts change only when the edit is done. The answers say `"addedGlyphs"`, and
+the fonts that lacked letters (`"missingFont"`, `"missingFonts"`): what a host could offer to give.
+
 ## PDF/A
 
 `capriole_document_convert_pdfa(document, spec_json, &data, &size, &json)` converts the document to

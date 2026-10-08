@@ -74,3 +74,7 @@ target_link_libraries(fuzz_text_edit PRIVATE capriole::capi)
 # Editing a paragraph through the C API.
 capriole_add_fuzzer(fuzz_paragraph_edit fuzz_paragraph_edit.cpp)
 target_link_libraries(fuzz_paragraph_edit PRIVATE capriole::capi)
+
+# Extending TrueType subsets with a full font's glyphs (font/sfnt, edit/font_library); white-box.
+capriole_add_fuzzer(fuzz_font_extend fuzz_font_extend.cpp)
+target_include_directories(fuzz_font_extend PRIVATE ${PROJECT_SOURCE_DIR}/engine/src)

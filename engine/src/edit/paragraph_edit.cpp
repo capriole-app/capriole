@@ -23,6 +23,7 @@
 #include "capriole/text/text.hpp"
 #include "common.hpp"
 #include "font/font.hpp"
+#include "font_extend.hpp"
 #include "text_common.hpp"
 #include "text_removal.hpp"
 
@@ -164,15 +165,20 @@ ParagraphAlignment alignment_of(const text::PageText& text, const Paragraph& p) 
 
 // The text's letters in the paragraph's own font: those it can write (nullopt when none, or its widths
 // cannot be given).
-std::optional<Written> in_own_font(Document& document, const graphics::DisplayList& list, ObjectRef ref, std::u32string_view letters, double th) {
+std::optional<Written> in_own_font(Document& document, const graphics::DisplayList& list, ObjectRef ref, std::u32string_view letters, double th,
+                                   const Object* extended = nullptr) {
   font::detail::FontContext context(nullptr);
   std::vector<std::string> warnings;
-  auto font = font::detail::Font::load(document, Object(ref), context, warnings);
+  // The font as it is, or as extended with glyphs of a font the host gave (edit/font_extend).
+  auto font = font::detail::Font::load(document, extended != nullptr ? *extended : Object(ref), context, warnings);
   if (!font || font->vertical() || font->kind() == font::detail::Font::Kind::kType3) {
     return std::nullopt;
   }
   auto loaded = document.get(ref);
   const Dict* dict = loaded && (*loaded)->as_dict() != nullptr ? (*loaded)->as_dict() : nullptr;
+  if (extended != nullptr) {
+    dict = extended->as_dict();
+  }
   const bool two_byte = font->kind() == font::detail::Font::Kind::kComposite;
   // Composite fonts only when their codes are two bytes, as Identity-H: the codes then are what is written.
   if (dict == nullptr || (two_byte && name_of(dict->find("Encoding")) != "Identity-H")) {
@@ -672,29 +678,59 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
   }
   end_word();
 
-  // Each letter's style; each style's letters written in its own font when it can, those it cannot in
-  // the standard font nearest it. A writer: 2 · style (its own font), 2 · style + 1 (the similar one).
+  // Each letter's style; each style's letters written in its own font when it can — extended with the
+  // glyphs it lacks from a font the host gave, when one is the same font —, those it cannot in the
+  // standard font nearest it. A writer: 2 · style (its own font), 2 · style + 1 (the similar one).
   const std::vector<std::size_t> style_of = styles_for(p, words);
+  std::vector<std::u32string> style_letters(p.styles.size());
+  std::vector<std::vector<std::size_t>> style_at(p.styles.size());
+  for (std::size_t i = 0; i < letters.size(); ++i) {
+    style_letters[style_of[i]] += letters[i];
+    style_at[style_of[i]].push_back(i);
+  }
+  // What each font lacks (styles may share a font: extended once, with all they lack).
+  std::map<std::uint32_t, detail::FontExtension> extensions;  // by the font's object number
+  if (options.fonts != nullptr) {
+    std::map<std::uint32_t, std::pair<ObjectRef, std::u32string>> lacking;
+    for (std::size_t s = 0; s < p.styles.size(); ++s) {
+      const Style& style = p.styles[s];
+      if (!style.font || style_letters[s].empty()) {
+        continue;
+      }
+      const auto written = in_own_font(document, *list, *style.font, style_letters[s], style.th);
+      for (std::size_t k = 0; k < style_letters[s].size(); ++k) {
+        if (!written || written->codes[k].empty()) {
+          auto& [ref, missing] = lacking.try_emplace(style.font->number, *style.font, std::u32string()).first->second;
+          missing += style_letters[s][k];
+        }
+      }
+    }
+    for (const auto& [number, need] : lacking) {
+      auto extension = detail::extend_font(document, need.first, need.second, *options.fonts);
+      if (!extension) {
+        return std::unexpected(std::move(extension.error()));
+      }
+      if (*extension) {
+        extensions.emplace(number, std::move(**extension));
+      }
+    }
+  }
   std::vector<std::string> codes(letters.size());
   std::vector<double> widths(letters.size());  // at size 1, horizontal scaling included
   std::vector<std::size_t> writer_of(letters.size());
   std::map<std::size_t, Written> writers;
+  std::set<std::string> missing_fonts;
   for (std::size_t s = 0; s < p.styles.size(); ++s) {
-    std::u32string own;
-    std::vector<std::size_t> at;
-    for (std::size_t i = 0; i < letters.size(); ++i) {
-      if (style_of[i] == s) {
-        own += letters[i];
-        at.push_back(i);
-      }
-    }
+    const std::u32string& own = style_letters[s];
+    const std::vector<std::size_t>& at = style_at[s];
     if (own.empty()) {
       continue;
     }
     const Style& style = p.styles[s];
     std::optional<Written> written;
     if (style.font) {
-      written = in_own_font(document, *list, *style.font, own, style.th);
+      const auto extension = extensions.find(style.font->number);
+      written = in_own_font(document, *list, *style.font, own, style.th, extension != extensions.end() ? &extension->second.font : nullptr);
     }
     std::u32string rest;
     std::vector<std::size_t> rest_at;
@@ -713,6 +749,9 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
     }
     if (rest.empty()) {
       continue;
+    }
+    if (style.font) {
+      missing_fonts.insert(detail::font_name(document, *style.font));  // a font the host could give
     }
     auto similar = in_similar_font(document, style.font, rest, style.th);
     if (!similar) {
@@ -772,7 +811,14 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
     }
   }
 
-  // The old glyphs go, the rest staying where it is.
+  // The fonts extended (only now, the edit being done), then the old glyphs go, the rest staying where it is.
+  std::size_t added_glyphs = 0;
+  for (const auto& [number, extension] : extensions) {
+    if (auto committed = detail::commit(document, extension); !committed) {
+      return std::unexpected(std::move(committed.error()));
+    }
+    added_glyphs += extension.added;
+  }
   std::vector<Rect> areas;
   for (const std::size_t i : p.chars) {
     const Rect& b = page_text.chars[i].box;
@@ -805,7 +851,9 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
                              .scale = factor,
                              .alignment = p.alignment,
                              .styles = static_cast<std::uint32_t>(written_styles.size()),
-                             .same_font_styles = static_cast<std::uint32_t>(same_fonts)};
+                             .same_font_styles = static_cast<std::uint32_t>(same_fonts),
+                             .added_glyphs = static_cast<std::uint32_t>(added_glyphs),
+                             .missing_fonts = std::vector<std::string>(missing_fonts.begin(), missing_fonts.end())};
   if (letters.empty()) {
     return result;
   }

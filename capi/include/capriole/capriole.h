@@ -129,6 +129,18 @@ capriole_status capriole_document_page_text_json(capriole_document* document, ui
 capriole_status capriole_resource_add(const char* name, const uint8_t* data, size_t size);
 
 /*
+ * Fonts the host gives (PLAN.md phase 9c; edit/font_library.hpp): full TrueType fonts (.ttf, .otf with
+ * TrueType outlines, every face of a .ttc), shared by every document. When an edit of text (replace_text,
+ * replace_paragraph) needs a letter an embedded TrueType subset lacks, the glyph comes from the face of
+ * the same font — the same PostScript name and units, its outlines among the face's — if its embedding
+ * permissions allow edited documents; else the letter goes to a similar standard font. *json: the faces
+ * added, [{"postscriptName", "family", "style", "embeddable"}]. A face replaces one of the same name.
+ */
+capriole_status capriole_font_add(const uint8_t* data, size_t size, char** json);
+capriole_status capriole_fonts_json(char** json);
+capriole_status capriole_fonts_clear(void);
+
+/*
  * The resources the last page interpreted on this thread (preview or render) wanted and did not find,
  * as a JSON array of names (sorted; release with capriole_free): what to fetch and register before
  * drawing the page again. [] when nothing was missing or no page was interpreted.
@@ -234,7 +246,9 @@ capriole_status capriole_document_page_apply_redactions(capriole_document* docum
  * Replaces the text of a page's characters whose centres lie in an area, on one line (PLAN.md phase 8j;
  * edit/text_edit.hpp): spec_json {"area": [x0,y0,x1,y1] (the page as shown), "text": "…" (empty:
  * deleted)}. *json: {"method": "sameFont" | "similarFont", "font", "replaced", "scale"} — the same font
- * when it can write the new text in place, else a similar standard font where the old text began.
+ * when it can write the new text in place — with glyphs a font given by capriole_font_add adds to it —,
+ * else a similar standard font where the old text began; "addedGlyphs", and "missingFont": the font
+ * that lacked letters, when they went to a similar one.
  */
 capriole_status capriole_document_page_replace_text(capriole_document* document, uint32_t page_index, const char* spec_json, char** json);
 
@@ -245,7 +259,8 @@ capriole_status capriole_document_page_replace_text(capriole_document* document,
  * empty: deleted), "shrink": false (true: smaller text when it does not fit)}. *json: {"method":
  * "sameFont" | "similarFont", "font", "replaced", "oldLines", "lines", "size", "scale", "alignment":
  * "left" | "justified" | "centre" | "right", "styles", "sameFontStyles"} — the styles (fonts, sizes, colours)
- * come from the old text word by word; "sameFontStyles" of the "styles" are in their own font. New text
+ * come from the old text word by word; "sameFontStyles" of the "styles" are in their own font;
+ * "addedGlyphs" (capriole_font_add) and "missingFonts" (the fonts that lacked letters). New text
  * that does not fit is refused
  * (CAPRIOLE_ERROR_UNSUPPORTED, "no room: the new text needs N lines, M fit").
  */

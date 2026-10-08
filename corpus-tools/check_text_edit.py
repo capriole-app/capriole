@@ -59,11 +59,12 @@ def outside(items: list[tuple[str, list[float]]], band: tuple[float, float]) -> 
     return collections.Counter(t for t, b in items if not band[0] - 1 <= (b[1] + b[3]) / 2 <= band[1] + 1)
 
 
-def draw(args: argparse.Namespace, path: Path, out: Path, engine: str) -> object:
+def draw(args: argparse.Namespace, path: Path, out: Path, engine: str, page: int = 1) -> object:
     if engine == "capriole":
-        run([args.cpdf, "render", "--dpi", str(args.dpi), str(path), "1", str(out)], args.timeout)
+        run([args.cpdf, "render", "--dpi", str(args.dpi), str(path), str(page), str(out)], args.timeout)
         return load(out)
-    run(["pdftoppm", "-cropbox", "-r", str(args.dpi), "-f", "1", "-l", "1", "-png", "-singlefile", str(path), str(out.with_suffix(""))], args.timeout)
+    run(["pdftoppm", "-cropbox", "-r", str(args.dpi), "-f", str(page), "-l", str(page), "-png", "-singlefile", str(path), str(out.with_suffix(""))],
+        args.timeout)
     return load(out)
 
 

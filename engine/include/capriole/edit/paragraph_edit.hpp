@@ -27,9 +27,11 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "capriole/core/error.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/edit/font_library.hpp"
 #include "capriole/edit/text_edit.hpp"
 #include "capriole/graphics/geometry.hpp"
 
@@ -43,6 +45,9 @@ enum class ParagraphAlignment : std::uint8_t { kLeft, kJustified, kCentre, kRigh
 struct ParagraphOptions {
   // When the new text does not fit, make it smaller (with its line pitch) until it does, down to kMinShrink.
   bool shrink = false;
+  // Fonts the host gave: an embedded subset that lacks a letter gets its glyph from the same font in it
+  // (edit/font_library.hpp), else the letter goes to a similar font.
+  const FontLibrary* fonts = nullptr;
 };
 
 struct ParagraphEditResult {
@@ -56,6 +61,9 @@ struct ParagraphEditResult {
   ParagraphAlignment alignment = ParagraphAlignment::kLeft;
   std::uint32_t styles = 0;            // the styles the new text is written in
   std::uint32_t same_font_styles = 0;  // of them, those in their own font (the others: a similar one)
+  std::uint32_t added_glyphs = 0;      // to embedded fonts, from the library
+  // The fonts (their names) that lacked letters written in a similar font: what the host could give.
+  std::vector<std::string> missing_fonts;
 };
 
 // text: UTF-8; a line break starts a new line; empty: the paragraph is deleted.

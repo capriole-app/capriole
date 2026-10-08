@@ -408,7 +408,7 @@ TEST(CApiDocument, TextEdit) {
   }
   EXPECT_EQ(capriole_document_page_replace_text(document, 0, R"({"area":[200,150,250,190],"text":"x"})", &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
   ASSERT_EQ(capriole_document_page_replace_text(document, 0, R"({"area":[50,38,90,55],"text":"planet"})", &json), CAPRIOLE_OK) << capriole_last_error_message();
-  EXPECT_EQ(take_json(json), R"({"method":"sameFont","font":"Helvetica","replaced":"world","scale":1.0})");
+  EXPECT_EQ(take_json(json), R"({"method":"sameFont","font":"Helvetica","replaced":"world","scale":1.0,"addedGlyphs":0,"missingFont":""})");
   ASSERT_EQ(capriole_document_page_text_json(document, 0, 0, &json), CAPRIOLE_OK);
   EXPECT_NE(take_json(json).find("planet"), std::string::npos);
   capriole_document_close(document);
@@ -435,7 +435,7 @@ TEST(CApiDocument, ParagraphEdit) {
       << capriole_last_error_message();
   EXPECT_EQ(
       take_json(json),
-      R"({"method":"sameFont","font":"Helvetica","replaced":"Hello world, a paragraph of two lines.","oldLines":2,"lines":3,"size":12.0,"scale":1.0,"alignment":"left","styles":1,"sameFontStyles":1})");
+      R"({"method":"sameFont","font":"Helvetica","replaced":"Hello world, a paragraph of two lines.","oldLines":2,"lines":3,"size":12.0,"scale":1.0,"alignment":"left","styles":1,"sameFontStyles":1,"addedGlyphs":0,"missingFonts":[]})");
   capriole_document_close(document);
 }
 

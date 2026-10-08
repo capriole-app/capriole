@@ -11,6 +11,14 @@ advance 700. Files:
   square_cid.cff    bare CID-keyed CFF (FontFile3 /CIDFontType0C): A is CID 100, B is CID 200
   square.pfa        Type 1 (FontFile), eexec-encrypted, standard encoding
 
+For extending embedded subsets (phase 9c), "CprSquare" (PostScript name), units per em 1000, a (3,1) cmap
+and an OS/2 table, with C — a wide bar, (100, 0) to (900, 200) — besides A and B:
+  full.ttf          .notdef, A, B, C; fsType 0 (installable)
+  subset.ttf        .notdef and A only, as an embedded subset of full.ttf would be
+  other.ttf         full.ttf with A moved 10 units right: another version of the font
+  restricted.ttf    full.ttf with fsType 2 (restricted license embedding)
+  symbolic.ttf      .notdef and A only, a (1,0) cmap at code 1: a symbolic subset as LibreOffice embeds one
+
 Checked by FreeType (the engine) and by rendering them with MuPDF and Poppler in a PDF (scratch).
 """
 
@@ -82,15 +90,17 @@ def sfnt(tables):
     return out + data
 
 
-def truetype(units, cmaps, post_names):
+def truetype(units, cmaps, post_names, ps_name=None, fs_type=None, glyph_set="AB", shift=0):
     s = units / 1000
 
     def u(v):
         return round(v * s)
 
-    square = [[(u(100), 0, True), (u(600), 0, True), (u(600), u(500), True), (u(100), u(500), True)]]
+    square = [[(u(100 + shift), 0, True), (u(600 + shift), 0, True), (u(600 + shift), u(500), True), (u(100 + shift), u(500), True)]]
     triangle = [[(u(100), 0, True), (u(350), u(1400), False), (u(600), 0, True)]]  # control at 2× the apex height
-    glyphs = [b"", glyf_simple(square), glyf_simple(triangle)]
+    bar = [[(u(100), 0, True), (u(900), 0, True), (u(900), u(200), True), (u(100), u(200), True)]]
+    shapes = {"A": square, "B": triangle, "C": bar}
+    glyphs = [b""] + [glyf_simple(shapes[g]) for g in glyph_set]
     glyf = b"".join(glyphs)
     loca = b""
     at = 0
@@ -99,10 +109,12 @@ def truetype(units, cmaps, post_names):
         at += len(g)
     loca += struct.pack(">H", at // 2)
     advance = u(700)
-    head = struct.pack(">IIIIHHQQhhhhHHhhh", 0x00010000, 0x00010000, 0, 0x5F0F3CF5, 0, units, 0, 0, 0, 0, u(600), u(1400), 0, 8, 2, 0, 0)
-    hhea = struct.pack(">IhhhHhhhhhhhhhhhH", 0x00010000, u(800), -u(200), 0, advance, 0, 0, u(600), 1, 0, 0, 0, 0, 0, 0, 0, 3)
-    maxp = struct.pack(">IHHHHHHHHHHHHHH", 0x00010000, 3, 4, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0)
-    hmtx = struct.pack(">HhHhHh", advance, 0, advance, u(100), advance, u(100))
+    n = len(glyphs)
+    x_max = u(900) if "C" in glyph_set else u(600 + shift)
+    head = struct.pack(">IIIIHHQQhhhhHHhhh", 0x00010000, 0x00010000, 0, 0x5F0F3CF5, 0, units, 0, 0, 0, 0, x_max, u(1400), 0, 8, 2, 0, 0)
+    hhea = struct.pack(">IhhhHhhhhhhhhhhhH", 0x00010000, u(800), -u(200), 0, advance, 0, 0, x_max, 1, 0, 0, 0, 0, 0, 0, 0, n)
+    maxp = struct.pack(">IHHHHHHHHHHHHHH", 0x00010000, n, 4, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0)
+    hmtx = struct.pack(">Hh", advance, 0) + b"".join(struct.pack(">Hh", advance, u(100)) for _ in glyph_set)
     subtables = b""
     records = b""
     offset = 4 + 8 * len(cmaps)
@@ -114,8 +126,15 @@ def truetype(units, cmaps, post_names):
         post = struct.pack(">IihhIIIII", 0x00020000, 0, -100, 50, 0, 0, 0, 0, 0) + struct.pack(">HHHH", 3, 0, 36, 37)  # .notdef, A, B (Mac order)
     else:
         post = struct.pack(">IihhIIIII", 0x00030000, 0, -100, 50, 0, 0, 0, 0, 0)
-    name = struct.pack(">HHH", 0, 0, 6)
-    return sfnt({"head": head, "hhea": hhea, "maxp": maxp, "hmtx": hmtx, "loca": loca, "glyf": glyf, "cmap": cmap, "post": post, "name": name})
+    if ps_name is None:
+        name = struct.pack(">HHH", 0, 0, 6)
+    else:
+        text = ps_name.encode("utf-16-be")
+        name = struct.pack(">HHH", 0, 1, 18) + struct.pack(">HHHHHH", 3, 1, 0x409, 6, len(text), 0) + text
+    tables = {"head": head, "hhea": hhea, "maxp": maxp, "hmtx": hmtx, "loca": loca, "glyf": glyf, "cmap": cmap, "post": post, "name": name}
+    if fs_type is not None:
+        tables["OS/2"] = struct.pack(">HhHHH", 0, u(600), 400, 5, fs_type) + b"\0" * 68  # version 0: 78 bytes
+    return sfnt(tables)
 
 
 # ── CFF ───────────────────────────────────────────────────────────────────────────────────
@@ -271,6 +290,12 @@ def main():
     (HERE / "square.cff").write_bytes(cff(False))
     (HERE / "square_cid.cff").write_bytes(cff(True))
     (HERE / "square.pfa").write_bytes(type1())
+    full = ((3, 1), cmap_format4({0x41: 1, 0x42: 2, 0x43: 3}))
+    (HERE / "full.ttf").write_bytes(truetype(1000, [full], False, "CprSquare", 0, "ABC"))
+    (HERE / "subset.ttf").write_bytes(truetype(1000, [((3, 1), cmap_format4({0x41: 1}))], False, "CprSquare", 0, "A"))
+    (HERE / "other.ttf").write_bytes(truetype(1000, [full], False, "CprSquare", 0, "ABC", shift=10))
+    (HERE / "restricted.ttf").write_bytes(truetype(1000, [full], False, "CprSquare", 2, "ABC"))
+    (HERE / "symbolic.ttf").write_bytes(truetype(1000, [((1, 0), cmap_format0({1: 1}))], False, "CprSquare", 0, "A"))
 
 
 if __name__ == "__main__":

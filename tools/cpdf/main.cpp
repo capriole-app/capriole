@@ -107,9 +107,11 @@ void print_usage() {
                "                  \"lines\":[…],\"reason\",\"location\",\"date\",\"timestamp\":false}; a time stamp in two runs\n"
                "  signatures <file> [anchors.pem]   the signatures, verified (identity against the roots given)\n"
                "  p12 <file>      the certificate of a PKCS#12 file\n"
-               "  edit-text <file> <page> <x0,y0,x1,y1> <text> <output>   replace the text in an area (one line)\n"
-               "  edit-paragraph [--shrink] <file> <page> <x0,y0,x1,y1> <text> <output>\n"
-               "                  replace a paragraph's text, laid out anew inside it\n"
+               "  edit-text [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>\n"
+               "                  replace the text in an area (one line)\n"
+               "  edit-paragraph [--shrink] [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>\n"
+               "                  replace a paragraph's text, laid out anew inside it; --font: full TrueType fonts\n"
+               "                  whose glyphs embedded subsets that lack a letter get\n"
                "  pdfa <file> <output> [2|3]   convert to PDF/A-2b or -3b (refused, with reasons, when it cannot be)\n"
                "  redact <file> <page> <json> <output>\n"
                "                  take what lies in areas out of the file ({\"areas\":[[x0,y0,x1,y1]],\"fill\":[0,0,0]};\n"
@@ -815,9 +817,33 @@ bool write_file(std::string_view path, std::span<const std::uint8_t> bytes) {
   return true;
 }
 
-// edit-text <file> <page> <x0,y0,x1,y1> <text> <output>: the text of the characters in an area (the
+// --font FILE (repeated) at the front of args: fonts given to the engine (capriole_font_add), taken off
+// args. False (after saying why) when one cannot be read or is not a TrueType font.
+bool take_fonts(std::span<char* const>& args) {
+  while (args.size() >= 2 && std::string_view(args[0]) == "--font") {
+    std::ifstream file(args[1], std::ios::binary);
+    const std::vector<std::uint8_t> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    char* json = nullptr;
+    if (!file || data.empty() || capriole_font_add(data.data(), data.size(), &json) != CAPRIOLE_OK) {
+      std::cerr << std::format("cpdf: {}: {}\n", args[1], file && !data.empty() ? capriole_last_error_message() : "cannot read the font");
+      return false;
+    }
+    capriole_free(json);
+    args = args.subspan(2);
+  }
+  return true;
+}
+
+// edit-text [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>: the text of the characters in an area (the
 // page as shown, one line) replaced; how, printed as JSON.
 int cmd_edit_text(std::span<char* const> args) {
+  if (!take_fonts(args)) {
+    return kExitFailure;
+  }
+  if (args.size() != 5) {
+    print_usage();
+    return kExitUsage;
+  }
   const auto page = parse_uint(args[1]);
   if (!page || *page == 0 || *page > 0xFFFFFFFFULL) {
     print_usage();
@@ -869,13 +895,23 @@ int cmd_text_json(const char* path, std::uint64_t page_number, capriole::text::O
   return kExitOk;
 }
 
-// edit-paragraph [--shrink] <file> <page> <x0,y0,x1,y1> <text> <output>: the paragraph whose lines the
+// edit-paragraph [--shrink] [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>: the paragraph whose lines the
 // area touches written anew with the text (\n in it: a line break), laid out inside it; how, as JSON.
 int cmd_edit_paragraph(std::span<char* const> args) {
   bool shrink = false;
-  if (!args.empty() && std::string_view(args[0]) == "--shrink") {
-    shrink = true;
-    args = args.subspan(1);
+  for (bool more = true; more;) {
+    more = false;
+    if (!args.empty() && std::string_view(args[0]) == "--shrink") {
+      shrink = true;
+      args = args.subspan(1);
+      more = true;
+    }
+    if (args.size() >= 2 && std::string_view(args[0]) == "--font") {
+      if (!take_fonts(args)) {
+        return kExitFailure;
+      }
+      more = true;
+    }
   }
   if (args.size() != 5) {
     print_usage();
@@ -1442,10 +1478,10 @@ int run(std::span<char*> args) {
   if (command == "signatures" && (args.size() == 3 || args.size() == 4)) {
     return cmd_signatures(args.subspan(2));
   }
-  if (command == "edit-text" && args.size() == 7) {
+  if (command == "edit-text" && args.size() >= 7) {
     return cmd_edit_text(args.subspan(2));
   }
-  if (command == "edit-paragraph" && (args.size() == 7 || args.size() == 8)) {
+  if (command == "edit-paragraph" && args.size() >= 7) {
     return cmd_edit_paragraph(args.subspan(2));
   }
   if (command == "pdfa" && (args.size() == 4 || args.size() == 5)) {

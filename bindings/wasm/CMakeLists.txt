@@ -52,6 +52,9 @@ set(_capriole_exports
   _capriole_document_convert_pdfa
   _capriole_document_page_replace_text
   _capriole_document_page_replace_paragraph
+  _capriole_font_add
+  _capriole_fonts_json
+  _capriole_fonts_clear
   _capriole_resource_add
   _capriole_last_missing_resources_json
   _malloc

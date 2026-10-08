@@ -1177,7 +1177,7 @@ riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) 
 
 ## Fase 9 — Editing avanzato del testo — 🔜 in corso (9a ✅, 9b ✅)
 
-Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅. Gli altri (estendere i sottoinsiemi dei font
+Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅ · **9c** sottoinsiemi dei font estesi (9c-1 motore ✅, 9c-2 app). Gli altri (estendere i sottoinsiemi dei font
 incorporati, paragrafi con più stili, spostare il contenuto che segue su scelta esplicita) si fissano dopo.
 
 **9a-1 (2026-10-06) — reflow dei paragrafi nel motore: uscita raggiunta.** `edit/paragraph_edit.hpp`: `replace_paragraph` riscrive le
@@ -1251,6 +1251,38 @@ senza `--mixed` ancora 100/100 (`paragraph-edit-all-20261007-130038`), la 8j anc
 sua sostituta è in grassetto) verdi; gate verde. Lo script conta ora le righe per vicinanza dei centri
 (parole di font diversi sulla stessa linea di base hanno riquadri diversi), ignora le parole fatte solo di
 spazi e raddoppia le barre rovesciate passate a `cpdf`.
+
+**9c-1 (2026-10-08) — estendere i sottoinsiemi dei font incorporati, nel motore: uscita raggiunta.** Una lettera
+che il sottoinsieme incorporato non ha può avere il suo glifo dal font completo, invece di andare in un
+font simile. I font completi li dà l'host (`edit/font_library.hpp`: `capriole_font_add`, `cpdf --font`):
+TrueType (`.ttf`, `.otf` con contorni TrueType, ogni faccia di un `.ttc`; non CFF, non variabili). Una faccia
+serve solo i sottoinsiemi dello stesso font: stesso nome PostScript (lettere e cifre), stesse unità per em,
+e i contorni dei glifi del sottoinsieme (fino a 48) tutti tra i suoi — un'altra versione, o un grassetto
+sintetico («Font,Bold»), non coincide; e solo se i permessi (OS/2 fsType) ammettono documenti modificabili
+(installabile o modificabile; non «niente sottoinsiemi», non solo bitmap). `font/sfnt`: lettura e scrittura
+sfnt (con le collezioni, checksum e checkSumAdjustment), nomi, cmap, contorni dei glifi, estensione (glifi
+copiati senza hinting, con i componenti dei composti rinumerati; loca lunga, hmtx tutta lunga, maxp/hhea/head
+aggiornati, post 3.0, via hdmx/LTSH/vmtx/vhea/DSIG). `edit/font_extend`: tre tipi di font — CID
+(CIDFontType2, Identity-H, con /ToUnicode: CID nuovi, /W, /ToUnicode, CIDToGIDMap — anche le mappe piene
+alla mPDF, con un CID libero, il valore Unicode prima — e CIDSet), TrueType semplice WinAnsi (codice WinAnsi,
+cmap Unicode, /Widths) e TrueType semplice simbolico senza codifica, come lo incorporano LibreOffice e Cairo
+(un codice libero, cmap (1,0)/(3,0), /Widths, /ToUnicode). Il font esteso si prepara a parte (un oggetto in
+memoria per codificare e misurare) e si scrive nel documento solo quando la modifica riesce: una modifica
+rifiutata lascia il documento com'era; più stili sullo stesso font lo estendono una volta. Usato dalla
+modifica per riga (8j) e dei paragrafi (9a/9b): le risposte dicono `addedGlyphs` e i font a cui mancavano
+lettere (`missingFont`, `missingFonts`: ciò che l'app può proporre di aggiungere). Target `fuzz_font_extend` (5 minuti, 168 mila esecuzioni, nessun crash);
+fixture `CprSquare` (full, subset, other, restricted, symbolic) da `tests/data/fonts/make_fixtures.py`.
+Criterio: `corpus-tools/check_font_extend.py` — sulle pagine con sottoinsiemi di font installati qui una parola
+del paragrafo allungata con una lettera che il sottoinsieme non ha: aggiunta al font, letta da Capriole,
+Poppler e MuPDF, disegnata da Poppler e MuPDF, il resto della pagina com'era, qpdf e font non peggiori.
+I corpora ne hanno poche (i font installati altrove sono in altre versioni, o non ci sono): **16/16** (tutte
+quelle idonee nelle prime 5 pagine dei file; a parte 6 non estese per scelta: versioni diverse, font
+variabili, grassetto sintetico); più 30 documenti generati con i font di qui da LibreOffice (simbolici) e
+Chromium (CID) (`corpus-tools/make_font_docs.py`, in `CORPORA/generated/`): **26/26** (a parte: Ubuntu,
+installato come font variabile). In tutto **42 pagine, tutte verdi**. Report
+`CORPORA/reports/font-extend-all-20261008-092536`, `font-extend-generated-20261008-092513`. Corretto strada
+facendo: le mappe CIDToGIDMap già piene davano CID oltre 0xFFFF; i simbolici di LibreOffice non erano un
+tipo esteso (entrambi con test di regressione).
 
 ---
 

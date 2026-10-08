@@ -51,7 +51,11 @@ Java); `lxml` (BSD) per leggere gli XMP nella verifica. Per la verifica della re
 `pikepdf` (MPL-2.0, su qpdf) per leggere i flussi di una pagina e i testi della sua struttura. Per le firme (fase
 8h): `pdfsig` (Poppler, NSS), `openssl` (Apache-2.0: `cms -verify`, `ts -reply`/`-verify`, la PKI di prova),
 `certutil` (NSS). Per PDF/A (fase 8i): veraPDF 1.30.2 (`CORPORA/tools/verapdf`, installato senza rete
-dall'installer scaricato dall'utente).
+dall'installer scaricato dall'utente). Per l'estensione dei sottoinsiemi dei font (fase 9c): fontconfig
+(`fc-list`, `fc-query`: i font installati e i loro caratteri), LibreOffice (MPL-2.0, `--convert-to pdf`) e il
+Chromium di Playwright (`page.pdf()`) per generare documenti con sottoinsiemi dei font installati
+(`corpus-tools/make_font_docs.py`, in `CORPORA/generated/`); i font installati (DejaVu, Liberation, Noto…) sono
+input di prova, mai nel repository.
 
 
 OSS-Fuzz (`ci/oss-fuzz/`, quando il progetto sarà iscritto): l'immagine `gcr.io/oss-fuzz-base/base-builder`

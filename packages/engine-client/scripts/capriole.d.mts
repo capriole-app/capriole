@@ -109,6 +109,9 @@ export interface CaprioleModule {
   ): number;
   _capriole_document_page_replace_text(document: number, pageIndex: number, spec: number, out: number): number;
   _capriole_document_page_replace_paragraph(document: number, pageIndex: number, spec: number, out: number): number;
+  _capriole_font_add(data: number, size: number, out: number): number;
+  _capriole_fonts_json(out: number): number;
+  _capriole_fonts_clear(): number;
   _capriole_document_save_compact(document: number, modificationDate: number, outData: number, outSize: number): number;
   _capriole_document_save(
     document: number,

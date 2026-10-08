@@ -30,6 +30,7 @@
 #include "capriole/edit/annotations.hpp"
 #include "capriole/edit/attachments.hpp"
 #include "capriole/edit/facturx.hpp"
+#include "capriole/edit/font_library.hpp"
 #include "capriole/edit/forms.hpp"
 #include "capriole/edit/pages.hpp"
 #include "capriole/edit/paragraph_edit.hpp"
@@ -67,6 +68,33 @@ SharedResources& shared_resources() {
   return shared;
 }
 thread_local std::vector<std::string> g_missing_resources;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+// The fonts hosts give (capriole_font_add): full fonts whose glyphs embedded subsets get (phase 9c).
+struct SharedFonts {
+  std::shared_mutex mutex;
+  capriole::edit::FontLibrary library;
+};
+SharedFonts& shared_fonts() {
+  static SharedFonts shared;
+  return shared;
+}
+
+std::string faces_json(const std::vector<capriole::edit::FontFace>& faces) {
+  std::string out = "[";
+  for (const auto& f : faces) {
+    if (out.size() > 1) {
+      out += ',';
+    }
+    out += R"({"postscriptName":)";
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(f.postscript_name));
+    out += R"(,"family":)";
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(f.family));
+    out += R"(,"style":)";
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(f.style));
+    out += std::format(R"(,"embeddable":{}}})", f.embeddable ? "true" : "false");
+  }
+  return out + "]";
+}
 
 // A page interpreted with the registered resources; what it missed is remembered for this thread.
 capriole::Result<capriole::graphics::DisplayList> interpret(capriole::Document& document, capriole::model::ObjectRef page,
@@ -1666,7 +1694,9 @@ capriole_status capriole_document_page_replace_text(capriole_document* document,
     if (text == nullptr || text->string() == nullptr) {
       return fail(CAPRIOLE_ERROR_SYNTAX, "text: a string expected");
     }
-    auto result = capriole::edit::replace_text(document->document, page_index, *area, *text->string());
+    SharedFonts& fonts = shared_fonts();
+    const std::shared_lock lock(fonts.mutex);
+    auto result = capriole::edit::replace_text(document->document, page_index, *area, *text->string(), {.fonts = &fonts.library});
     if (!result) {
       return fail(result.error());
     }
@@ -1674,7 +1704,9 @@ capriole_status capriole_document_page_replace_text(capriole_document* document,
     capriole::capi::append_json_text(out, capriole::model::from_utf8(result->font));
     out += R"(,"replaced":)";
     capriole::capi::append_json_text(out, capriole::model::from_utf8(result->replaced));
-    out += std::format(R"(,"scale":{}}})", capriole::writer::format_real(result->scale));
+    out += std::format(R"(,"scale":{},"addedGlyphs":{},"missingFont":)", capriole::writer::format_real(result->scale), result->added_glyphs);
+    capriole::capi::append_json_text(out, capriole::model::from_utf8(result->missing_font));
+    out += '}';
     return hand_over(out, json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
@@ -1707,6 +1739,9 @@ capriole_status capriole_document_page_replace_paragraph(capriole_document* docu
       }
       options.shrink = *b;
     }
+    SharedFonts& fonts = shared_fonts();
+    const std::shared_lock lock(fonts.mutex);
+    options.fonts = &fonts.library;
     auto result = capriole::edit::replace_paragraph(document->document, page_index, *area, *text->string(), options);
     if (!result) {
       return fail(result.error());
@@ -1716,10 +1751,63 @@ capriole_status capriole_document_page_replace_paragraph(capriole_document* docu
     capriole::capi::append_json_text(out, capriole::model::from_utf8(result->font));
     out += R"(,"replaced":)";
     capriole::capi::append_json_text(out, capriole::model::from_utf8(result->replaced));
-    out += std::format(R"(,"oldLines":{},"lines":{},"size":{},"scale":{},"alignment":"{}","styles":{},"sameFontStyles":{}}})", result->old_lines, result->lines,
-                       capriole::writer::format_real(result->size), capriole::writer::format_real(result->scale),
-                       kAlignments.at(static_cast<std::size_t>(result->alignment)), result->styles, result->same_font_styles);
+    out += std::format(R"(,"oldLines":{},"lines":{},"size":{},"scale":{},"alignment":"{}","styles":{},"sameFontStyles":{},"addedGlyphs":{},"missingFonts":[)",
+                       result->old_lines, result->lines, capriole::writer::format_real(result->size), capriole::writer::format_real(result->scale),
+                       kAlignments.at(static_cast<std::size_t>(result->alignment)), result->styles, result->same_font_styles, result->added_glyphs);
+    for (std::size_t i = 0; i < result->missing_fonts.size(); ++i) {
+      if (i > 0) {
+        out += ',';
+      }
+      capriole::capi::append_json_text(out, capriole::model::from_utf8(result->missing_fonts[i]));
+    }
+    out += "]}";
     return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_font_add(const uint8_t* data, size_t size, char** json) {
+  g_last_error.clear();
+  if (data == nullptr || size == 0 || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    std::vector<std::byte> bytes(size);
+    std::memcpy(bytes.data(), data, size);
+    SharedFonts& fonts = shared_fonts();
+    const std::unique_lock lock(fonts.mutex);
+    auto faces = fonts.library.add(std::move(bytes));
+    if (!faces) {
+      return fail(faces.error());
+    }
+    return hand_over(faces_json(*faces), json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_fonts_json(char** json) {
+  g_last_error.clear();
+  if (json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    SharedFonts& fonts = shared_fonts();
+    const std::shared_lock lock(fonts.mutex);
+    return hand_over(faces_json(fonts.library.faces()), json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_fonts_clear(void) {
+  g_last_error.clear();
+  try {
+    SharedFonts& fonts = shared_fonts();
+    const std::unique_lock lock(fonts.mutex);
+    fonts.library.clear();
+    return CAPRIOLE_OK;
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

@@ -58,8 +58,8 @@ def letters(text: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKC", text) if c.isalnum())
 
 
-def capriole_text(args: argparse.Namespace, path: Path) -> dict | None:
-    result = run([args.cpdf, "text", "--json", "--order", "layout", str(path), "1"], args.timeout)
+def capriole_text(args: argparse.Namespace, path: Path, page: int = 1) -> dict | None:
+    result = run([args.cpdf, "text", "--json", "--order", "layout", str(path), str(page)], args.timeout)
     if result["status"] != 0:
         return None
     try:

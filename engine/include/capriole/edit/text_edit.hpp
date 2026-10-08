@@ -28,20 +28,30 @@
 
 #include "capriole/core/error.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/edit/font_library.hpp"
 #include "capriole/graphics/geometry.hpp"
 
 namespace capriole::edit {
 
 enum class TextEditMethod : std::uint8_t { kSameFont, kSimilarFont };
 
+struct TextEditOptions {
+  // Fonts the host gave: an embedded subset that lacks a letter gets its glyph from the same font in it
+  // (edit/font_library.hpp), and the text stays in its font.
+  const FontLibrary* fonts = nullptr;
+};
+
 struct TextEditResult {
   TextEditMethod method = TextEditMethod::kSameFont;
-  std::string font;      // the font the new text is written in (its /BaseFont, or the standard one)
-  std::string replaced;  // the text that was there, UTF-8
-  double scale = 1;      // kSimilarFont: the horizontal scaling it is written with
+  std::string font;                // the font the new text is written in (its /BaseFont, or the standard one)
+  std::string replaced;            // the text that was there, UTF-8
+  double scale = 1;                // kSimilarFont: the horizontal scaling it is written with
+  std::uint32_t added_glyphs = 0;  // to the embedded font, from the library
+  std::string missing_font;        // kSimilarFont because the text's font lacked letters: its name
 };
 
 // text: UTF-8; empty: the characters are deleted.
-[[nodiscard]] Result<TextEditResult> replace_text(Document& document, std::uint32_t page_index, const graphics::Rect& area, std::string_view text);
+[[nodiscard]] Result<TextEditResult> replace_text(Document& document, std::uint32_t page_index, const graphics::Rect& area, std::string_view text,
+                                                  const TextEditOptions& options = {});
 
 }  // namespace capriole::edit

@@ -33,6 +33,7 @@
 #include "common.hpp"
 #include "font/font.hpp"
 #include "font/standard_fonts.hpp"
+#include "font_extend.hpp"
 #include "text_common.hpp"
 #include "text_removal.hpp"
 
@@ -237,8 +238,10 @@ Result<void> set_content(Document& document, const detail::Page& page, const std
   return document.set(page.ref.number, Object(std::move(updated)));
 }
 
+// lacking: set to the font's name when it cannot write the new text (an app may offer to give it).
 Result<std::optional<TextEditResult>> same_font(Document& document, const detail::Page& page, const text::PageText& text, const graphics::DisplayList& list,
-                                                const Selection& selection, std::u32string_view replacement, std::size_t line_end) {
+                                                const Selection& selection, std::u32string_view replacement, std::size_t line_end,
+                                                const TextEditOptions& options, std::string& lacking) {
   const auto bytes = chosen_bytes(text, selection);
   if (!bytes) {
     return std::optional<TextEditResult>();
@@ -271,8 +274,41 @@ Result<std::optional<TextEditResult>> same_font(Document& document, const detail
   }
   const std::string base_font = dict != nullptr ? std::string(font::detail::without_subset_tag(name_of(dict->find("BaseFont")))) : std::string();
   std::map<std::uint32_t, double> missing_widths;
-  const auto codes = encode_in(*font, context, replacement, two_byte, missing_widths);
-  if (!codes || !widths_writable(document, font_ref, missing_widths, list)) {
+  auto codes = encode_in(*font, context, replacement, two_byte, missing_widths);
+  // The letters the font lacks, from a font the host gave (edit/font_extend; in the document once the
+  // edit is done).
+  font::detail::FontContext extended_context(nullptr);
+  std::optional<detail::FontExtension> extension;
+  if (!codes && options.fonts != nullptr) {
+    std::map<std::uint32_t, double> ignored;
+    const auto each = detail::encode_each(*font, context, replacement, two_byte, ignored);
+    std::u32string missing;
+    for (std::size_t k = 0; k < each.size(); ++k) {
+      if (!each[k]) {
+        missing += replacement[k];
+      }
+    }
+    auto extended = detail::extend_font(document, font_ref, missing, *options.fonts);
+    if (!extended) {
+      return std::unexpected(std::move(extended.error()));
+    }
+    if (*extended) {
+      auto reloaded = font::detail::Font::load(document, (*extended)->font, extended_context, warnings);
+      if (reloaded) {
+        missing_widths.clear();
+        codes = encode_in(*reloaded, extended_context, replacement, two_byte, missing_widths);
+        if (codes) {
+          font = std::move(reloaded);
+          extension = std::move(**extended);
+        }
+      }
+    }
+  }
+  if (!codes) {
+    lacking = base_font;
+    return std::optional<TextEditResult>();
+  }
+  if (!widths_writable(document, font_ref, missing_widths, list)) {
     return std::optional<TextEditResult>();
   }
   double new_width = 0;
@@ -294,14 +330,23 @@ Result<std::optional<TextEditResult>> same_font(Document& document, const detail
   if (!*content) {
     return std::optional<TextEditResult>();
   }
+  if (extension) {
+    if (auto committed = detail::commit(document, *extension); !committed) {
+      return std::unexpected(std::move(committed.error()));
+    }
+  }
   if (auto set = set_content(document, page, **content); !set) {
     return std::unexpected(std::move(set.error()));
   }
   if (auto set = set_widths(document, font_ref, missing_widths); !set) {
     return std::unexpected(std::move(set.error()));
   }
-  return std::optional<TextEditResult>(
-      TextEditResult{.method = TextEditMethod::kSameFont, .font = base_font, .replaced = model::to_utf8(selection.old_text), .scale = 1});
+  return std::optional<TextEditResult>(TextEditResult{.method = TextEditMethod::kSameFont,
+                                                      .font = base_font,
+                                                      .replaced = model::to_utf8(selection.old_text),
+                                                      .scale = 1,
+                                                      .added_glyphs = extension ? static_cast<std::uint32_t>(extension->added) : 0U,
+                                                      .missing_font = {}});
 }
 
 // ── A similar font ────────────────────────────────────────────────────────────────────────────────
@@ -344,7 +389,12 @@ Result<TextEditResult> similar(Document& document, std::uint32_t page_index, con
   if (!removed) {
     return std::unexpected(std::move(removed.error()));
   }
-  TextEditResult result{.method = TextEditMethod::kSimilarFont, .font = font_name, .replaced = model::to_utf8(selection.old_text), .scale = 1};
+  TextEditResult result{.method = TextEditMethod::kSimilarFont,
+                        .font = font_name,
+                        .replaced = model::to_utf8(selection.old_text),
+                        .scale = 1,
+                        .added_glyphs = 0,
+                        .missing_font = {}};
   if (replacement.empty()) {
     return result;
   }
@@ -398,7 +448,7 @@ Result<TextEditResult> similar(Document& document, std::uint32_t page_index, con
 
 }  // namespace
 
-Result<TextEditResult> replace_text(Document& document, std::uint32_t page_index, const Rect& area, std::string_view text) {
+Result<TextEditResult> replace_text(Document& document, std::uint32_t page_index, const Rect& area, std::string_view text, const TextEditOptions& options) {
   const Rect r = area.normalized();
   if (!std::isfinite(r.x0) || !std::isfinite(r.y0) || !std::isfinite(r.x1) || !std::isfinite(r.y1) || r.width() <= 0 || r.height() <= 0) {
     return make_error(ErrorCode::kUnsupported, "an area must be finite and not empty");
@@ -464,14 +514,19 @@ Result<TextEditResult> replace_text(Document& document, std::uint32_t page_index
     }
   }
   (void)line_begin;
-  auto same = same_font(document, *page, page_text, *list, selection, replacement, line_end);
+  std::string lacking;
+  auto same = same_font(document, *page, page_text, *list, selection, replacement, line_end, options, lacking);
   if (!same) {
     return std::unexpected(std::move(same.error()));
   }
   if (*same) {
     return std::move(**same);
   }
-  return similar(document, page_index, page_text, *list, selection, replacement, line_end);
+  auto result = similar(document, page_index, page_text, *list, selection, replacement, line_end);
+  if (result) {
+    result->missing_font = lacking;
+  }
+  return result;
 }
 
 }  // namespace capriole::edit
