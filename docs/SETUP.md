@@ -43,7 +43,13 @@ npm run build                                # pacchetti .deb e AppImage in src-
 ```
 
 Nel gate il passo desktop è facoltativo: `SKIP_WASM=0 SKIP_DESKTOP=0 scripts/check.sh` (clippy sul crate,
-avvisi come errori). Compila con al più 4 job (`CARGO_BUILD_JOBS=4`): la macchina ha poca memoria.
+avvisi come errori, e i suoi test). Compila con al più 4 job (`CARGO_BUILD_JOBS=4`): la macchina ha poca memoria.
+
+Smart card (fase 11c): per provarla senza una carta, una carta in software e lo strumento che la usa —
+`sudo apt install softhsm2 opensc` (strumenti di test, mai linkati). Con questi il gate fa anche i test
+PKCS#11 della shell (`scripts/test_desktop_pkcs11.sh`: un token creato per il giro, con la chiave di prova).
+Nell'app, il modulo di SoftHSM è `/usr/lib/softhsm/libsofthsm2.so`; quello di una carta vera è la libreria
+del suo produttore (OpenSC, Bit4id per la CNS, quella della CIE).
 
 ## Hook git (obbligatorio, una volta per clone)
 

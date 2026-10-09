@@ -1742,6 +1742,24 @@ capriole_status capriole_pkcs12_info(const uint8_t* p12, size_t size, const char
   }
 }
 
+capriole_status capriole_certificate_info_json(const uint8_t* der, size_t size, char** json) {
+  g_last_error.clear();
+  if ((der == nullptr && size != 0) || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto info = capriole::crypto::certificate_info(std::as_bytes(std::span(der, size)));
+    if (!info) {
+      return fail(info.error());
+    }
+    std::string out;
+    append_certificate(out, *info);
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
 capriole_status capriole_document_sign_begin(capriole_document* document, const char* spec_json, const uint8_t* p12, size_t p12_size, const char* password,
                                              capriole_signing** signing) {
   g_last_error.clear();

@@ -46,6 +46,7 @@ set(_capriole_exports
   _capriole_document_page_redact
   _capriole_document_page_apply_redactions
   _capriole_pkcs12_info
+  _capriole_certificate_info_json
   _capriole_document_sign_begin
   _capriole_document_sign_begin_external
   _capriole_signing_to_sign_json

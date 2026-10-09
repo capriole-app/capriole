@@ -81,6 +81,17 @@
         {#if s.timestampInvalid}
           <span class="text-xs text-warning">La marca temporale non è valida.</span>
         {/if}
+        {#if s.revocation === 'revoked'}
+          <span class="text-xs text-danger"
+            >Certificato revocato{s.revokedAt ? ` dal ${localDateTime(s.revokedAt)}` : ''}.</span
+          >
+        {:else if s.revocation === 'good'}
+          <span class="text-xs">
+            Certificato non revocato{s.revocationInFile ? ' (verifica conservata nel file)' : ''}.
+          </span>
+        {:else if s.revocation === 'unknown'}
+          <span class="text-xs text-warning">Non si sa se il certificato sia stato revocato.</span>
+        {/if}
         {#if s.signer && s.signingTime && !s.certificateValidAtSigning}
           <span class="text-xs text-warning">Il certificato non era valido al momento della firma.</span>
         {/if}

@@ -91,6 +91,34 @@ export interface CaprioleModule {
     password: number,
     outSigning: number,
   ): number;
+  _capriole_certificate_info_json(der: number, size: number, out: number): number;
+  _capriole_document_sign_begin_external(
+    document: number,
+    spec: number,
+    certificate: number,
+    certificateSize: number,
+    others: number,
+    othersSize: number,
+    outSigning: number,
+  ): number;
+  _capriole_signing_to_sign_json(signing: number, out: number): number;
+  _capriole_signing_set_value(signing: number, value: number, size: number): number;
+  _capriole_document_timestamp_begin(document: number, spec: number, outSigning: number): number;
+  _capriole_document_validation_needs_json(document: number, data: number, out: number): number;
+  _capriole_document_add_validation_data(
+    document: number,
+    spec: number,
+    outData: number,
+    outSize: number,
+    outJson: number,
+  ): number;
+  _capriole_document_signatures_validate_json(
+    document: number,
+    anchors: number,
+    anchorsSize: number,
+    data: number,
+    out: number,
+  ): number;
   _capriole_signing_timestamp_request(signing: number, outData: number, outSize: number): number;
   _capriole_document_sign_finish(
     document: number,

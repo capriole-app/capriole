@@ -575,6 +575,11 @@ TEST(CApiDocument, SigningWithAKeyElsewhere) {
   for (const auto& c : credentials->chain()) {
     chain.insert(chain.end(), c.begin(), c.end());
   }
+  char* info = nullptr;
+  ASSERT_EQ(capriole_certificate_info_json(as_u8(credentials->certificate()), credentials->certificate().size(), &info), CAPRIOLE_OK);
+  EXPECT_TRUE(take_json(info).starts_with(R"x({"name":"Mario Rossi (test)")x"));
+  const std::array<std::uint8_t, 2> not_one{0x30, 0x00};
+  EXPECT_NE(capriole_certificate_info_json(not_one.data(), not_one.size(), &info), CAPRIOLE_OK);
   capriole_document* document = open_document(sample_pdf());
   capriole_signing* signing = nullptr;
   const char* spec = R"({"date":"D:20261009150000Z"})";

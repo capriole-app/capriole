@@ -19,6 +19,9 @@ import type {
   FontFace,
   SignatureInfo,
   SignSpec,
+  ToSign,
+  ValidationData,
+  ValidationNeed,
   PdfaReport,
   ObjectInfo,
   PageContent,
@@ -289,9 +292,68 @@ export class EngineClient {
     return this.#call({ kind: 'summary' });
   }
 
-  /** The document's signatures, verified (the signers' identity is not checked: no trusted roots). */
-  signatures(): Promise<SignatureInfo[]> {
-    return this.#call({ kind: 'signatures' });
+  /**
+   * A certificate (DER, hexadecimal) as the engine reads it: a smart card's, before signing with it.
+   */
+  certificateInfo(der: string): Promise<CertificateInfo> {
+    return this.#call({ kind: 'certificateInfo', der });
+  }
+
+  /**
+   * Signs with a key that is elsewhere (a smart card), in steps: this prepares the signature from the
+   * signer's certificate and the others to include (DER, hexadecimal) and says what the key signs; then
+   * signExternalValue with what it made, and signFinish. One signature at a time; signCancel drops it.
+   */
+  signExternalBegin(spec: SignSpec & { timestamp?: boolean }, certificate: string, chain: string[]): Promise<ToSign> {
+    return this.#call({ kind: 'signExternalBegin', spec, certificate, chain });
+  }
+
+  /**
+   * The value the key made (hexadecimal: RSA PKCS#1 v1.5, ECDSA as DER or r‖s), checked against the
+   * certificate. Resolves to the RFC 3161 request for a time-stamping authority (hexadecimal) when the
+   * spec asked for a time stamp, else null.
+   */
+  signExternalValue(value: string): Promise<string | null> {
+    return this.#call({ kind: 'signExternalValue', value });
+  }
+
+  /**
+   * A document time stamp (B-LTA after the validation data): resolves to the request for the authority
+   * (hexadecimal); signFinish with its response.
+   */
+  timestampBegin(date: string): Promise<string> {
+    return this.#call({ kind: 'timestampBegin', date });
+  }
+
+  /**
+   * Finishes the signature (or the document time stamp) being made, with the authority's response
+   * (hexadecimal; null: none). Resolves to the signed file, which the document now is.
+   */
+  signFinish(response: string | null): Promise<ArrayBuffer> {
+    return this.#call({ kind: 'signFinish', response });
+  }
+
+  /** Drops the signature being made, if any. */
+  signCancel(): Promise<void> {
+    return this.#call({ kind: 'signCancel' });
+  }
+
+  /** What every signature's chain needs answers for, given what was already fetched. */
+  validationNeeds(data: ValidationData = {}): Promise<ValidationNeed[]> {
+    return this.#call({ kind: 'validationNeeds', data });
+  }
+
+  /** Writes validation data into the document's /DSS as a new revision; resolves to the file. */
+  addValidationData(date: string, data: ValidationData): Promise<ArrayBuffer> {
+    return this.#call({ kind: 'addValidationData', date, data });
+  }
+
+  /**
+   * The document's signatures, verified (the signers' identity is not checked: no trusted roots); their
+   * revocation with what the file keeps and, given, the validation data fetched.
+   */
+  signatures(data?: ValidationData): Promise<SignatureInfo[]> {
+    return this.#call({ kind: 'signatures', data });
   }
 
   /** The fields of the document's form (none without one). */

@@ -250,6 +250,12 @@ export interface SignatureInfo {
   certificateValidAtSigning: boolean;
   trust: 'trusted' | 'untrusted' | 'notChecked';
   trustProblem: string;
+  /** Of the signer's chain, from what the file keeps and what was given (capi/README.md). */
+  revocation: 'good' | 'revoked' | 'unknown' | 'notChecked';
+  /** What "good" rests on is all in the file: long-term validation. */
+  revocationInFile: boolean;
+  revocationProblem: string;
+  revokedAt: string;
   page: number | null;
   rect: [number, number, number, number] | null;
 }
@@ -268,6 +274,39 @@ export interface SignSpec {
   reason?: string;
   location?: string;
   contactInfo?: string;
+}
+
+/** What a key that is elsewhere (a smart card) signs: hexadecimal (capriole_signing_to_sign_json). */
+export interface ToSign {
+  /** SHA-256 of the signed attributes (CKM_ECDSA). */
+  hash: string;
+  /** The hash in a DigestInfo (CKM_RSA_PKCS). */
+  digestInfo: string;
+  /** The signed attributes (CKM_SHA256_RSA_PKCS, CKM_ECDSA_SHA256). */
+  data: string;
+  /** "RSA 2048", "EC 256"… */
+  key: string;
+}
+
+/** Validation data (DER, hexadecimal): what a host fetched, or what is written into the /DSS. */
+export interface ValidationData {
+  certificates?: string[];
+  ocsps?: string[];
+  crls?: string[];
+}
+
+/** A certificate of a signature's chain that needs an answer for the long term (capi/README.md). */
+export interface ValidationNeed {
+  certificate: string;
+  subject: string;
+  /** null: the issuer's certificate is not known — fetch it from caIssuers, then ask again. */
+  issuer: string | null;
+  ocspRequest: string | null;
+  ocsp: string[];
+  crl: string[];
+  caIssuers: string[];
+  /** The file, or what was given, already says whether it is revoked. */
+  answered: boolean;
 }
 
 /** How capriole_document_page_replace_text wrote the new text (capi/README.md). */
@@ -504,7 +543,15 @@ export type Request =
   | { kind: 'fonts' }
   | { kind: 'fontsClear' }
   | { kind: 'sign'; spec: SignSpec; p12: ArrayBuffer; password: string }
-  | { kind: 'signatures' }
+  | { kind: 'certificateInfo'; der: string }
+  | { kind: 'signExternalBegin'; spec: SignSpec & { timestamp?: boolean }; certificate: string; chain: string[] }
+  | { kind: 'signExternalValue'; value: string }
+  | { kind: 'signFinish'; response: string | null }
+  | { kind: 'signCancel' }
+  | { kind: 'timestampBegin'; date: string }
+  | { kind: 'validationNeeds'; data: ValidationData }
+  | { kind: 'addValidationData'; date: string; data: ValidationData }
+  | { kind: 'signatures'; data?: ValidationData }
   | { kind: 'summary' }
   | { kind: 'convertPdfa'; part: number; date: string }
   | { kind: 'attachments' }

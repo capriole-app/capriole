@@ -14,6 +14,8 @@ class EngineFailure extends Error {
 
 const engine: Promise<CaprioleModule> = createCapriole();
 let documentHandle = 0;
+/** A signature made in steps (a key that is elsewhere, a document time stamp): its handle until it is finished. */
+let pendingSigning = 0;
 /** The open document's password: copies of it (extracting pages) are saved encrypted alike. */
 let documentPassword = '';
 
@@ -52,6 +54,41 @@ function withString<T>(m: CaprioleModule, text: string, fn: (pointer: number) =>
     m.stringToUTF8(text, pointer, size);
     return fn(pointer);
   });
+}
+
+function bytesOfHex(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0 || /[^0-9a-f]/i.test(hex))
+    throw new EngineFailure(Status.syntax, 'hexadecimal digits expected');
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16);
+  return out;
+}
+
+function hexOf(bytes: Uint8Array): string {
+  let out = '';
+  for (const b of bytes) out += b.toString(16).padStart(2, '0');
+  return out;
+}
+
+/** Runs fn with bytes in the module's memory. */
+function withBytes<T>(m: CaprioleModule, bytes: Uint8Array, fn: (pointer: number, size: number) => T): T {
+  return withScratch(m, Math.max(bytes.length, 1), (pointer) => {
+    m.HEAPU8.set(bytes, pointer);
+    return fn(pointer, bytes.length);
+  });
+}
+
+function dropPending(m: CaprioleModule): void {
+  if (pendingSigning !== 0) m._capriole_signing_free(pendingSigning);
+  pendingSigning = 0;
+}
+
+/** The time stamp request of the pending signature (none: empty). */
+function pendingTimestampRequest(m: CaprioleModule): string {
+  const request = takeBytes(m, (outData, outSize) =>
+    m._capriole_signing_timestamp_request(pendingSigning, outData, outSize),
+  );
+  return hexOf(new Uint8Array(request));
 }
 
 /** A JSON result: out receives a char* the module allocated. */
@@ -485,9 +522,108 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
       return { value: summaryOf(m, requireDocument()), transfer: [] };
     case 'signatures':
       return {
-        value: takeJson(m, (out) => m._capriole_document_signatures_json(requireDocument(), 0, 0, out)),
+        value: request.data
+          ? withString(m, JSON.stringify(request.data), (data) =>
+              takeJson(m, (out) => m._capriole_document_signatures_validate_json(requireDocument(), 0, 0, data, out)),
+            )
+          : takeJson(m, (out) => m._capriole_document_signatures_json(requireDocument(), 0, 0, out)),
         transfer: [],
       };
+    case 'certificateInfo':
+      return {
+        value: withBytes(m, bytesOfHex(request.der), (der, size) =>
+          takeJson(m, (out) => m._capriole_certificate_info_json(der, size, out)),
+        ),
+        transfer: [],
+      };
+    case 'signExternalBegin': {
+      const document = requireDocument();
+      dropPending(m);
+      const chain = request.chain.join('');
+      pendingSigning = withString(m, JSON.stringify(request.spec), (spec) =>
+        withBytes(m, bytesOfHex(request.certificate), (certificate, certificateSize) =>
+          withBytes(m, bytesOfHex(chain), (others, othersSize) =>
+            withScratch(m, 4, (out) => {
+              check(
+                m,
+                m._capriole_document_sign_begin_external(
+                  document,
+                  spec,
+                  certificate,
+                  certificateSize,
+                  othersSize ? others : 0,
+                  othersSize,
+                  out,
+                ),
+              );
+              return m.HEAPU32[out >> 2]!;
+            }),
+          ),
+        ),
+      );
+      return { value: takeJson(m, (out) => m._capriole_signing_to_sign_json(pendingSigning, out)), transfer: [] };
+    }
+    case 'signExternalValue': {
+      if (pendingSigning === 0) throw new EngineFailure(Status.outOfRange, 'no signature being made');
+      withBytes(m, bytesOfHex(request.value), (value, size) =>
+        check(m, m._capriole_signing_set_value(pendingSigning, value, size)),
+      );
+      return { value: pendingTimestampRequest(m) || null, transfer: [] };
+    }
+    case 'timestampBegin': {
+      const document = requireDocument();
+      dropPending(m);
+      pendingSigning = withString(m, JSON.stringify({ date: request.date }), (spec) =>
+        withScratch(m, 4, (out) => {
+          check(m, m._capriole_document_timestamp_begin(document, spec, out));
+          return m.HEAPU32[out >> 2]!;
+        }),
+      );
+      return { value: pendingTimestampRequest(m), transfer: [] };
+    }
+    case 'signFinish': {
+      const document = requireDocument();
+      if (pendingSigning === 0) throw new EngineFailure(Status.outOfRange, 'no signature being made');
+      try {
+        const response = request.response ? bytesOfHex(request.response) : new Uint8Array();
+        // The C API reopens the document from the signed file: the handle stays.
+        const data = withBytes(m, response, (pointer, size) =>
+          takeBytes(m, (outData, outSize) =>
+            m._capriole_document_sign_finish(document, pendingSigning, size ? pointer : 0, size, outData, outSize),
+          ),
+        );
+        return { value: data, transfer: [data] };
+      } finally {
+        dropPending(m);
+      }
+    }
+    case 'signCancel':
+      dropPending(m);
+      return { value: null, transfer: [] };
+    case 'validationNeeds':
+      return {
+        value: withString(m, JSON.stringify(request.data), (data) =>
+          takeJson(m, (out) => m._capriole_document_validation_needs_json(requireDocument(), data, out)),
+        ),
+        transfer: [],
+      };
+    case 'addValidationData': {
+      const document = requireDocument();
+      const file = withString(m, JSON.stringify({ date: request.date, ...request.data }), (spec) =>
+        withScratch(m, 12, (out) => {
+          check(m, m._capriole_document_add_validation_data(document, spec, out, out + 4, out + 8));
+          const data = m.HEAPU32[out >> 2]!;
+          const size = m.HEAPU32[(out >> 2) + 1]!;
+          m._capriole_free(m.HEAPU32[(out >> 2) + 2]!);
+          try {
+            return m.HEAPU8.slice(data, data + size).buffer;
+          } finally {
+            m._capriole_free(data);
+          }
+        }),
+      );
+      return { value: file, transfer: [file] };
+    }
     case 'formFields':
       return {
         value: takeJson(m, (out) => m._capriole_document_form_fields_json(requireDocument(), out)),

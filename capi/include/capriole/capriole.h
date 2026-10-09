@@ -305,6 +305,8 @@ capriole_status capriole_document_convert_pdfa(capriole_document* document, cons
  * CAPRIOLE_ERROR_PASSWORD_REQUIRED for a wrong password.
  */
 capriole_status capriole_pkcs12_info(const uint8_t* p12, size_t size, const char* password, char** json);
+/* A certificate (DER) as JSON, as capriole_pkcs12_info gives its own (without "chain"): a smart card's. */
+capriole_status capriole_certificate_info_json(const uint8_t* der, size_t size, char** json);
 
 typedef struct capriole_signing capriole_signing;
 

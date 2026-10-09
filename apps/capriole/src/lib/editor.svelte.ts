@@ -21,6 +21,7 @@ import {
   type PdfaReport,
   type Repair,
   type SignatureInfo,
+  type SignSpec,
   type Summary,
 } from '@capriole/engine-client';
 import { baseName, dateTime, pdfDateNow } from './files';
@@ -41,6 +42,7 @@ import {
 import { nearest, objectRefusal } from './objects';
 import { fontId, fontRefusal, forgetFont, loadFonts, rememberFont, type StoredFont } from './fonts';
 import { fromBrowser, pickPdf, saveFile, savePdf, type PickedFile } from './platform';
+import { cardProblem, cardShell, signWithCard, type CardSigner, type LongTermReport } from './smartcard';
 
 /**
  * What a pointer does on the page shown large: fill the form, select (and move) annotations, make one, or
@@ -149,6 +151,8 @@ export class Editor {
   signaturesOpen = $state(false);
   /** The signature being made (the dialog is open); null: none. */
   signRequest = $state.raw<SignRequest | null>(null);
+  /** After a signature with a card for the long term: what could not be answered (null: none asked). */
+  longTermReport = $state.raw<LongTermReport | null>(null);
   /** The PDF/A part the document declares (null: none): it is then saved by appending, like a signed one. */
   pdfa = $state<number | null>(null);
   /** The PDF/A dialog: the part asked for (0: 2, or 3 with attachments) while it is open, null when closed. */
@@ -598,6 +602,26 @@ export class Editor {
    * not saved yet are part of the signed revision. One step of undo.
    */
   async sign(p12: ArrayBuffer, password: string, details: SignDetails): Promise<boolean> {
+    return this.#signAndSave(details, (spec) => this.engine.sign(spec, p12, password));
+  }
+
+  /**
+   * Signs with a smart card (desktop: the shell's PKCS#11), as sign does with a key file: the save
+   * dialog first, then the card, the time stamp and the long-term validation data when asked for. What
+   * the long term could not get is in longTermReport afterwards.
+   */
+  async signWithCard(signer: CardSigner, details: SignDetails): Promise<boolean> {
+    const shell = cardShell();
+    if (!shell) return false;
+    this.longTermReport = null;
+    return this.#signAndSave(details, async (spec) => {
+      const { file, report } = await signWithCard(this.engine, shell, signer, spec, pdfDateNow);
+      this.longTermReport = report;
+      return file;
+    });
+  }
+
+  async #signAndSave(details: SignDetails, make: (spec: SignSpec) => Promise<ArrayBuffer>): Promise<boolean> {
     const request = this.signRequest;
     if (!request || !this.name) return false;
     const pending = this.#queue;
@@ -611,18 +635,22 @@ export class Editor {
         async () => {
           await pending;
           const before = await this.#snapshot();
-          const data = await this.engine.sign(
-            {
+          let data: ArrayBuffer;
+          try {
+            data = await make({
               date: pdfDateNow(),
               page: request.page,
               rect: request.rect,
               lines,
               reason: details.reason || undefined,
               location: details.location || undefined,
-            },
-            p12,
-            password,
-          );
+            });
+          } catch (error) {
+            // Preparing the signature put its field in the document: a signature that fails (a wrong PIN,
+            // the authority not answering) leaves the document as it was, to be signed again.
+            await this.engine.openForEditing(before.slice(0), this.#password);
+            throw error;
+          }
           this.#remember(before);
           signedAt = await this.engine.summary();
           return data;
@@ -1222,7 +1250,8 @@ function describe(error: unknown): string {
     if (error.status === Status.passwordRequired) return 'Il file è protetto da password.';
     return error.message;
   }
-  return error instanceof Error ? error.message : String(error);
+  // The shell's errors (a smart card, the network) come with a code: said in Italian.
+  return cardProblem(error);
 }
 
 export const [getEditor, setEditor] = createContext<Editor>();

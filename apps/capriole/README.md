@@ -70,6 +70,17 @@ nothing is signed. A signed document is saved by appending (signatures stay vali
 never written anew. The key never leaves the browser; no time stamp (a call to an authority) and no
 trusted roots yet: signers' identity shows as not verified.
 
+On the desktop (phase 11c, `lib/smartcard.ts`, `components/CardSigner.svelte`) the dialog offers a
+smart card too: the card's PKCS#11 module (remembered; the usual ones suggested), the card, its signing
+certificate (read by the engine and shown), the PIN; a time-stamping authority (none by default: no
+service is called unless one is named) and long-term validation — the answers about every chain's
+revocation, fetched from where the certificates say, written into the file, then a document time stamp
+and the answers about its authority (PAdES B-LTA). The dialog says beforehand whom Capriole will call
+and what goes there (the document's digest, the certificates' serial numbers), and afterwards what the
+long term could not get. A signature that fails (a wrong PIN, an authority not answering) leaves the
+document as it was. The signatures panel says whether each signer's certificate is revoked, and whether
+that rests on what the file keeps.
+
 **Redaction** (phase 8g): the tool "Oscura (redaction)" marks what must go — dragging over text marks
 its words, a rectangle elsewhere an area; marks are outlined in red and stay readable until applied
 (they are /Redact annotations: listed, selected, removed like the others). "Applica la redaction (n)"

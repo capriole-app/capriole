@@ -6,7 +6,8 @@
 #   SKIP_TIDY=1 / SKIP_WASM=0   opt out of tidy / opt in to the WASM build+tests (needs EMSDK) and,
 #                               with it, the apps (apps/inspector, apps/capriole: format, type-check, build)
 #   SKIP_DESKTOP=0              with SKIP_WASM=0, also the desktop shell (apps/desktop: cargo clippy on
-#                               the Tauri crate, warnings as errors; needs Rust and WebKitGTK, docs/SETUP.md)
+#                               the Tauri crate, warnings as errors, and its tests — against SoftHSM where
+#                               installed; needs Rust and WebKitGTK, docs/SETUP.md)
 #   SKIP_E2E=0                  with SKIP_WASM=0, also the apps' end-to-end tests (Playwright; needs its
 #                               Chromium: npx playwright install chromium)
 #
@@ -96,13 +97,20 @@ fi
 
 if [[ "${SKIP_DESKTOP:-1}" != 1 ]]; then
   [[ "$SKIP_WASM" != 1 ]] || die "SKIP_DESKTOP=0 needs SKIP_WASM=0: the shell compiles in the web app's build"
-  step "Desktop shell (apps/desktop): cargo clippy"
+  step "Desktop shell (apps/desktop): cargo clippy, cargo test"
   command -v cargo >/dev/null || [[ -x "$HOME/.cargo/bin/cargo" ]] || die "cargo not found — see docs/SETUP.md (rustup)"
   (
     export PATH="$HOME/.cargo/bin:$PATH"
     cd apps/desktop/src-tauri
     cargo clippy --locked --all-targets -- -D warnings
+    cargo test --locked
   )
+  # The smart card against a software token, where SoftHSM is installed (docs/SETUP.md).
+  if [[ -f /usr/lib/softhsm/libsofthsm2.so ]] && command -v pkcs11-tool >/dev/null; then
+    scripts/test_desktop_pkcs11.sh
+  else
+    printf '\033[1;33m(PKCS#11 tests skipped: no SoftHSM, apt install softhsm2 opensc)\033[0m\n'
+  fi
   PATH="$HOME/.cargo/bin:$PATH" python3 scripts/gen_crate_notices.py --check
 fi
 

@@ -1432,12 +1432,12 @@ spostata di (30, 20) e ingrandita da un angolo, il file salvato con il testo com
 matrice, due «Annulla» la riportano; un riquadro eliminato con Canc, annullato; uno portato fuori dalla
 pagina rifiutato in italiano, senza passo di annulla, ancora selezionato dov'era. Gate verde.
 
-## Fase 11 — Firma con smart card e a lungo termine — in corso
+## Fase 11 — Firma con smart card e a lungo termine — ✅ completata (2026-10-09)
 
 CAPRIOLE.md §6.1: la firma qualificata con smart card e la validazione completa sono funzioni dell'app
 desktop; il motore resta senza rete e senza accesso ai dispositivi. **11a** la firma con una chiave che il
 motore non ha ✅ · **11b** ✅ revoca (OCSP, CRL) e firme a lungo termine (B-LT: `/DSS`, `/VRI`; B-LTA: marca
-temporale di documento) nel motore, in scrittura e in verifica · **11c** nell'app desktop: PKCS#11
+temporale di documento) nel motore, in scrittura e in verifica · **11c** ✅ nell'app desktop: PKCS#11
 (`cryptoki`: il modulo del produttore della carta — OpenSC, CNS, CIE), PIN, scelta del certificato; le
 chiamate di rete a TSA, OCSP e CRL, dichiarate nel dialogo. Nessuna carta reale a disposizione (2026-10-09):
 la 11c si prova con SoftHSM, ed è un limite dichiarato.
@@ -1517,6 +1517,35 @@ token 100/100, 52 firme RSA identiche al `.p12`. Rapporto: `CORPORA/reports/ltv-
 Limiti dichiarati: la freschezza delle risposte rispetto al momento della firma non è giudicata (vale
 qualunque risposta valida); la catena del responder OCSP non è controllata oltre l'autorizzazione; niente
 richieste di marca temporale per rinnovare un B-LTA già fatto (un'altra marca di documento lo fa).
+
+**11c (2026-10-09) — smart card e rete nell'app desktop: uscita raggiunta.** Shell (`apps/desktop/src-tauri`):
+`pkcs11.rs` (`cryptoki`: il modulo della carta caricato a ogni chiamata; le carte, i loro certificati senza
+PIN, la firma dopo il PIN con il meccanismo che la carta offre — `CKM_SHA256_RSA_PKCS` o `CKM_RSA_PKCS` sul
+DigestInfo, `CKM_ECDSA` o `CKM_ECDSA_SHA256` —; il PIN come segreto cancellato a fine uso; errori con un codice
+che la pagina dice in italiano: PIN errato, bloccato, modulo, chiave assente, meccanismo) e `net.rs` (`ureq`:
+marca temporale, risposta OCSP, CRL, certificato dell'emittente — solo http/https, 16 MB al massimo, 20 secondi
+—: il motore resta senza rete, e molti di questi servizi non mandano gli header CORS). Quattro comandi, ognuno
+permesso per nome nelle capability (manifest dell'app in `build.rs`), eseguiti fuori dal thread principale.
+Dipendenze nuove in `docs/DEPENDENCIES.md` (licenze tutte permissive, verificate con `cargo metadata`).
+Motore: `capriole_certificate_info_json` (il certificato di una carta). Client del motore: `certificateInfo`,
+`signExternalBegin`/`signExternalValue`/`signFinish`/`signCancel`, `timestampBegin`, `validationNeeds`,
+`addValidationData`, `signatures(data)`. App: `lib/smartcard.ts` (la shell, i messaggi, l'orchestrazione: firma
+sulla carta, marca temporale, risposte sulla revoca — OCSP, altrimenti la CRL; gli emittenti mancanti presi da
+dove il certificato dice —, marca di documento, risposte sulla sua autorità), `CardSigner.svelte` nel dialogo
+di firma solo sul desktop (modulo ricordato e suggerito, carta, certificato letto dal motore, PIN, TSA — nessuna
+per scelta dell'utente: senza indirizzo nessun servizio è chiamato —, validazione a lungo termine; detto prima
+a chi ci si collega e che cosa esce, detto dopo che cosa non si è ottenuto); il pannello delle firme dice la
+revoca. Corretto strada facendo: una firma fallita dopo la preparazione (PIN errato) lasciava nel documento il
+campo della firma, e la successiva non trovava più il suo spazio — ora l'editor riporta il documento a com'era
+(vale anche per il `.p12`; regressione nell'e2e).
+Criterio: test della shell — `cargo test` (i comandi chiamati come li chiama la pagina, attraverso l'IPC con le
+capability vere in un runtime finto: tolta una permission, il test fallisce; la rete contro un server locale) e
+`scripts/test_desktop_pkcs11.sh` (SoftHSM: elenco, firma sul token, PIN errato, chiave assente), nel gate con
+`SKIP_DESKTOP=0`; e2e `e2e/smartcard.test.ts` con la shell simulata (la firma con la chiave di prova in Node, la
+TSA e il responder di OpenSSL): PIN errato detto, nessuna chiamata di rete prima della firma, le richieste
+nell'ordine atteso, il file B-LTA — pyHanko `INTACT:TRUSTED` con modifiche accettabili, `pdfsig` valida —, il
+pannello che dice B-LTA e la revoca verificata nel file. Limite dichiarato: nessuna carta reale provata (non
+disponibile); la shell desktop stessa non gira nei test end-to-end.
 
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 

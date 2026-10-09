@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pkcs11-certificates"
+description = "Enables the pkcs11_certificates command without any pre-configured scope."
+commands.allow = ["pkcs11_certificates"]
+
+[[permission]]
+identifier = "deny-pkcs11-certificates"
+description = "Denies the pkcs11_certificates command without any pre-configured scope."
+commands.deny = ["pkcs11_certificates"]

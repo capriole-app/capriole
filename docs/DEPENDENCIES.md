@@ -80,8 +80,9 @@ permissive licences: `svelte`, `@sveltejs/kit`, `@sveltejs/adapter-static`, `@sv
 a static site does not have.
 
 `apps/capriole` also has the desktop shell's JavaScript APIs, loaded only inside it (dynamic imports):
-`@tauri-apps/plugin-dialog` 2.8.1, `@tauri-apps/plugin-fs` 2.6.0, and `@tauri-apps/api` 2.12.1 through
-them (MIT OR Apache-2.0).
+`@tauri-apps/plugin-dialog` 2.8.1, `@tauri-apps/plugin-fs` 2.6.0, and `@tauri-apps/api` 2.12.1 (MIT OR
+Apache-2.0: through them, and directly for the shell's own commands — smart cards, the network of a
+long-term signature: PLAN.md 11c).
 
 ## Desktop shell (`apps/desktop`, PLAN.md 8c, ADR 0008)
 
@@ -91,6 +92,8 @@ them (MIT OR Apache-2.0).
 | `tauri-build` | 2.x | MIT OR Apache-2.0 | build script (capabilities, context) |
 | `tauri-plugin-dialog`, `tauri-plugin-fs` | 2.x | MIT OR Apache-2.0 | system open/save dialogs; reading and writing the files picked in them |
 | Tauri's transitive crates | pinned by `src-tauri/Cargo.lock` | mostly MIT/Apache-2.0; **MPL-2.0**: `cssparser`, `cssparser-macros`, `selectors`, `dtoa-short` (via `tauri-utils` → `dom_query`), `option-ext` (via `dirs`) | brought by Tauri itself (ADR 0008); MPL-2.0 is file-level copyleft: used unmodified, their source linked in the app's «Licenze» page (`scripts/gen_crate_notices.py` → `apps/desktop/crate-notices.json`) |
+| `cryptoki` (+ `cryptoki-sys`) | 0.12.1 (0.5.0) | Apache-2.0 | PKCS#11 (PLAN.md 11c): the smart card's own module (OpenSC, the CNS or CIE middleware), loaded at run time with `libloading` (ISC): the shell lists tokens and certificates and has the card sign; `secrecy`, `zeroize` (Apache-2.0 OR MIT) keep the PIN |
+| `ureq` (+ `ureq-proto`, `utf8-zero`) | 3.4.2 | MIT OR Apache-2.0 | HTTP from the shell only (11c): time stamps, OCSP, CRLs, issuers' certificates — the engine makes no network calls; TLS by `rustls` (Apache-2.0 OR ISC OR MIT) on `ring` (Apache-2.0 AND ISC), `rustls-webpki`, `untrusted` (ISC), `subtle` (BSD-3-Clause), with the root certificates of `webpki-roots` (CDLA-Permissive-2.0: Mozilla's list, permissive) |
 | `@tauri-apps/cli` (npm) | 2.12.1 | MIT OR Apache-2.0 | `tauri dev` / `tauri build` (prebuilt binary) |
 
 The crates' own dependencies (a few hundred, as for any Tauri app) are pinned by `Cargo.lock`; their

@@ -35,10 +35,10 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 10a Modello della pagina nel motore | ✅ | 100/100 pagine: copertura e provenienza; 9a/9b/9d invariati |
 | 10b Spostare, ridimensionare, eliminare immagini e disegni (motore) | ✅ | 100/100 oggetti (Capriole, Poppler, MuPDF) |
 | 10c «Seleziona e sposta» su immagini e disegni nell'app | ✅ | e2e: sposta, ridimensiona, elimina, salva, annulla, rifiuto |
-| **Fase 11 — firma con smart card e a lungo termine** | | CAPRIOLE.md §6.1 |
+| **Fase 11 — firma con smart card e a lungo termine** | ✅ | CAPRIOLE.md §6.1 |
 | 11a Firma con una chiave fuori dal motore | ✅ | 100/100 file firmati con le chiavi su un token PKCS#11 (SoftHSM); RSA identica byte per byte al `.p12` |
 | 11b Revoca OCSP/CRL e firme B-LT, B-LTA nel motore | ✅ | 100/100 file B-LTA: pyHanko, Capriole dai soli dati del file, pdfsig; il revocato revocato per tutti |
-| 11c Smart card e rete nell'app desktop | 🔜 | prova solo con SoftHSM: nessuna carta reale a disposizione |
+| 11c Smart card e rete nell'app desktop | ✅ | SoftHSM nei test della shell; e2e con la shell simulata: B-LTA valido per pyHanko e pdfsig. Nessuna carta reale provata |
 | Segnalazione anonimizzata dei file problematici | ⬜ | CAPRIOLE.md §8 |
 | Distribuzione: Flathub, hosting web, self-hosted | ⬜ | CAPRIOLE.md §3 |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |
