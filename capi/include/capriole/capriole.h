@@ -279,6 +279,17 @@ capriole_status capriole_document_page_replace_text(capriole_document* document,
 capriole_status capriole_document_page_replace_paragraph(capriole_document* document, uint32_t page_index, const char* spec_json, char** json);
 
 /*
+ * Moves, resizes or deletes an image, a drawing or a shading of the page — an element of
+ * capriole_document_page_model_json, by its index there (PLAN.md phase 10b; edit/object_edit.hpp): spec_json
+ * {"element": n, "move": [dx, dy]} | {"element": n, "box": [x0,y0,x1,y1]} | {"element": n, "delete": true}
+ * (the page as shown). Only its operators change. *json: {"operators": n (changed or taken out), "box":
+ * [x0,y0,x1,y1] (where it is now)}. Refused (CAPRIOLE_ERROR_UNSUPPORTED, "cannot edit the object: …"): text,
+ * annotations, off the page, out of a clip that holds it, a path that clips others too, a soft mask;
+ * CAPRIOLE_ERROR_OUT_OF_RANGE: no such element.
+ */
+capriole_status capriole_document_page_object_edit(capriole_document* document, uint32_t page_index, const char* spec_json, char** json);
+
+/*
  * Converts the document to PDF/A (PLAN.md phase 8i; edit/pdfa.hpp): spec_json {"part": 2 | 3 | 0 (2, or 3
  * with embedded files), "date": PDF date (required)}. *data receives the file, written in full; *json what
  * was put right, {"part", "changes": [text…]}. The document is reopened from the file. A document that

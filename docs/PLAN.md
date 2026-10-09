@@ -1356,7 +1356,7 @@ pagina piena il rifiuto «andrebbe oltre il fondo della pagina (servono 14 pt, c
 
 ---
 
-## Fase 10 — Modello alto della pagina e oggetti — 🔜 in corso (10a ✅)
+## Fase 10 — Modello alto della pagina e oggetti — 🔜 in corso (10a ✅, 10b ✅)
 
 Il modello alto di CAPRIOLE.md §5.2, costruito attorno a un primo uso: selezionare, spostare, ridimensionare
 ed eliminare immagini e disegni. **10a** il modello nel motore ✅ · **10b** le modifiche agli oggetti nel
@@ -1388,6 +1388,36 @@ il suo riquadro (2 pixel di margine). **100/100**, 1967 elementi tolti e ridiseg
 paragrafi in 480 colonne, 225 elementi nel piè di pagina e 21 in testata. Il controllo riconosce un riquadro
 sbagliato (lo stesso elemento con il riquadro abbassato di metà altezza: centinaia di pixel fuori). Report
 `CORPORA/reports/page-model-all-20261009-121114`.
+
+**10b (2026-10-09) — spostare, ridimensionare, eliminare immagini e disegni, nel motore: uscita
+raggiunta.** `edit/object_edit` (`edit_object(document, page, {element, move | resize | delete})`): un
+elemento del modello — immagine, disegno, sfumatura — si sposta, si ridimensiona (al riquadro chiesto, in
+ciascun verso; un tracciato tiene lo spessore della linea) o si elimina, toccando solo i suoi operatori: le
+coordinate dei tracciati riscritte (un rettangolo girato diventa i suoi quattro vertici), immagini, forme e
+sfumature disegnate attraverso una matrice attorno (`q … cm … Q`), una forma tutta dell'elemento spostata
+intera dal suo `Do`, una forma cambiata copiata (chi la disegna altrove tiene l'originale). Il ritaglio che
+ritaglia solo l'elemento va con lui; un tracciato eliminato che ritaglia anche ciò che segue continua a
+ritagliare (`n`). Rifiuti (`cannot edit the object: …`): testo, annotazioni, fuori dalla pagina, fuori da un
+ritaglio che lo contiene e resta (una cornice, il riquadro di una forma), un tracciato che ritaglia anche
+altro, una maschera morbida. È la stessa scrittura della 9d (`apply_move`), generalizzata da uno
+spostamento a una matrice, più l'eliminazione. API C `capriole_document_page_object_edit` (anche in WASM),
+`cpdf object-edit`, `cpdf model --only` e `--only-sources` (per il controllo), fuzzing `fuzz_object_edit`
+(10 minuti, 93 mila esecuzioni, nessun crash).
+Il controllo ha trovato un difetto del modello della 10a: le sfumature di un logo (ritagliate dalle sue
+forme) erano elementi a sé, e ridimensionando la «figura» si rimpicciolivano solo i contorni. Ora una
+sfumatura che tocca dei tracciati è un disegno con loro (test di regressione); il controllo della 10a,
+rilanciato, ancora 100/100 (`page-model-all-20261009-125858`).
+Criterio: `corpus-tools/check_object_edit.py` su 100 pagine dei corpora — l'immagine o il disegno più grande
+della pagina (non uno sfondo) a turno spostato di (15, 10), ridimensionato all'80% o eliminato; Capriole,
+Poppler e MuPDF disegnano la pagina come prima fuori da dove era e da dove è; disegnato da solo, l'oggetto
+è dove doveva andare (dei pixel attesi, quelli disegnati ≥ 90%); eliminato, la pagina è quella disegnata
+senza di lui; Poppler e MuPDF lo disegnano come Capriole (se già prima concordavano); testo invariato, qpdf
+non peggiore. **100/100** (39 spostati, 30 ridimensionati, 31 eliminati: 42 immagini, 26 figure, 20
+tabelle, 12 riquadri); un rifiuto su 101 tentativi (un'immagine che uscirebbe dalla cornice che la ritaglia).
+Report `CORPORA/reports/object-edit-all-20261009-130141`. Messo a punto strada facendo il controllo, non il
+motore: un oggetto spostato accanto a un altro si unisce a lui nel modello nuovo (si guardano i suoi
+operatori); un'immagine ridimensionata è ricampionata da ciascun lettore (si confronta senza i bordi, che
+Poppler allinea ai pixel); dove i lettori già prima disegnavano diversamente si chiede di non peggiorare.
 
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 

@@ -32,6 +32,7 @@ add_executable(capriole_unit_tests
   unit/font_extend_test.cpp
   unit/paragraph_move_test.cpp
   unit/page_model_test.cpp
+  unit/object_edit_test.cpp
   unit/blend_test.cpp
   unit/ccitt_test.cpp
   unit/dct_test.cpp

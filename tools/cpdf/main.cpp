@@ -87,6 +87,12 @@ void print_usage() {
                "  model <file> <page>  the page's model as JSON (capi/README.md: paragraphs, elements, columns)\n"
                "  model --without N[,N]... [--dpi N] <file> <page> <output.png>\n"
                "                  draw the page without those elements (their commands; a paragraph's glyphs)\n"
+               "  model --only N[,N]... [--dpi N] <file> <page> <output.png>   draw those elements alone\n"
+               "  model --only-sources I:O[,I:O]... [--dpi N] <file> <page> <output.png>\n"
+               "                  draw alone what those operators draw (invocation:operator, as the model's sources)\n"
+               "  object-edit <file> <page> <json> <output>\n"
+               "                  move, resize or delete an element of the page's model (an image, a drawing):\n"
+               "                  {\"element\":n,\"move\":[dx,dy]} | {\"element\":n,\"box\":[x0,y0,x1,y1]} | {\"element\":n,\"delete\":true}\n"
                "  rotate [--incremental] <file> <pages> <degrees> <output>\n"
                "                  rotate pages by a multiple of 90 degrees (clockwise; negative: counter)\n"
                "  arrange [--incremental] <file> <pages> <output>\n"
@@ -879,6 +885,28 @@ int cmd_edit_text(std::span<char* const> args) {
   return save_capi(document, args[4]);
 }
 
+// object-edit <file> <page> <json> <output>: an element of the page's model moved, resized or deleted (capi/README.md).
+int cmd_object_edit(std::span<char* const> args) {
+  const auto page = parse_uint(args[1]);
+  if (!page || *page == 0 || *page > 0xFFFFFFFFULL) {
+    print_usage();
+    return kExitUsage;
+  }
+  capriole_document* document = open_capi(args[0]);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  char* json = nullptr;
+  if (capriole_document_page_object_edit(document, static_cast<std::uint32_t>(*page - 1), args[2], &json) != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: object-edit: {}\n", args[0], capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  return save_capi(document, args[3]);
+}
+
 // text --json: the page's text as the C API gives it (capi/README.md: blocks, lines, words, characters).
 int cmd_text_json(const char* path, std::uint64_t page_number, capriole::text::Order order) {
   if (page_number == 0 || page_number > 0xFFFFFFFFULL) {
@@ -927,7 +955,7 @@ int cmd_model_json(const char* path, std::uint64_t page_number) {
 // model --without N[,N]...: the page drawn without some of its model's elements — the commands that draw
 // them left out, a paragraph's glyphs taken out of its runs (others' stay) — to see that each element is
 // what its commands draw (corpus-tools/check_page_model.py).
-int cmd_model_without(std::string_view path, std::uint64_t page_number, std::string_view which, std::string_view output, double dpi) {
+int cmd_model_without(std::string_view path, std::uint64_t page_number, std::string_view which, std::string_view output, double dpi, bool only, bool sources) {
   auto document = open_document(path);
   if (!document) {
     return fail(path, document.error());
@@ -953,7 +981,7 @@ int cmd_model_without(std::string_view path, std::uint64_t page_number, std::str
     return kExitFailure;
   }
   std::set<std::tuple<std::size_t, std::uint32_t>> glyphs;  // a paragraph's: (command, byte)
-  for (std::string_view rest = which; !rest.empty();) {
+  for (std::string_view rest = sources ? std::string_view() : which; !rest.empty();) {
     const std::size_t comma = rest.find(',');
     const auto n = parse_uint(rest.substr(0, comma));
     if (!n || *n >= model->elements.size()) {
@@ -975,16 +1003,50 @@ int cmd_model_without(std::string_view path, std::uint64_t page_number, std::str
         }
       }
       for (const std::size_t command : element.commands) {
-        if (!showing.contains(command)) {
+        if (!showing.contains(command) && !only) {
           list->commands[command] = capriole::graphics::FillPath{};
         }
       }
-    } else {
+    } else if (!only) {
       for (const std::size_t command : element.commands) {
         list->commands[command] = capriole::graphics::FillPath{};
       }
     }
     rest = comma == std::string_view::npos ? std::string_view() : rest.substr(comma + 1);
+  }
+  if (only) {
+    // The others: everything drawn but what the elements draw (their glyphs only, in runs shared), or but
+    // what operators draw (sources: invocation:operator).
+    std::set<std::size_t> theirs;
+    for (std::string_view rest = which; !rest.empty();) {
+      const std::size_t comma = rest.find(',');
+      const std::string_view item = rest.substr(0, comma);
+      if (sources) {
+        const std::size_t colon = item.find(':');
+        const auto inv = parse_uint(item.substr(0, colon));
+        const auto op = colon == std::string_view::npos ? std::nullopt : parse_uint(item.substr(colon + 1));
+        for (std::size_t c = 0; c < model->list.origins.size() && inv && op; ++c) {
+          if (model->list.origins[c].invocation == *inv && model->list.origins[c].operation == *op) {
+            theirs.insert(c);
+          }
+        }
+      } else {
+        const auto& element = model->elements[*parse_uint(item)];
+        theirs.insert(element.commands.begin(), element.commands.end());
+      }
+      rest = comma == std::string_view::npos ? std::string_view() : rest.substr(comma + 1);
+    }
+    for (std::size_t command = 0; command < list->commands.size(); ++command) {
+      const auto& c = list->commands[command];
+      const bool drawing = std::holds_alternative<capriole::graphics::FillPath>(c) || std::holds_alternative<capriole::graphics::StrokePath>(c) ||
+                           std::holds_alternative<capriole::graphics::Boxed<capriole::graphics::DrawImage>>(c) ||
+                           std::holds_alternative<capriole::graphics::Boxed<capriole::graphics::PaintShading>>(c) ||
+                           std::holds_alternative<capriole::graphics::Boxed<capriole::graphics::PaintTiling>>(c) ||
+                           std::holds_alternative<capriole::graphics::Boxed<capriole::graphics::ShowText>>(c);
+      if (drawing && !theirs.contains(command)) {
+        list->commands[command] = capriole::graphics::FillPath{};
+      }
+    }
   }
   for (std::size_t command = 0; command < list->commands.size(); ++command) {
     const auto* run = std::get_if<capriole::graphics::Boxed<capriole::graphics::ShowText>>(&list->commands[command]);
@@ -992,7 +1054,10 @@ int cmd_model_without(std::string_view path, std::uint64_t page_number, std::str
       continue;
     }
     capriole::graphics::ShowText kept = **run;
-    std::erase_if(kept.glyphs, [&](const capriole::graphics::Glyph& g) { return glyphs.contains({command, g.byte}); });
+    const bool shared = only && std::ranges::any_of(kept.glyphs, [&](const capriole::graphics::Glyph& g) { return glyphs.contains({command, g.byte}); });
+    std::erase_if(kept.glyphs, [&](const capriole::graphics::Glyph& g) {
+      return only ? shared && !glyphs.contains({command, g.byte}) : glyphs.contains({command, g.byte});
+    });
     if (kept.glyphs.size() != (*run)->glyphs.size()) {
       list->commands[command] = capriole::graphics::Boxed<capriole::graphics::ShowText>(std::move(kept));
     }
@@ -1559,12 +1624,16 @@ int run(std::span<char*> args) {
       }
     }
   }
+  if (command == "object-edit" && args.size() == 6) {
+    return cmd_object_edit(args.subspan(2));
+  }
   if (command == "model") {
     if (args.size() == 4) {
       if (const auto page = parse_uint(args[3])) {
         return cmd_model_json(args[2], *page);
       }
-    } else if (args.size() >= 7 && std::string_view(args[2]) == "--without") {
+    } else if (args.size() >= 7 &&
+               (std::string_view(args[2]) == "--without" || std::string_view(args[2]) == "--only" || std::string_view(args[2]) == "--only-sources")) {
       std::optional<std::uint64_t> dpi = 72;
       std::size_t i = 4;
       if (std::string_view(args[i]) == "--dpi") {
@@ -1573,7 +1642,8 @@ int run(std::span<char*> args) {
       }
       if (i + 3 == args.size()) {
         if (const auto page = parse_uint(args[i + 1]); page && dpi && *dpi > 0 && *dpi <= 600) {
-          return cmd_model_without(args[i], *page, args[3], args[i + 2], static_cast<double>(*dpi));
+          const std::string_view mode = args[2];
+          return cmd_model_without(args[i], *page, args[3], args[i + 2], static_cast<double>(*dpi), mode != "--without", mode == "--only-sources");
         }
       }
     }

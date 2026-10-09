@@ -163,6 +163,32 @@ TEST(PageModel, DrawingsAreGroupedByWhatTheyTouchAndNamed) {
   EXPECT_NEAR(images[0]->box.y0, 80, 0.01);
 }
 
+// A logo: gradients clipped by its shapes, and the shapes' outlines — one drawing (found by
+// corpus-tools/check_object_edit.py: resized, the outlines went and the gradients stayed). A gradient alone
+// is a shading.
+TEST(PageModel, AShadingAndThePathsItTouchesAreOneDrawing) {
+  test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3,
+               "<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 400]/Contents 4 0 R/Resources<</Shading<</Sh1<</ShadingType 2/ColorSpace/DeviceRGB"
+               "/Coords[0 0 1 0]/Function<</FunctionType 2/Domain[0 1]/C0[1 0 0]/C1[0 0 1]/N 1>>>>>>>>>>");
+  b.add_stream(4,
+               "q 20 300 60 40 re W n 60 0 0 40 20 300 cm /Sh1 sh Q 0.5 w 20 300 60 40 re S\n"
+               "q 200 100 50 50 re W n 50 0 0 50 200 100 cm /Sh1 sh Q\n");
+  b.finish_table("/Root 1 0 R");
+  Document document = open(b.str());
+  auto model = page_model(document, 0);
+  ASSERT_TRUE(model.has_value());
+  expect_covered(*model);
+  const auto drawings = of_kind(*model, Kind::kDrawing);
+  ASSERT_EQ(drawings.size(), 1U);
+  EXPECT_EQ(drawings[0]->commands.size(), 2U);  // the gradient and its outline
+  const auto shadings = of_kind(*model, Kind::kShading);
+  ASSERT_EQ(shadings.size(), 1U);
+  EXPECT_NEAR(shadings[0]->box.x0, 200, 0.01);
+}
+
 TEST(PageModel, AStrokesBoxHoldsItsWidth) {
   const PageModel m = model_of("10 w 100 100 m 200 100 l S\n");
   const auto drawings = of_kind(m, Kind::kDrawing);

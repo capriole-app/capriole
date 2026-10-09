@@ -36,6 +36,7 @@ add_library(capriole_engine STATIC
   src/edit/content_move.cpp
   src/edit/content_rewrite.cpp
   src/edit/forms.cpp
+  src/edit/object_edit.cpp
   src/edit/pages.cpp
   src/edit/redact.cpp
   src/edit/sign.cpp

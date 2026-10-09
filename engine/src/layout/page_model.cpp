@@ -261,8 +261,8 @@ Result<PageModel> page_model(Document& document, std::uint32_t page_index, const
     elements.push_back(std::move(e));
   }
 
-  // Images and shadings, each on its own; paths grouped by what they touch (a table's lines, a figure's
-  // shapes) — not what lies clear inside another (a rule in a box) —, a background on its own.
+  // Images each on its own; paths and shadings grouped by what they touch (a table's lines, a figure's shapes
+  // and gradients) — not what lies clear inside another (a rule in a box) —, a background on its own.
   const auto background = [&](const detail::Item& item) {
     return item.plain && item.box.width() >= kBackground * model.width && item.box.height() >= kBackground * model.height;
   };
@@ -326,7 +326,12 @@ Result<PageModel> page_model(Document& document, std::uint32_t page_index, const
         elements.push_back(element_of(Kind::kImage, background(item) ? Role::kBackground : Role::kFigure, item.box, {item.command}));
         break;
       case detail::Item::Kind::kShading:
-        elements.push_back(element_of(Kind::kShading, background(item) ? Role::kBackground : Role::kFigure, item.box, {item.command}));
+        // A shading is often a figure's colour (a logo's gradients, inside its paths): grouped with them.
+        if (background(item)) {
+          elements.push_back(element_of(Kind::kShading, Role::kBackground, item.box, {item.command}));
+        } else {
+          paths.push_back(k);
+        }
         break;
       case detail::Item::Kind::kStroke:
         if (const auto* stroke = std::get_if<graphics::StrokePath>(&dl.commands[item.command])) {
@@ -381,7 +386,10 @@ Result<PageModel> page_model(Document& document, std::uint32_t page_index, const
         box = united(box, drawn.items[k].box);
         covered = united(covered, ink[k]);
       }
-      elements.push_back(element_of(Kind::kDrawing, drawing_role(items, dl, box), covered, std::move(commands)));
+      // Shadings alone are one; with paths, a drawing.
+      const bool shadings = std::ranges::all_of(items, [](const detail::Item* item) { return item->kind == detail::Item::Kind::kShading; });
+      elements.push_back(
+          element_of(shadings ? Kind::kShading : Kind::kDrawing, shadings ? Role::kFigure : drawing_role(items, dl, box), covered, std::move(commands)));
     }
   }
   for (std::size_t k = drawn.operators; k < drawn.items.size(); ++k) {

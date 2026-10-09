@@ -439,6 +439,36 @@ TEST(CApiDocument, ParagraphEdit) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, PageModelAndObjectEdit) {
+  capriole::test::PdfBuilder b;
+  b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");
+  b.add_object(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+  b.add_object(3, "<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R>>");
+  b.add_stream(4, "1 0 0 rg 20 100 60 40 re f");
+  b.finish_table("/Size 5/Root 1 0 R");
+  capriole_document* document = open_document(b.str());
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_page_model_json(document, 0, &json), CAPRIOLE_OK) << capriole_last_error_message();
+  const std::string model = take_json(json);
+  EXPECT_NE(
+      model.find(
+          R"("elements":[{"kind":"drawing","role":"box","zone":"body","box":[20.00,60.00,80.00,100.00],"commands":[0],"sources":[[0,2]],"column":null}])"),
+      std::string::npos)
+      << model;
+  for (const char* bad : {"", "{}", R"({"element":-1,"delete":true})", R"({"element":0})", R"({"element":0,"move":[1]})", R"({"element":0,"box":[1,2,3]})"}) {
+    SCOPED_TRACE(bad);
+    EXPECT_NE(capriole_document_page_object_edit(document, 0, bad, &json), CAPRIOLE_OK);
+  }
+  EXPECT_EQ(capriole_document_page_object_edit(document, 0, R"({"element":5,"delete":true})", &json), CAPRIOLE_ERROR_OUT_OF_RANGE);
+  ASSERT_EQ(capriole_document_page_object_edit(document, 0, R"({"element":0,"move":[10,-20]})", &json), CAPRIOLE_OK) << capriole_last_error_message();
+  EXPECT_EQ(take_json(json), R"({"operators":1,"box":[30.0,40.0,90.0,80.0]})");
+  ASSERT_EQ(capriole_document_page_object_edit(document, 0, R"({"element":0,"delete":true})", &json), CAPRIOLE_OK) << capriole_last_error_message();
+  EXPECT_EQ(take_json(json), R"({"operators":1,"box":[30.0,40.0,90.0,80.0]})");
+  ASSERT_EQ(capriole_document_page_model_json(document, 0, &json), CAPRIOLE_OK);
+  EXPECT_NE(take_json(json).find(R"("elements":[])"), std::string::npos);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, Redaction) {
   capriole::test::PdfBuilder b;
   b.add_object(1, "<</Type/Catalog/Pages 2 0 R>>");

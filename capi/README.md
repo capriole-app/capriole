@@ -264,6 +264,30 @@ behind, or when something is drawn across the paragraph's bottom (a box, a table
 lines of two blocks, text that is not horizontal, invisible text, an annotation's text, superscripts and
 subscripts. `CAPRIOLE_ERROR_OUT_OF_RANGE`: no text in the area.
 
+## Editing objects
+
+`capriole_document_page_object_edit(document, page, spec, &json)` moves, resizes or deletes an image, a
+drawing or a shading — an element of `capriole_document_page_model_json`, by its index there (phase 10b):
+
+```json
+{"element": 12, "move": [15, 10]}
+{"element": 12, "box": [100, 200, 180, 260]}
+{"element": 12, "delete": true}
+```
+
+The page as shown (points, y down): `move` by (dx, dy), `box` the element's new box (scaled to it each way;
+a path keeps its line's width), `delete`. The result: `{"operators": 3, "box": [x0, y0, x1, y1]}` — the
+operators changed or taken out, and where the element is now. Only its operators change: a path's
+coordinates are written anew (a rectangle turned becomes its four corners), an image, a form or a shading
+is drawn through a matrix around it (`q a b c d e f cm … Q`), a form all of whose drawing is the element's
+is moved whole by its `Do`, a form changed is copied (the pages and forms that draw it elsewhere keep the
+original). A clip that clips the element alone goes with it; a deleted path that also clips what follows
+keeps clipping (`n`). Refused (`CAPRIOLE_ERROR_UNSUPPORTED`, "cannot edit the object: …"): text (a paragraph
+is edited as text), annotations, off the page, out of a clip that holds it and does not move (a frame, a
+form's bounding box), a path that clips others too (moved or resized), a soft mask that does not move;
+`CAPRIOLE_ERROR_OUT_OF_RANGE`: no such element. The model is read again after an edit: elements may group
+anew (an object moved next to another touches it).
+
 ## Fonts for embedded subsets
 
 `capriole_font_add(data, size, &json)` gives the engine a full TrueType font (a `.ttf`, an `.otf` with

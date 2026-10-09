@@ -59,6 +59,8 @@ bool within(const Rect& inner, const Rect& outer) {
   return inner.x0 >= outer.x0 - kSlack && inner.y0 >= outer.y0 - kSlack && inner.x1 <= outer.x1 + kSlack && inner.y1 <= outer.y1 + kSlack;
 }
 
+Matrix translation(Point by) { return Matrix{1, 0, 0, 1, by.x, by.y}; }
+
 // Down by `by` as shown, in the user space that ctm maps onto the page (nullopt: a singular matrix).
 std::optional<Point> shift_in(const Matrix& ctm, const Matrix& to_view, double by) {
   const auto inverse = ctm.then(to_view).inverse();
@@ -465,7 +467,7 @@ Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const M
       }
       auto& edit = plan.edits[outer.parent][outer.operation];
       if (edit.kind != OpMove::Kind::kWrap || !edit.moved) {
-        edit = OpMove{.kind = OpMove::Kind::kWrap, .shift = *shift, .tm = {}, .moved = true};
+        edit = OpMove{.kind = OpMove::Kind::kWrap, .matrix = translation(*shift), .tm = {}, .moved = true};
         ++moved_items;
       }
       continue;
@@ -498,12 +500,12 @@ Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const M
       Matrix tm = (*run)->tm;
       tm.e += shift->x;
       tm.f += shift->y;
-      plan.edits[inv][op] = OpMove{.kind = OpMove::Kind::kText, .shift = *shift, .tm = tm, .moved = true};
+      plan.edits[inv][op] = OpMove{.kind = OpMove::Kind::kText, .matrix = translation(*shift), .tm = tm, .moved = true};
       texts.insert(inv);
     } else if (path_painting(n)) {
-      plan.edits[inv][op] = OpMove{.kind = OpMove::Kind::kPath, .shift = *shift, .tm = {}, .moved = true};
+      plan.edits[inv][op] = OpMove{.kind = OpMove::Kind::kPath, .matrix = translation(*shift), .tm = {}, .moved = true};
     } else if (n == "Do" || n == "sh" || n == "BI") {
-      plan.edits[inv][op] = OpMove{.kind = OpMove::Kind::kWrap, .shift = *shift, .tm = {}, .moved = true};
+      plan.edits[inv][op] = OpMove{.kind = OpMove::Kind::kWrap, .matrix = translation(*shift), .tm = {}, .moved = true};
     } else {
       return refused(std::format("an operator below it ({}) cannot be moved", n));
     }
@@ -523,7 +525,7 @@ Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const M
     if (!shift) {
       return refused("a clip below it has a singular matrix");
     }
-    plan.edits[clip.invocation][clip.operation] = OpMove{.kind = OpMove::Kind::kPath, .shift = *shift, .tm = {}, .moved = true};
+    plan.edits[clip.invocation][clip.operation] = OpMove{.kind = OpMove::Kind::kPath, .matrix = translation(*shift), .tm = {}, .moved = true};
   }
   // The other text of a content stream whose text moves keeps its place, set where it was.
   for (std::size_t k = 0; k < drawn; ++k) {
@@ -532,7 +534,7 @@ Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const M
       continue;
     }
     if (const auto* run = std::get_if<graphics::Boxed<graphics::ShowText>>(&list->commands[item.command])) {
-      plan.edits[item.invocation].try_emplace(item.operation, OpMove{.kind = OpMove::Kind::kText, .shift = {}, .tm = (*run)->tm, .moved = false});
+      plan.edits[item.invocation].try_emplace(item.operation, OpMove{.kind = OpMove::Kind::kText, .matrix = {}, .tm = (*run)->tm, .moved = false});
     }
   }
   for (const auto& [inv, edits] : plan.edits) {
@@ -559,33 +561,55 @@ namespace {
 // A content stream with the operators moved as the edits say (and Do renamed: forms copied).
 std::string moved_content(const std::vector<content::Operation>& ops, const std::map<std::uint32_t, OpMove>& edits,
                           const std::map<std::uint32_t, std::string>& renamed) {
-  // The painting operator each path construction operator belongs to.
+  // The painting operator each path construction operator (and W, W*) belongs to, and those that clip.
   std::map<std::size_t, std::size_t> owner;
+  std::set<std::size_t> clipping;
   {
     std::vector<std::size_t> pending;
+    bool clips = false;
     for (std::size_t i = 0; i < ops.size(); ++i) {
-      if (path_construction(ops[i].name)) {
+      if (path_construction(ops[i].name) || ops[i].name == "W" || ops[i].name == "W*") {
         pending.push_back(i);
+        clips = clips || ops[i].name == "W" || ops[i].name == "W*";
       } else if (path_painting(ops[i].name)) {
         for (const std::size_t p : pending) {
           owner[p] = i;
         }
+        if (clips) {
+          clipping.insert(i);
+        }
         pending.clear();
+        clips = false;
       }
     }
   }
-  const auto moved_path = [&](const content::Operation& op, Point shift) {
+  const auto moved_path = [&](const content::Operation& op, const Matrix& m) {
+    if (op.name == "W" || op.name == "W*" || op.name == "h") {
+      return op.name;
+    }
     std::vector<double> v;
     v.reserve(op.operands.size());
     for (const Object& operand : op.operands) {
       v.push_back(operand.as_number().value_or(0));
     }
-    const std::size_t pairs = op.name == "re" ? 1 : v.size() / 2;
-    for (std::size_t k = 0; k < pairs && (2 * k) + 1 < v.size(); ++k) {
-      v[2 * k] += shift.x;
-      v[(2 * k) + 1] += shift.y;
-    }
     std::string out;
+    if (op.name == "re" && v.size() == 4 && (m.b != 0 || m.c != 0)) {
+      // Turned: a rectangle no more, its corners.
+      const std::array<Point, 4> corners = {m.apply(Point{v[0], v[1]}), m.apply(Point{v[0] + v[2], v[1]}), m.apply(Point{v[0] + v[2], v[1] + v[3]}),
+                                            m.apply(Point{v[0], v[1] + v[3]})};
+      return std::format("{} {} m {} {} l {} {} l {} {} l h", num(corners[0].x), num(corners[0].y), num(corners[1].x), num(corners[1].y), num(corners[2].x),
+                         num(corners[2].y), num(corners[3].x), num(corners[3].y));
+    }
+    if (op.name == "re" && v.size() == 4) {
+      const Point at = m.apply(Point{v[0], v[1]});
+      v = {at.x, at.y, m.a * v[2], m.d * v[3]};
+    } else {
+      for (std::size_t k = 0; (2 * k) + 1 < v.size(); ++k) {
+        const Point p = m.apply(Point{v[2 * k], v[(2 * k) + 1]});
+        v[2 * k] = p.x;
+        v[(2 * k) + 1] = p.y;
+      }
+    }
     for (const double x : v) {
       out += num(x) + " ";
     }
@@ -605,8 +629,11 @@ std::string moved_content(const std::vector<content::Operation>& ops, const std:
     if (const auto o = owner.find(i); o != owner.end()) {
       const auto e = edits.find(static_cast<std::uint32_t>(o->second));
       if (e != edits.end() && e->second.kind == OpMove::Kind::kPath) {
-        out += moved_path(op, e->second.shift) + "\n";
+        out += moved_path(op, e->second.matrix) + "\n";
         continue;
+      }
+      if (e != edits.end() && e->second.kind == OpMove::Kind::kDelete && !clipping.contains(o->second)) {
+        continue;  // the path of a painting taken out
       }
     }
     const auto e = edits.find(static_cast<std::uint32_t>(i));
@@ -615,8 +642,15 @@ std::string moved_content(const std::vector<content::Operation>& ops, const std:
       continue;
     }
     const OpMove& edit = e->second;
+    if (edit.kind == OpMove::Kind::kDelete) {
+      if (clipping.contains(i)) {
+        out += "n\n";  // it clips what follows: it keeps clipping, painting nothing
+      }
+      continue;
+    }
     if (edit.kind == OpMove::Kind::kWrap) {
-      out += std::format("q 1 0 0 1 {} {} cm\n{}\nQ\n", num(edit.shift.x), num(edit.shift.y), drawn(i));
+      const Matrix& m = edit.matrix;
+      out += std::format("q {} {} {} {} {} {} cm\n{}\nQ\n", num(m.a), num(m.b), num(m.c), num(m.d), num(m.e), num(m.f), drawn(i));
       continue;
     }
     if (edit.kind == OpMove::Kind::kText) {

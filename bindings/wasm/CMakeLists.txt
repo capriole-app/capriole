@@ -24,6 +24,7 @@ set(_capriole_exports
   _capriole_document_page_render
   _capriole_document_page_text_json
   _capriole_document_page_model_json
+  _capriole_document_page_object_edit
   _capriole_document_stream_data
   _capriole_document_save
   _capriole_document_save_compact

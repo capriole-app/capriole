@@ -84,7 +84,7 @@ enum class Kind : std::uint8_t {
   kGlyphs,  // text with nothing to read in it (spaces, glyphs whose font does not say what they are)
   kImage,
   kDrawing,
-  kShading,  // a shading or a pattern painted over a clip
+  kShading,  // shadings or patterns painted over clips, alone (with paths they touch: a drawing)
   kAnnotation,
 };
 

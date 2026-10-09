@@ -35,15 +35,16 @@ struct MoveRequest {
   std::vector<graphics::Rect> glyphs;
 };
 
-// How an operator is moved.
+// How an operator is moved (or taken out).
 struct OpMove {
   enum class Kind : std::uint8_t {
-    kPath,  // a path painted or clipping: its construction operators' coordinates moved by shift
-    kWrap,  // an image, a form, a shading (Do, inline image, sh): drawn translated by shift (q … cm … Q)
-    kText,  // text shown: at tm (moved: by shift), set before it once text of its BT … ET moved
+    kPath,    // a path painted or clipping: its construction operators' coordinates through matrix
+    kWrap,    // an image, a form, a shading (Do, inline image, sh): drawn through matrix (q … cm … Q)
+    kText,    // text shown: at tm, set before it once text of its BT … ET moved
+    kDelete,  // taken out: a path with its construction (one that also clips keeps clipping: n), Do, BI, sh
   };
   Kind kind = Kind::kPath;
-  graphics::Point shift;  // in the operator's user space
+  graphics::Matrix matrix;  // in the operator's user space
   graphics::Matrix tm;
   bool moved = false;
 };
@@ -64,7 +65,8 @@ struct MovePlan {
 // paragraph's bottom (a box, a table, a rule).
 [[nodiscard]] Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const MoveRequest& request);
 
-// Moves it (the page's content written anew; forms changed are copied).
+// Moves it (the page's content written anew; forms changed are copied). Any plan of OpMove edits is applied
+// so (edit/object_edit too).
 [[nodiscard]] Result<void> apply_move(Document& document, std::uint32_t page_index, const MovePlan& plan);
 
 }  // namespace capriole::edit::detail

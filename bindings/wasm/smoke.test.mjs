@@ -86,6 +86,9 @@ try {
   const model = takeJson(out);
   assert.deepEqual(model.elements, []);
   assert.deepEqual(model.paragraphs, []);
+  // Nothing to edit there.
+  const spec = new TextEncoder().encode('{"element":0,"delete":true}\0');
+  assert.equal(withBytes(spec, (ptr) => m._capriole_document_page_object_edit(doc, 0, ptr, out)), 2 /* CAPRIOLE_ERROR_OUT_OF_RANGE */);
 
   assert.equal(m._capriole_document_save(doc, 0, 0, out, out + 4), 0);
   const saved = m.HEAPU32[out >> 2];

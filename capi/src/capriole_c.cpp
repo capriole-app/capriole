@@ -32,6 +32,7 @@
 #include "capriole/edit/facturx.hpp"
 #include "capriole/edit/font_library.hpp"
 #include "capriole/edit/forms.hpp"
+#include "capriole/edit/object_edit.hpp"
 #include "capriole/edit/pages.hpp"
 #include "capriole/edit/paragraph_edit.hpp"
 #include "capriole/edit/pdfa.hpp"
@@ -1817,6 +1818,55 @@ capriole_status capriole_document_page_replace_text(capriole_document* document,
     capriole::capi::append_json_text(out, capriole::model::from_utf8(result->missing_font));
     out += '}';
     return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_object_edit(capriole_document* document, uint32_t page_index, const char* spec_json, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto spec = capriole::capi::parse_json(spec_json);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    const auto* element = spec->get("element");
+    const auto n = element != nullptr ? element->number() : std::nullopt;
+    if (!n || *n < 0 || *n != std::floor(*n) || *n > 1e9) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "element: an index expected");
+    }
+    capriole::edit::ObjectEdit edit;
+    edit.element = static_cast<std::size_t>(*n);
+    if (const auto* move = spec->get("move")) {
+      auto by = point_in(move, "move");
+      if (!by) {
+        return fail(by.error());
+      }
+      edit.action = capriole::edit::ObjectAction::kMove;
+      edit.by = *by;
+    } else if (const auto* box = spec->get("box")) {
+      auto to = rect_in(box, "box");
+      if (!to) {
+        return fail(to.error());
+      }
+      edit.action = capriole::edit::ObjectAction::kResize;
+      edit.box = *to;
+    } else if (const auto* del = spec->get("delete"); del != nullptr && del->boolean() == true) {
+      edit.action = capriole::edit::ObjectAction::kDelete;
+    } else {
+      return fail(CAPRIOLE_ERROR_SYNTAX, R"("move", "box" or "delete": true expected)");
+    }
+    auto result = capriole::edit::edit_object(document->document, page_index, edit);
+    if (!result) {
+      return fail(result.error());
+    }
+    const auto& b = result->box;
+    return hand_over(std::format(R"({{"operators":{},"box":[{},{},{},{}]}})", result->operators, capriole::writer::format_real(b.x0),
+                                 capriole::writer::format_real(b.y0), capriole::writer::format_real(b.x1), capriole::writer::format_real(b.y1)),
+                     json);
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }
