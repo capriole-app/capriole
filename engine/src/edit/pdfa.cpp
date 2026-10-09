@@ -357,6 +357,12 @@ void check_names(Document& document, const Object& resources, std::set<std::uint
 
 // ── Colour: the output intent ───────────────────────────────────────────────────────────────────────
 
+// The creation date of an ICC profile's header (ICC.1:2022 §7.2.8: six big-endian 16-bit numbers at
+// byte 24), fixed: 2026-01-01 00:00:00.
+constexpr std::size_t kIccCreatedAt = 24;
+constexpr std::array<std::byte, 12> kIccCreated{std::byte{0x07}, std::byte{0xEA}, std::byte{0}, std::byte{1}, std::byte{0}, std::byte{1},
+                                                std::byte{0},    std::byte{0},    std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0}};
+
 Result<std::vector<std::byte>> srgb_profile() {
   cmsHPROFILE profile = cmsCreate_sRGBProfile();
   if (profile == nullptr) {
@@ -371,9 +377,12 @@ Result<std::vector<std::byte>> srgb_profile() {
     }
   }
   cmsCloseProfile(profile);
-  if (out.empty()) {
+  if (out.size() < kIccCreatedAt + kIccCreated.size()) {
     return make_error(ErrorCode::kUnsupported, "the sRGB profile could not be written");
   }
+  // LittleCMS dates a profile it makes with the clock: the same profile, the same bytes (principle 6).
+  // (The profile ID, which would cover the date, is left zero: not computed.)
+  std::ranges::copy(kIccCreated, out.begin() + static_cast<std::ptrdiff_t>(kIccCreatedAt));
   return out;
 }
 

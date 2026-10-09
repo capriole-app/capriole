@@ -95,6 +95,13 @@ TEST(Pdfa, PutsRightWhatItCan) {
   auto profile = out.resolve(*intent.find("DestOutputProfile"));
   ASSERT_TRUE(profile && profile->as_stream() != nullptr);
   EXPECT_EQ(profile->as_stream()->dict.find("N")->as_integer(), 3);
+  // Dated 2026-01-01 00:00:00, not by the clock: LittleCMS dated it with the time it was made, and two
+  // conversions a second apart differed (Pdfa.IsDeterministic failed now and then).
+  auto icc = out.decode_stream(*profile->as_stream());
+  ASSERT_TRUE(icc && icc->size() > 36);
+  const std::vector<std::byte> created(icc->begin() + 24, icc->begin() + 36);
+  EXPECT_EQ(created, (std::vector<std::byte>{std::byte{0x07}, std::byte{0xEA}, std::byte{0}, std::byte{1}, std::byte{0}, std::byte{1}, std::byte{0},
+                                             std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0}}));
   // XMP: uncompressed, saying PDF/A-2b.
   auto metadata = out.resolve(*(*catalog)->find("Metadata"));
   ASSERT_TRUE(metadata && metadata->as_stream() != nullptr);

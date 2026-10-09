@@ -1497,7 +1497,10 @@ Corretto strada facendo, con il suo test: un dizionario la cui ultima chiave non
 (`<</Markedtrue>>`, in un catalogo di `unsafe/x008`) era rifiutato anche dal lettore tollerante — il
 documento restava senza catalogo e il salvataggio completo lo scriveva null —: ora la chiave è lasciata
 fuori, come un null (§7.3.7). E una seconda aggiunta di dati riscriveva la `/VRI` della firma, che pyHanko
-prende per una manomissione: ora resta com'era.
+prende per una manomissione: ora resta com'era. Trovato dal gate in WebAssembly, ed è della 8i: il profilo
+sRGB dell'output intent portava nell'intestazione l'ora in cui LittleCMS lo creava, così due conversioni
+a cavallo di un secondo davano file diversi (`Pdfa.IsDeterministic` falliva ogni tanto): ora la data è
+fissa.
 Criterio: `corpus-tools/check_ltv.py` — 100 file firmati B-T (20 col firmatario revocato), poi ciò che
 farà l'app desktop: `cpdf ltv needs`, risposte fatte offline (`openssl ocsp -index`; un file su due la CRL),
 `cpdf ltv add`, `cpdf doc-timestamp`, i dati della catena della TSA. Gli indirizzi dei certificati non
