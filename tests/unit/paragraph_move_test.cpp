@@ -18,6 +18,8 @@
 #include "capriole/document/document.hpp"
 #include "capriole/edit/paragraph_edit.hpp"
 #include "capriole/text/text.hpp"
+#include "capriole/writer/byte_sink.hpp"
+#include "capriole/writer/save.hpp"
 #include "edit/common.hpp"
 #include "support/pdf_builder.hpp"
 
@@ -150,6 +152,21 @@ TEST(ParagraphMove, WhatFollowsMovesDownAsFarAsTheParagraphGrows) {
   // The paragraph's text, then what follows, in order.
   const std::string plain = after.plain();
   EXPECT_LT(plain.find("home."), plain.find("Belowtext"));
+}
+
+// The page's content the move wrote, written anew by the removal of the old glyphs, does not stay in the
+// file unused (found by the app's e2e test: an incremental save carried both).
+TEST(ParagraphMove, NothingTheMoveWroteStaysUnused) {
+  Document document = open(page_pdf(kParagraph + "q 1 0 0 1 20 220 cm /Fm1 Do Q\n", true));
+  auto result = replace_paragraph(document, 0, kArea, kLonger, {.move = true});
+  ASSERT_TRUE(result.has_value()) << result.error().message;
+  ASSERT_GT(result->moved, 0);
+  writer::MemorySink sink;
+  writer::SaveOptions options;
+  options.drop_unreachable = true;
+  auto saved = writer::save_full(document, sink, options);
+  ASSERT_TRUE(saved.has_value()) << saved.error().message;
+  EXPECT_EQ(saved->objects_dropped, 1U);  // the page's old content only
 }
 
 // A line below drawn by two operators, the second beyond the paragraph's width: it moves whole (found by

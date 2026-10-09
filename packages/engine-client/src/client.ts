@@ -11,6 +11,7 @@ import type {
   RedactionReport,
   TextEditReport,
   ParagraphEditReport,
+  ParagraphRoom,
   CertificateInfo,
   FontFace,
   SignatureInfo,
@@ -207,16 +208,17 @@ export class EngineClient {
   /**
    * Replaces a paragraph's text — the lines area touches (the page as shown), whole — laid out anew inside
    * it ("\n": a new line; empty: deleted). Refused (Status.unsupported) when it does not fit ("no room: …
-   * needs N lines, M fit") unless shrink, and for paragraphs of several styles, invisible or an
-   * annotation's text; Status.outOfRange when there is no text there.
+   * needs N lines, M fit") unless room says what to do then — written smaller, or what follows moved
+   * down (refused, "cannot move what follows: …", when that cannot be done) —, and for paragraphs of
+   * several styles, invisible or an annotation's text; Status.outOfRange when there is no text there.
    */
   replaceParagraph(
     index: number,
     area: [number, number, number, number],
     text: string,
-    shrink: boolean,
+    room: ParagraphRoom = 'none',
   ): Promise<ParagraphEditReport> {
-    return this.#call({ kind: 'replaceParagraph', index, area, text, shrink });
+    return this.#call({ kind: 'replaceParagraph', index, area, text, room });
   }
 
   /**

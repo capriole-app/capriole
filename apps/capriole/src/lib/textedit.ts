@@ -213,10 +213,26 @@ export function paragraphNotice(report: ParagraphEditReport): string | null {
         : `il font del paragrafo non ha tutti i caratteri nuovi: scritto con un font simile (${report.font})`,
     );
   if (report.scale < 0.995) parts.push(`ridotto ${toPercent(report.scale)} per farlo stare`);
+  if (report.moved > 0) parts.push(movedNotice(report));
   const added = addedNotice(report.addedGlyphs, report.styles === 1 ? report.font : null);
   if (parts.length === 0) return added;
   const text = parts.join('; ');
   return text.charAt(0).toUpperCase() + text.slice(1) + '.' + (added ? ' ' + added : '');
+}
+
+/** What follows the paragraph moved down: how far, and how much of it. */
+function movedNotice(report: ParagraphEditReport): string {
+  const what = [count(report.movedItems, 'elemento', 'elementi')];
+  if (report.movedAnnotations > 0) what.push(count(report.movedAnnotations, 'annotazione', 'annotazioni'));
+  const points = Math.round(report.moved).toLocaleString('it-IT');
+  return `ciò che segue è sceso di ${points} pt per fargli spazio (${what.join(' e ')})`;
+}
+
+const count = (n: number, one: string, many: string) => `${n.toLocaleString('it-IT')} ${n === 1 ? one : many}`;
+
+/** Whether the engine refused to move down what follows a paragraph. */
+export function cannotMove(message: string): boolean {
+  return message.includes('cannot move what follows');
 }
 
 /** "no room: the new text needs N lines, M fit": the numbers, or null for another refusal. */
@@ -225,7 +241,34 @@ export function noRoom(message: string): { needed: number; fit: number } | null 
   return m ? { needed: Number(m[1]), fit: Number(m[2]) } : null;
 }
 
-const refusals: [RegExp, string][] = [
+const notMoved = 'Ciò che segue non si può spostare in basso:';
+
+const refusals: [RegExp, string | ((m: RegExpExecArray) => string)][] = [
+  [
+    /cannot move what follows: it would (reach the footer|go past the bottom of the page) \(it needs (\d+) pt, (\d+) are free\)/,
+    (m) =>
+      `${notMoved} ${m[1] === 'reach the footer' ? 'arriverebbe al piè di pagina' : 'andrebbe oltre il fondo della pagina'} ` +
+      `(servono ${m[2]} pt, ce ne sono ${m[3]} liberi). Puoi ridurre il testo per farlo stare.`,
+  ],
+  [
+    /cannot move what follows: the paragraph is inside a box|cannot move what follows: it would go past the bottom of what contains/,
+    `${notMoved} il paragrafo è dentro un riquadro (una cornice, una cella) che non si allunga con lui.`,
+  ],
+  [/cannot move what follows: it would run into/, `${notMoved} urterebbe ciò che gli sta accanto.`],
+  [
+    /cannot move what follows: an image lies across/,
+    `${notMoved} sotto il paragrafo passa un’immagine (una pagina scansionata, lo sfondo di un modulo).`,
+  ],
+  [
+    /cannot move what follows: something is drawn across/,
+    `${notMoved} il fondo del paragrafo è attraversato da un disegno (un riquadro, una tabella, una riga).`,
+  ],
+  [
+    /cannot move what follows: an annotation lies across/,
+    `${notMoved} il fondo del paragrafo è attraversato da un’annotazione.`,
+  ],
+  [/cannot move what follows: nothing to move/, 'Sotto il paragrafo non c’è niente da spostare.'],
+  [/cannot move what follows/, `${notMoved} qui la pagina è disegnata in un modo che non si sa spostare.`],
   [/several lines|one line at a time: the area/, 'Si modifica una riga alla volta.'],
   [/one paragraph at a time/, 'Si modifica un paragrafo alla volta: qui le righe sono di più paragrafi.'],
   [
@@ -246,5 +289,9 @@ const refusals: [RegExp, string][] = [
 
 /** The engine's refusal of an edit, in Italian (what is not recognised, as it is). */
 export function textEditRefusal(message: string): string {
-  return refusals.find(([pattern]) => pattern.test(message))?.[1] ?? message;
+  for (const [pattern, said] of refusals) {
+    const m = pattern.exec(message);
+    if (m) return typeof said === 'string' ? said : said(m);
+  }
+  return message;
 }

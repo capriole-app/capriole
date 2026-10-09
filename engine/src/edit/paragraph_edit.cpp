@@ -614,6 +614,49 @@ std::vector<std::size_t> styles_for(const Paragraph& p, const std::vector<std::u
   return out;
 }
 
+// The objects numbered from `first` on that nothing from the page reaches any more go: what moving what
+// follows wrote and the removal of the old glyphs then wrote anew (the page's content, a form's copy).
+Result<void> drop_unreached(Document& document, ObjectRef page_ref, std::uint32_t first, std::uint32_t end) {
+  std::set<std::uint32_t> reached;
+  std::vector<const Object*> pending;
+  auto loaded = document.get(page_ref);
+  if (!loaded || *loaded == nullptr) {
+    return {};
+  }
+  pending.push_back(*loaded);
+  while (!pending.empty()) {
+    const Object* object = pending.back();
+    pending.pop_back();
+    if (const auto ref = object->as_ref()) {
+      if (ref->number >= first && ref->number < end && reached.insert(ref->number).second) {
+        if (auto target = document.get(*ref); target && *target != nullptr) {
+          pending.push_back(*target);
+        }
+      }
+    } else if (const auto* array = object->as_array()) {
+      for (const Object& item : *array) {
+        pending.push_back(&item);
+      }
+    } else if (const auto* dict = object->as_dict()) {
+      for (const auto& entry : dict->entries()) {
+        pending.push_back(&entry.value);
+      }
+    } else if (const auto* stream = object->as_stream()) {
+      for (const auto& entry : stream->dict.entries()) {
+        pending.push_back(&entry.value);
+      }
+    }
+  }
+  for (std::uint32_t n = first; n < end; ++n) {
+    if (!reached.contains(n) && document.state(n) == ObjectState::kNew) {
+      if (auto removed = document.remove(n); !removed) {
+        return removed;
+      }
+    }
+  }
+  return {};
+}
+
 }  // namespace
 
 Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t page_index, const Rect& area, std::string_view text,
@@ -844,11 +887,13 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
     }
     added_glyphs += extension.added;
   }
+  const std::uint32_t move_first = document.next_object_number();
   if (move) {
     if (auto moved = detail::apply_move(document, page_index, *move); !moved) {
       return std::unexpected(std::move(moved.error()));
     }
   }
+  const std::uint32_t move_end = document.next_object_number();
   std::vector<Rect> areas;
   for (const std::size_t i : p.chars) {
     const Rect& b = page_text.chars[i].box;
@@ -860,6 +905,9 @@ Result<ParagraphEditResult> replace_paragraph(Document& document, std::uint32_t 
   auto removed = detail::remove_glyphs(document, page_index, areas);
   if (!removed) {
     return std::unexpected(std::move(removed.error()));
+  }
+  if (auto dropped = drop_unreached(document, page->ref, move_first, move_end); !dropped) {
+    return std::unexpected(std::move(dropped.error()));
   }
   // Styles written, and of them those all in their own font.
   std::set<std::size_t> written_styles;

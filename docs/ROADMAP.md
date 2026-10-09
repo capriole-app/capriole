@@ -28,7 +28,7 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 9a-2 «Modifica testo» › Paragrafo nell'app | ✅ | |
 | 9b Paragrafi con più stili | ✅ | 100/100, 3681 parole con il loro stile |
 | 9d-1 Spostare ciò che segue, motore | ✅ | 100/100 spostati; rifiuti spiegati (soprattutto pagine piene) |
-| 9d-2 «Sposta in basso ciò che segue» nell'app | 🔜 | |
+| 9d-2 «Sposta in basso ciò che segue» nell'app | ✅ | e2e: spostato, piè di pagina fermo, salvato, annullato; rifiuto in italiano |
 | 9c-1 Sottoinsiemi dei font estesi, motore | ✅ | 42 pagine (16 dei corpora, 26 generate) |
 | 9c-2 Font forniti nell'app | ✅ | e2e: suggerimento, aggiunta, salvataggio, memoria |
 | Modello alto del documento (vista semantica) | ⬜ | da valutare, CAPRIOLE.md §5.2 |

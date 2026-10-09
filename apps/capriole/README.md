@@ -35,9 +35,10 @@ text or colour or remove it, drag it to move it; the panel also lists the page's
 keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
 annotation gets its appearance from the engine, so other readers show it the same.
 
-**The page's own text** (phases 8j, 9a–9c): the tool "Modifica testo" writes a line again (a double
+**The page's own text** (phases 8j, 9a–9d): the tool "Modifica testo" writes a line again (a double
 click; Enter writes it) or a paragraph, laid out anew inside its box with its margins, alignment and the
-styles of its words ("Paragrafo"; Ctrl+Enter). A text that does not fit is offered smaller. Letters the
+styles of its words ("Paragrafo"; Ctrl+Enter). A text that does not fit is offered smaller, or room: what
+follows it moved down (not what is beside it, nor a footer; why not, when it cannot be). Letters the
 text's font lacks go to a similar standard font, and the side panel says so — unless the font is an
 embedded TrueType subset and the person has given the same font under "Font forniti" ("Aggiungi font…",
 or dropped there: .ttf, .ttc, .otf with TrueType outlines): the glyphs are then added to the subset from

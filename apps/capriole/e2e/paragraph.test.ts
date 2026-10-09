@@ -9,39 +9,19 @@ import { withoutFileAccess } from './downloads';
  * line of text close below it, at (30, 200) (y ≈ 191–203): no room there for a line more.
  */
 function pdf(): Buffer {
-  const content = [
-    'BT /F1 12 Tf 14 TL 30 360 Td (Il primo paragrafo occupa) Tj T* (tre righe sulla pagina e) Tj T* (sotto ha spazio libero.) Tj ET',
-    'BT /F1 12 Tf 14 TL 30 250 Td (Il secondo paragrafo ha) Tj T* (subito sotto un altro) Tj T* (testo che non si sposta.) Tj ET',
-    'BT /F1 12 Tf 30 200 Td (Testo che sta sotto.) Tj ET',
-  ].join('\n');
-  const bodies = [
-    '<</Type/Catalog/Pages 2 0 R>>',
-    '<</Type/Pages/Kids[3 0 R]/Count 1>>',
-    '<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 400]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>',
-    `<</Length ${content.length}>>\nstream\n${content}\nendstream`,
-    '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>',
-  ];
-  let text = '%PDF-1.7\n';
-  const offsets: number[] = [];
-  bodies.forEach((body, i) => {
-    offsets.push(text.length);
-    text += `${i + 1} 0 obj\n${body}\nendobj\n`;
-  });
-  const xref = text.length;
-  text += `xref\n0 ${bodies.length + 1}\n0000000000 65535 f \n`;
-  text += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
-  text += `trailer\n<</Size ${bodies.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
-  return Buffer.from(text, 'latin1');
+  return onePage(
+    [
+      'BT /F1 12 Tf 14 TL 30 360 Td (Il primo paragrafo occupa) Tj T* (tre righe sulla pagina e) Tj T* (sotto ha spazio libero.) Tj ET',
+      'BT /F1 12 Tf 14 TL 30 250 Td (Il secondo paragrafo ha) Tj T* (subito sotto un altro) Tj T* (testo che non si sposta.) Tj ET',
+      'BT /F1 12 Tf 30 200 Td (Testo che sta sotto.) Tj ET',
+    ].join('\n'),
+  );
 }
 
 /**
- * One page, 400 × 400 points: a paragraph of three lines in 12 pt Helvetica (/F1) with one word in
- * Helvetica-Bold (/F2): "importante".
+ * One page, 400 × 400 points, of content (its fonts: /F1 Helvetica, /F2 Helvetica-Bold).
  */
-function styledPdf(): Buffer {
-  const content =
-    'BT /F1 12 Tf 14 TL 30 360 Td (Questo paragrafo contiene una parola ) Tj /F2 12 Tf (importante) Tj /F1 12 Tf T* ' +
-    '(scritta in grassetto, e il resto del testo) Tj T* (resta normale come prima.) Tj ET';
+function onePage(content: string): Buffer {
   const bodies = [
     '<</Type/Catalog/Pages 2 0 R>>',
     '<</Type/Pages/Kids[3 0 R]/Count 1>>',
@@ -61,6 +41,42 @@ function styledPdf(): Buffer {
   text += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
   text += `trailer\n<</Size ${bodies.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(text, 'latin1');
+}
+
+/**
+ * One page, 400 × 400 points: a paragraph of three lines in 12 pt Helvetica (/F1) with one word in
+ * Helvetica-Bold (/F2): "importante".
+ */
+function styledPdf(): Buffer {
+  return onePage(
+    'BT /F1 12 Tf 14 TL 30 360 Td (Questo paragrafo contiene una parola ) Tj /F2 12 Tf (importante) Tj /F1 12 Tf T* ' +
+      '(scritta in grassetto, e il resto del testo) Tj T* (resta normale come prima.) Tj ET',
+  );
+}
+
+/**
+ * The second paragraph of pdf() and the line close below it (y ≈ 189–203 as shown), with a footer in
+ * the page's last eighth (at 20 points from its bottom: y ≈ 372–382 as shown).
+ */
+function footedPdf(): Buffer {
+  return onePage(
+    [
+      'BT /F1 12 Tf 14 TL 30 250 Td (Il secondo paragrafo ha) Tj T* (subito sotto un altro) Tj T* (testo che non si sposta.) Tj ET',
+      'BT /F1 12 Tf 30 200 Td (Testo che sta sotto.) Tj ET',
+      'BT /F1 9 Tf 30 20 Td (Pagina 1 di 1) Tj ET',
+    ].join('\n'),
+  );
+}
+
+/** The first paragraph of pdf(), and below it lines of text down to 20 points from the page's bottom. */
+function fullPdf(): Buffer {
+  const lines = Array.from({ length: 21 }, (_, i) => `(Riga ${i + 1} del testo che riempie la pagina.) Tj T*`);
+  return onePage(
+    [
+      'BT /F1 12 Tf 14 TL 30 360 Td (Il primo paragrafo occupa) Tj T* (tre righe sulla pagina e) Tj T* (sotto ha spazio libero.) Tj ET',
+      `BT /F1 12 Tf 14 TL 30 300 Td ${lines.join(' ')} ET`,
+    ].join('\n'),
+  );
 }
 
 /**
@@ -175,6 +191,62 @@ test('a text that does not fit: back to it, then written smaller', async ({ page
   await box.press('Escape');
   // The line below did not move.
   await editParagraph(page, 60, 197, 'Testo che sta sotto.');
+});
+
+test('a text that does not fit: what follows moved down, the footer staying; saved; undone', async ({ page }) => {
+  await open(page, footedPdf());
+  const box = page.getByTestId('paragraph-editor');
+  await editParagraph(page, 60, 164, second);
+  const longer = 'Il secondo paragrafo ha subito sotto un altro testo che non si sposta. Anche questo.';
+  await box.fill(longer);
+  await box.press('Control+Enter');
+  const room = page.getByTestId('no-room');
+  await room.getByRole('button', { name: 'Sposta in basso ciò che segue' }).click();
+  await expect(room).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByTestId('text-edit-notice')).toHaveText(
+    'Ciò che segue è sceso di 14 pt per fargli spazio (1 elemento).',
+  );
+  await editParagraph(page, 60, 164, longer);
+  await box.press('Escape');
+  // The line below a line lower (y ≈ 203–217), the footer where it was.
+  await editParagraph(page, 60, 212, 'Testo che sta sotto.');
+  await box.press('Escape');
+  await editParagraph(page, 40, 377, 'Pagina 1 di 1');
+  await box.press('Escape');
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Salva' }).click();
+  const saved = everything(readFileSync(await (await download).path())).toLowerCase();
+  expect(saved).toContain(hex('questo.'));
+  expect(saved).toContain('1 0 0 1 30 186 tm\n(testo che sta sotto.) tj'); // a line lower, as it was written
+  expect(saved).toContain('30 20 td\n(pagina 1 di 1) tj'); // the footer as it was, no text matrix set before it
+
+  await page.getByRole('button', { name: 'Annulla' }).click();
+  await editParagraph(page, 60, 164, second);
+  await box.press('Escape');
+  await editParagraph(page, 60, 197, 'Testo che sta sotto.');
+});
+
+test('what follows cannot be moved on a full page: said why; written smaller instead', async ({ page }) => {
+  await open(page, fullPdf());
+  const box = page.getByTestId('paragraph-editor');
+  await editParagraph(page, 60, 54, first);
+  const longer = 'Il primo paragrafo occupa tre righe sulla pagina e sotto ha spazio libero. Anche questo.';
+  await box.fill(longer);
+  await box.press('Control+Enter');
+  const room = page.getByTestId('no-room');
+  await room.getByRole('button', { name: 'Sposta in basso ciò che segue' }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Ciò che segue non si può spostare in basso: andrebbe oltre il fondo della pagina (servono 14 pt, ce ne sono 8 liberi).',
+  );
+  await expect(page.getByRole('button', { name: 'Annulla' })).toBeDisabled();
+  // The choice left: shrinking.
+  await expect(room.getByRole('button', { name: 'Sposta in basso ciò che segue' })).toHaveCount(0);
+  await room.getByRole('button', { name: 'Riduci il testo per farlo stare' }).click();
+  await expect(room).toHaveCount(0);
+  await expect(page.getByTestId('text-edit-notice')).toContainText(/Ridotto/);
+  await editParagraph(page, 60, 54, longer);
 });
 
 test('Esc leaves the paragraph as it was, with no step of undo', async ({ page }) => {

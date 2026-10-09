@@ -14,6 +14,7 @@ import {
   type FieldInfo,
   type PageRaster,
   type PageText,
+  type ParagraphRoom,
   type PdfaReport,
   type Repair,
   type SignatureInfo,
@@ -22,6 +23,7 @@ import {
 import { baseName, dateTime, pdfDateNow } from './files';
 import { parseInvoice, type Invoice } from './invoice';
 import {
+  cannotMove,
   lineText,
   noRoom,
   paragraphArea,
@@ -60,6 +62,8 @@ export interface NoRoom {
   text: string;
   needed: number;
   fit: number;
+  /** What follows could not be moved down (the reason, said in error): only shrinking is left. */
+  cannotMove: boolean;
 }
 
 /** A signature to make: on page (from 0), visible in rect (the page as shown), or invisible (null). */
@@ -962,14 +966,24 @@ export class Editor {
     const editing = this.editingParagraph;
     this.editingParagraph = null;
     if (!editing || text === null || text === editing.paragraph.text) return;
-    await this.#writeParagraph(editing.paragraph, text, false);
+    await this.#writeParagraph(editing.paragraph, text, 'none');
   }
 
   /** The text that did not fit, written smaller (down to 70%). */
   shrinkParagraph(): Promise<void> {
     const pending = this.noRoom;
     if (!pending) return Promise.resolve();
-    return this.#writeParagraph(pending.paragraph, pending.text, true);
+    return this.#writeParagraph(pending.paragraph, pending.text, 'shrink');
+  }
+
+  /**
+   * The text that did not fit, given room: what follows it below it moved down (not what is beside it,
+   * nor a footer). When that cannot be done, the reason is said and the choice stays to write it smaller.
+   */
+  moveFollowing(): Promise<void> {
+    const pending = this.noRoom;
+    if (!pending) return Promise.resolve();
+    return this.#writeParagraph(pending.paragraph, pending.text, 'move', pending);
   }
 
   /** Back to writing the text that did not fit, in the paragraph's box. */
@@ -981,14 +995,19 @@ export class Editor {
     this.editingParagraph = { paragraph: pending.paragraph, text: pending.text };
   }
 
-  async #writeParagraph(paragraph: ParagraphText, text: string, shrink: boolean): Promise<void> {
+  async #writeParagraph(
+    paragraph: ParagraphText,
+    text: string,
+    room: ParagraphRoom,
+    pending: NoRoom | null = null,
+  ): Promise<void> {
     const pageIndex = this.viewing;
     if (pageIndex === null) return;
     this.noRoom = null;
     await this.#editPage(async () => {
       try {
         await this.#fontsReady;
-        const report = await this.engine.replaceParagraph(pageIndex, paragraphArea(paragraph), text, shrink);
+        const report = await this.engine.replaceParagraph(pageIndex, paragraphArea(paragraph), text, room);
         this.textNotice = paragraphNotice(report);
         this.missingFonts = report.missingFonts;
       } catch (error) {
@@ -996,8 +1015,9 @@ export class Editor {
           error instanceof EngineError &&
           (error.status === Status.unsupported || error.status === Status.outOfRange)
         ) {
-          const room = noRoom(error.message);
-          if (room) this.noRoom = { paragraph, text, ...room };
+          const lines = noRoom(error.message);
+          if (lines) this.noRoom = { paragraph, text, ...lines, cannotMove: false };
+          else if (pending && cannotMove(error.message)) this.noRoom = { ...pending, cannotMove: true };
           throw new Error(textEditRefusal(error.message));
         }
         throw error;

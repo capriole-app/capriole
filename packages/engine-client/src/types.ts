@@ -262,7 +262,18 @@ export interface ParagraphEditReport {
   addedGlyphs: number;
   /** The embedded fonts that lacked letters (written in a similar font) and that a font given could extend. */
   missingFonts: string[];
+  /** How far down what follows the paragraph was moved (points as shown; 0: it was not). */
+  moved: number;
+  /** What moved with it: drawing operators, and annotations. */
+  movedItems: number;
+  movedAnnotations: number;
 }
+
+/**
+ * What a paragraph's new text that does not fit may do: nothing (refused), be written smaller (down to
+ * 70%), or move down what follows it below it (not what is beside it, nor a footer).
+ */
+export type ParagraphRoom = 'none' | 'shrink' | 'move';
 
 /** A face of a font given with fontAdd. */
 export interface FontFace {
@@ -437,7 +448,13 @@ export type Request =
   | { kind: 'formFields' }
   | { kind: 'applyRedactions'; index: number }
   | { kind: 'replaceText'; index: number; area: [number, number, number, number]; text: string }
-  | { kind: 'replaceParagraph'; index: number; area: [number, number, number, number]; text: string; shrink: boolean }
+  | {
+      kind: 'replaceParagraph';
+      index: number;
+      area: [number, number, number, number];
+      text: string;
+      room: ParagraphRoom;
+    }
   | { kind: 'pkcs12Info'; p12: ArrayBuffer; password: string }
   | { kind: 'fontAdd'; data: ArrayBuffer }
   | { kind: 'fonts' }

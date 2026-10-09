@@ -586,6 +586,14 @@
             spostare il resto della pagina.
           </p>
           <div class="flex flex-wrap gap-2">
+            {#if !room.cannotMove}
+              <button
+                type="button"
+                class="rounded-md border border-current px-2.5 py-1 font-medium disabled:opacity-60"
+                disabled={editor.busy}
+                onclick={() => editor.moveFollowing()}>Sposta in basso ciò che segue</button
+              >
+            {/if}
             <button
               type="button"
               class="rounded-md border border-current px-2.5 py-1 font-medium disabled:opacity-60"

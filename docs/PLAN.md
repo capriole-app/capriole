@@ -1177,7 +1177,7 @@ riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) 
 
 ## Fase 9 — Editing avanzato del testo — 🔜 in corso (9a ✅, 9b ✅)
 
-Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅ · **9c** sottoinsiemi dei font estesi (9c-1 motore ✅, 9c-2 app ✅) · **9d** spostare ciò che segue su scelta (9d-1 motore ✅, 9d-2 app). Gli altri (estendere i sottoinsiemi dei font
+Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅ · **9c** sottoinsiemi dei font estesi (9c-1 motore ✅, 9c-2 app ✅) · **9d** spostare ciò che segue su scelta (9d-1 motore ✅, 9d-2 app ✅). Gli altri (estendere i sottoinsiemi dei font
 incorporati, paragrafi con più stili, spostare il contenuto che segue su scelta esplicita) si fissano dopo.
 
 **9a-1 (2026-10-06) — reflow dei paragrafi nel motore: uscita raggiunta.** `edit/paragraph_edit.hpp`: `replace_paragraph` riscrive le
@@ -1338,6 +1338,21 @@ la colonna accanto trascinata da una regola troppo larga; e un difetto della 8j/
 `/LastChar` era scritto senza larghezza (MuPDF sovrapponeva le lettere) — ora `/Widths` si allarga, i codici
 in mezzo con `/MissingWidth` (riverificate 9a e 9b: 100/100 e 100/100). Report
 `CORPORA/reports/paragraph-move-all-20261008-224729`.
+
+**9d-2 (2026-10-09) — «Sposta in basso ciò che segue» nell'app: uscita raggiunta.** Nel pannello «Il testo
+nuovo non ci sta» c'è un terzo pulsante, accanto a «Riduci il testo per farlo stare» e «Torna al testo»; il
+client manda `room` (`'none' | 'shrink' | 'move'`, al posto di `shrink`) e legge `moved`, `movedItems`,
+`movedAnnotations`. Dopo lo spostamento l'avviso dice di quanto è sceso ciò che segue e quanti elementi (e
+annotazioni) si sono spostati; un rifiuto è detto in italiano (pagina piena o piè di pagina con i punti che
+servono e quelli liberi, dentro un riquadro, urto con ciò che sta accanto, immagine o disegno a cavallo del
+fondo del paragrafo, il resto con una frase generica) e il pannello resta con la sola scelta di ridurre.
+Corretto nel motore, con un test di regressione: lo stream scritto dallo spostamento, riscritto subito dalla
+rimozione dei vecchi glifi, restava nel file senza riferimenti (un salvataggio incrementale li portava
+entrambi); ora ciò che lo spostamento ha scritto e nulla raggiunge più si toglie. Criterio, e2e
+(`e2e/paragraph.test.ts`): la riga sotto scende di 14 pt e il piè di pagina resta dov'era, il file salvato
+ha la riga spostata scritta com'era e il piè di pagina senza matrice di testo, «Annulla» riporta tutto; su una
+pagina piena il rifiuto «andrebbe oltre il fondo della pagina (servono 14 pt, ce ne sono 8 liberi)», poi
+«Riduci». Gate verde.
 
 ---
 
