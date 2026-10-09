@@ -1031,8 +1031,11 @@ int cmd_model_without(std::string_view path, std::uint64_t page_number, std::str
           }
         }
       } else {
-        const auto& element = model->elements[*parse_uint(item)];
-        theirs.insert(element.commands.begin(), element.commands.end());
+        const auto n = parse_uint(item);
+        if (n && *n < model->elements.size()) {
+          const auto& element = model->elements[*n];
+          theirs.insert(element.commands.begin(), element.commands.end());
+        }
       }
       rest = comma == std::string_view::npos ? std::string_view() : rest.substr(comma + 1);
     }

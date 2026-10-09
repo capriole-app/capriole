@@ -27,7 +27,6 @@ namespace capriole::edit {
 namespace {
 
 using graphics::Matrix;
-using graphics::Point;
 using graphics::Rect;
 
 // Within this, a thing is inside a clip (points as shown).
@@ -149,7 +148,8 @@ Result<ObjectEditResult> edit_object(Document& document, std::uint32_t page_inde
   for (std::size_t k = 0; k < drawn.operators; ++k) {
     for (std::uint32_t inv = drawn.items[k].invocation, depth = 0; inv != 0 && inv < invocations.size() && depth < invocations.size(); ++depth) {
       int& state = form_state[inv];
-      state = state == -1 ? (mine[k] ? 1 : 0) : std::min(state, mine[k] ? 1 : 0);
+      const int its = mine[k] ? 1 : 0;
+      state = state == -1 ? its : std::min(state, its);
       inv = invocations[inv].parent;
     }
   }
