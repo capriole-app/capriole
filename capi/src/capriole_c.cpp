@@ -40,6 +40,7 @@
 #include "capriole/edit/text_edit.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
+#include "capriole/layout/page_model.hpp"
 #include "capriole/model/text_string.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/render/raster.hpp"
@@ -575,6 +576,114 @@ capriole_status capriole_document_page_text_json(capriole_document* document, ui
     for (std::size_t i = 0; i < list->missing_resources.size(); ++i) {
       out += i == 0 ? "" : ",";
       capriole::capi::append_json_string(out, list->missing_resources[i]);
+    }
+    out += "]}";
+    return hand_over(out, json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_page_model_json(capriole_document* document, uint32_t page_index, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto& doc = document->document;
+    auto pages = doc.page_refs();
+    if (!pages) {
+      return fail(pages.error());
+    }
+    if (page_index >= pages->size()) {
+      return fail(CAPRIOLE_ERROR_OUT_OF_RANGE, std::format("page index {} out of 0..{}", page_index, pages->size()));
+    }
+    SharedResources& shared = shared_resources();
+    const std::shared_lock lock(shared.mutex);
+    auto model = capriole::layout::page_model(doc, page_index, &shared.resources);
+    g_missing_resources = model ? model->list.missing_resources : std::vector<std::string>{};
+    if (!model) {
+      return fail(model.error());
+    }
+    const auto ref = [](const std::optional<capriole::model::ObjectRef>& r) {
+      return r ? std::format("[{},{}]", r->number, r->generation) : std::string("null");
+    };
+    const auto box = [](const capriole::graphics::Rect& b) { return std::format("[{:.2f},{:.2f},{:.2f},{:.2f}]", b.x0, b.y0, b.x1, b.y1); };
+    const auto indices = [](const auto& values) {
+      std::string out = "[";
+      for (std::size_t i = 0; i < values.size(); ++i) {
+        out += std::format("{}{}", i == 0 ? "" : ",", values[i]);
+      }
+      return out + "]";
+    };
+    static constexpr std::array<std::string_view, 4> kAlignments = {"left", "justified", "centre", "right"};
+    static constexpr std::array<std::string_view, 6> kKinds = {"paragraph", "glyphs", "image", "drawing", "shading", "annotation"};
+    static constexpr std::array<std::string_view, 6> kRoles = {"none", "background", "rule", "box", "table", "figure"};
+    static constexpr std::array<std::string_view, 3> kZones = {"body", "header", "footer"};
+    std::string out = std::format(R"({{"page":{},"width":{:.2f},"height":{:.2f},"paragraphs":[)", page_index, model->width, model->height);
+    for (std::size_t i = 0; i < model->paragraphs.size(); ++i) {
+      const capriole::layout::Paragraph& p = model->paragraphs[i];
+      out += i == 0 ? "{" : ",{";
+      std::u32string text;
+      for (const auto& word : p.words) {
+        text += text.empty() ? U"" : U" ";
+        text += word.text;
+      }
+      out += R"("text":)";
+      capriole::capi::append_json_text(out, text);
+      out += std::format(R"(,"lines":{},"chars":{},"left":{:.2f},"indent":{:.2f},"right":{:.2f},"top":{:.2f},"bottom":{:.2f},"pitch":{:.2f},"size":{:.2f},)"
+                         R"("alignment":"{}","mainStyle":{},"styles":[)",
+                         indices(p.lines), indices(p.chars), p.left, p.indent, p.right, p.top, p.bottom, p.pitch, p.size,
+                         kAlignments.at(static_cast<std::size_t>(p.alignment)), p.main_style);
+      for (std::size_t k = 0; k < p.styles.size(); ++k) {
+        const capriole::layout::Style& st = p.styles[k];
+        out += std::format(R"({}{{"font":{},"size":{:.2f},"colour":[{:.3f},{:.3f},{:.3f}],"scale":{:.3f}}})", k == 0 ? "" : ",", ref(st.font), st.size,
+                           st.colour.r, st.colour.g, st.colour.b, st.th);
+      }
+      out += R"(],"refusal":)";
+      capriole::capi::append_json_string(out, p.refusal);
+      out += '}';
+    }
+    out += R"(],"elements":[)";
+    for (std::size_t i = 0; i < model->elements.size(); ++i) {
+      const capriole::layout::Element& e = model->elements[i];
+      out += std::format(R"({}{{"kind":"{}","role":"{}","zone":"{}","box":{},"commands":{},"sources":[)", i == 0 ? "" : ",",
+                         kKinds.at(static_cast<std::size_t>(e.kind)), kRoles.at(static_cast<std::size_t>(e.role)), kZones.at(static_cast<std::size_t>(e.zone)),
+                         box(e.box), indices(e.commands));
+      for (std::size_t k = 0; k < e.sources.size(); ++k) {
+        out += std::format("{}[{},{}]", k == 0 ? "" : ",", e.sources[k].invocation, e.sources[k].operation);
+      }
+      out += ']';
+      if (e.kind == capriole::layout::Kind::kParagraph) {
+        out += std::format(R"(,"paragraph":{})", e.paragraph);
+      }
+      out += e.column ? std::format(R"(,"column":{})", *e.column) : std::string(R"(,"column":null)");
+      if (e.kind == capriole::layout::Kind::kAnnotation) {
+        out += std::format(R"(,"annotation":{},"subtype":)", ref(e.annotation));
+        capriole::capi::append_json_string(out, e.subtype);
+      }
+      out += '}';
+    }
+    out += R"(],"columns":[)";
+    for (std::size_t i = 0; i < model->columns.size(); ++i) {
+      out += std::format(R"({}{{"box":{},"elements":{}}})", i == 0 ? "" : ",", box(model->columns[i].box), indices(model->columns[i].elements));
+    }
+    out += R"(],"invocations":[)";
+    static constexpr std::array<std::string_view, 3> kInvocations = {"page", "form", "other"};
+    for (std::size_t i = 0; i < model->list.invocations.size(); ++i) {
+      const capriole::graphics::Invocation& inv = model->list.invocations[i];
+      out += std::format(R"({}{{"kind":"{}","parent":{},"operation":{},"form":{}}})", i == 0 ? "" : ",", kInvocations.at(static_cast<std::size_t>(inv.kind)),
+                         inv.parent, inv.operation, ref(inv.form));
+    }
+    out += std::format(R"(],"commands":{},"drawn":{},"warnings":[)", model->list.commands.size(), indices(model->drawn));
+    for (std::size_t i = 0; i < model->list.warnings.size(); ++i) {
+      out += i == 0 ? "" : ",";
+      capriole::capi::append_json_string(out, model->list.warnings[i]);
+    }
+    out += R"(],"missing_resources":[)";
+    for (std::size_t i = 0; i < model->list.missing_resources.size(); ++i) {
+      out += i == 0 ? "" : ",";
+      capriole::capi::append_json_string(out, model->list.missing_resources[i]);
     }
     out += "]}";
     return hand_over(out, json);

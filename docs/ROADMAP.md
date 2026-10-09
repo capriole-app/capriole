@@ -31,7 +31,10 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 9d-2 «Sposta in basso ciò che segue» nell'app | ✅ | e2e: spostato, piè di pagina fermo, salvato, annullato; rifiuto in italiano |
 | 9c-1 Sottoinsiemi dei font estesi, motore | ✅ | 42 pagine (16 dei corpora, 26 generate) |
 | 9c-2 Font forniti nell'app | ✅ | e2e: suggerimento, aggiunta, salvataggio, memoria |
-| Modello alto del documento (vista semantica) | ⬜ | da valutare, CAPRIOLE.md §5.2 |
+| **Fase 10 — modello alto della pagina e oggetti** | | CAPRIOLE.md §5.2 |
+| 10a Modello della pagina nel motore | ✅ | 100/100 pagine: copertura e provenienza; 9a/9b/9d invariati |
+| 10b Spostare, ridimensionare, eliminare immagini e disegni (motore) | 🔜 | |
+| 10c «Seleziona e sposta» su immagini e disegni nell'app | ⬜ | |
 | Firma con smart card (desktop), revoca OCSP/CRL | ⬜ | CAPRIOLE.md §6.1 |
 | Segnalazione anonimizzata dei file problematici | ⬜ | CAPRIOLE.md §8 |
 | Distribuzione: Flathub, hosting web, self-hosted | ⬜ | CAPRIOLE.md §3 |

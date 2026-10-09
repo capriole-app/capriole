@@ -19,10 +19,13 @@
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "capriole/capriole.h"
@@ -36,6 +39,7 @@
 #include "capriole/edit/pages.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
+#include "capriole/layout/page_model.hpp"
 #include "capriole/model/text_string.hpp"
 #include "capriole/parser/header.hpp"
 #include "capriole/parser/lexer.hpp"
@@ -80,6 +84,9 @@ void print_usage() {
                "                  line): the content's order (default) or by columns; --words: one word per\n"
                "                  line with its box (points, top-left origin) and where its first character\n"
                "                  comes from\n"
+               "  model <file> <page>  the page's model as JSON (capi/README.md: paragraphs, elements, columns)\n"
+               "  model --without N[,N]... [--dpi N] <file> <page> <output.png>\n"
+               "                  draw the page without those elements (their commands; a paragraph's glyphs)\n"
                "  rotate [--incremental] <file> <pages> <degrees> <output>\n"
                "                  rotate pages by a multiple of 90 degrees (clockwise; negative: counter)\n"
                "  arrange [--incremental] <file> <pages> <output>\n"
@@ -895,6 +902,118 @@ int cmd_text_json(const char* path, std::uint64_t page_number, capriole::text::O
   return kExitOk;
 }
 
+// model <file> <page>: the page's model as the C API gives it (capi/README.md).
+int cmd_model_json(const char* path, std::uint64_t page_number) {
+  if (page_number == 0 || page_number > 0xFFFFFFFFULL) {
+    print_usage();
+    return kExitUsage;
+  }
+  capriole_document* document = open_capi(path);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  char* json = nullptr;
+  const capriole_status status = capriole_document_page_model_json(document, static_cast<std::uint32_t>(page_number - 1), &json);
+  capriole_document_close(document);
+  if (status != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: model: {}\n", path, capriole_last_error_message());
+    return kExitFailure;
+  }
+  std::cout << json << '\n';
+  capriole_free(json);
+  return kExitOk;
+}
+
+// model --without N[,N]...: the page drawn without some of its model's elements — the commands that draw
+// them left out, a paragraph's glyphs taken out of its runs (others' stay) — to see that each element is
+// what its commands draw (corpus-tools/check_page_model.py).
+int cmd_model_without(std::string_view path, std::uint64_t page_number, std::string_view which, std::string_view output, double dpi) {
+  auto document = open_document(path);
+  if (!document) {
+    return fail(path, document.error());
+  }
+  auto pages = document->page_refs();
+  if (!pages) {
+    return fail(path, pages.error());
+  }
+  if (page_number == 0 || page_number > pages->size()) {
+    std::cerr << std::format("cpdf: {}: page {} out of 1..{}\n", path, page_number, pages->size());
+    return kExitUsage;
+  }
+  auto model = capriole::layout::page_model(*document, static_cast<std::uint32_t>(page_number - 1));
+  if (!model) {
+    return fail(path, model.error());
+  }
+  auto list = capriole::content::interpret_page(*document, (*pages)[page_number - 1]);
+  if (!list) {
+    return fail(path, list.error());
+  }
+  if (list->commands.size() != model->list.commands.size()) {
+    std::cerr << std::format("cpdf: {}: the page draws {} commands, its model has {}\n", path, list->commands.size(), model->list.commands.size());
+    return kExitFailure;
+  }
+  std::set<std::tuple<std::size_t, std::uint32_t>> glyphs;  // a paragraph's: (command, byte)
+  for (std::string_view rest = which; !rest.empty();) {
+    const std::size_t comma = rest.find(',');
+    const auto n = parse_uint(rest.substr(0, comma));
+    if (!n || *n >= model->elements.size()) {
+      std::cerr << std::format("cpdf: {}: no element {} (the model has {})\n", path, rest.substr(0, comma), model->elements.size());
+      return kExitUsage;
+    }
+    const capriole::layout::Element& element = model->elements[*n];
+    if (element.kind == capriole::layout::Kind::kParagraph) {
+      // Its characters' glyphs; the runs on its lines with no characters (spaces), whole.
+      std::set<std::size_t> showing;
+      for (const std::size_t c : model->paragraphs[element.paragraph].chars) {
+        const capriole::text::Provenance& p = model->text.chars[c].provenance;
+        for (const std::size_t command : element.commands) {
+          const auto* run = std::get_if<capriole::graphics::Boxed<capriole::graphics::ShowText>>(&list->commands[command]);
+          if (run != nullptr && (*run)->stream == p.stream && (*run)->operation == p.operation) {
+            glyphs.emplace(command, p.byte);
+            showing.insert(command);
+          }
+        }
+      }
+      for (const std::size_t command : element.commands) {
+        if (!showing.contains(command)) {
+          list->commands[command] = capriole::graphics::FillPath{};
+        }
+      }
+    } else {
+      for (const std::size_t command : element.commands) {
+        list->commands[command] = capriole::graphics::FillPath{};
+      }
+    }
+    rest = comma == std::string_view::npos ? std::string_view() : rest.substr(comma + 1);
+  }
+  for (std::size_t command = 0; command < list->commands.size(); ++command) {
+    const auto* run = std::get_if<capriole::graphics::Boxed<capriole::graphics::ShowText>>(&list->commands[command]);
+    if (run == nullptr) {
+      continue;
+    }
+    capriole::graphics::ShowText kept = **run;
+    std::erase_if(kept.glyphs, [&](const capriole::graphics::Glyph& g) { return glyphs.contains({command, g.byte}); });
+    if (kept.glyphs.size() != (*run)->glyphs.size()) {
+      list->commands[command] = capriole::graphics::Boxed<capriole::graphics::ShowText>(std::move(kept));
+    }
+  }
+  auto bitmap = capriole::render::rasterize(*list, dpi / 72);
+  if (!bitmap) {
+    return fail(path, bitmap.error());
+  }
+  auto png = capriole::render::encode_png(*bitmap);
+  if (!png) {
+    return fail(path, png.error());
+  }
+  std::ofstream file{std::string(output), std::ios::binary};
+  file.write(reinterpret_cast<const char*>(png->data()), static_cast<std::streamsize>(png->size()));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  if (!file) {
+    std::cerr << std::format("cpdf: cannot write {}\n", output);
+    return kExitFailure;
+  }
+  return kExitOk;
+}
+
 // edit-paragraph [--shrink | --move] [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>: the paragraph whose lines the
 // area touches written anew with the text (\n in it: a line break), laid out inside it; how, as JSON.
 int cmd_edit_paragraph(std::span<char* const> args) {
@@ -1437,6 +1556,25 @@ int run(std::span<char*> args) {
           return cmd_text_json(args[i], *page, order);
         }
         return cmd_text(args[i], *page, words, order, resources_dir);
+      }
+    }
+  }
+  if (command == "model") {
+    if (args.size() == 4) {
+      if (const auto page = parse_uint(args[3])) {
+        return cmd_model_json(args[2], *page);
+      }
+    } else if (args.size() >= 7 && std::string_view(args[2]) == "--without") {
+      std::optional<std::uint64_t> dpi = 72;
+      std::size_t i = 4;
+      if (std::string_view(args[i]) == "--dpi") {
+        dpi = parse_uint(args[i + 1]);
+        i += 2;
+      }
+      if (i + 3 == args.size()) {
+        if (const auto page = parse_uint(args[i + 1]); page && dpi && *dpi > 0 && *dpi <= 600) {
+          return cmd_model_without(args[i], *page, args[3], args[i + 2], static_cast<double>(*dpi));
+        }
       }
     }
   }

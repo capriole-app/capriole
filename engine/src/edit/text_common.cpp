@@ -221,31 +221,6 @@ Result<void> set_widths(Document& document, ObjectRef font_ref, const std::map<s
   return document.set(font_ref.number, Object(std::move(font)));
 }
 
-std::set<std::pair<std::optional<std::uint32_t>, std::uint32_t>> content_operators(const graphics::DisplayList& list) {
-  std::set<std::pair<std::optional<std::uint32_t>, std::uint32_t>> out;
-  for (std::size_t c = 0; c < list.commands.size() && c < list.origins.size(); ++c) {
-    const auto* t = std::get_if<graphics::Boxed<graphics::ShowText>>(&list.commands[c]);
-    if (t == nullptr) {
-      continue;
-    }
-    bool content = true;
-    for (std::uint32_t at = list.origins[c].invocation, steps = 0; at != 0 && steps < list.invocations.size(); at = list.invocations[at].parent, ++steps) {
-      if (at >= list.invocations.size() || list.invocations[at].kind != graphics::Invocation::Kind::kForm) {
-        content = false;
-        break;
-      }
-    }
-    if (content) {
-      out.emplace((*t)->stream ? std::optional((*t)->stream->number) : std::nullopt, (*t)->operation);
-    }
-  }
-  return out;
-}
-
-bool of_content(const std::set<std::pair<std::optional<std::uint32_t>, std::uint32_t>>& operators, const text::Provenance& p) {
-  return operators.contains({p.stream ? std::optional(p.stream->number) : std::nullopt, p.operation});
-}
-
 graphics::Rgb fill_of(const graphics::DisplayList& list, const text::Provenance& p) {
   for (const auto& command : list.commands) {
     const auto* t = std::get_if<graphics::Boxed<graphics::ShowText>>(&command);

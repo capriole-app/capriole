@@ -81,6 +81,12 @@ try {
   assert.deepEqual(text.chars, []);
   assert.equal(text.order, 'content');
 
+  // Nor a model with anything in it.
+  assert.equal(m._capriole_document_page_model_json(doc, 0, out), 0, m.UTF8ToString(m._capriole_last_error_message()));
+  const model = takeJson(out);
+  assert.deepEqual(model.elements, []);
+  assert.deepEqual(model.paragraphs, []);
+
   assert.equal(m._capriole_document_save(doc, 0, 0, out, out + 4), 0);
   const saved = m.HEAPU32[out >> 2];
   const size = m.HEAPU32[(out >> 2) + 1];

@@ -19,6 +19,7 @@
 #include "capriole/model/object.hpp"
 #include "capriole/text/text.hpp"
 #include "font/font.hpp"
+#include "layout/drawn.hpp"
 
 namespace capriole::edit::detail {
 
@@ -45,11 +46,10 @@ namespace capriole::edit::detail {
 // A simple font's /Widths given the widths of codes it left at 0.
 [[nodiscard]] Result<void> set_widths(Document& document, model::ObjectRef font_ref, const std::map<std::uint32_t, double>& widths);
 
-// The text-showing operators of the page's own content (its /Contents and the forms it draws), as
-// (stream: none for /Contents, operation): text of the others — an annotation's appearance — is not
-// the page's to edit.
-[[nodiscard]] std::set<std::pair<std::optional<std::uint32_t>, std::uint32_t>> content_operators(const graphics::DisplayList& list);
-[[nodiscard]] bool of_content(const std::set<std::pair<std::optional<std::uint32_t>, std::uint32_t>>& operators, const text::Provenance& p);
+// The text-showing operators of the page's own content (layout/drawn): text of the others — an
+// annotation's appearance — is not the page's to edit.
+using layout::detail::content_operators;
+using layout::detail::of_content;
 
 // The fill colour of the run a character was shown by (black when not found).
 [[nodiscard]] graphics::Rgb fill_of(const graphics::DisplayList& list, const text::Provenance& p);

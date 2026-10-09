@@ -33,6 +33,7 @@ capriole_add_fuzzer(fuzz_font fuzz_font.cpp)
 capriole_add_fuzzer(fuzz_cmap fuzz_cmap.cpp)
 capriole_add_fuzzer(fuzz_shading fuzz_shading.cpp)
 capriole_add_fuzzer(fuzz_text fuzz_text.cpp)
+capriole_add_fuzzer(fuzz_page_model fuzz_page_model.cpp)
 capriole_add_fuzzer(fuzz_pages fuzz_pages.cpp)
 # Through the C API, as the apps edit annotations.
 capriole_add_fuzzer(fuzz_annotations fuzz_annotations.cpp)

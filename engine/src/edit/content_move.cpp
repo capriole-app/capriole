@@ -19,6 +19,7 @@
 #include "capriole/content/page_content.hpp"
 #include "common.hpp"
 #include "content_rewrite.hpp"
+#include "layout/drawn.hpp"
 
 namespace capriole::edit::detail {
 
@@ -47,10 +48,6 @@ bool text_showing(std::string_view n) { return n == "Tj" || n == "TJ" || n == "'
 
 Result<MovePlan> refused(std::string_view why) { return make_error(ErrorCode::kUnsupported, std::format("cannot move what follows: {}", why)); }
 
-bool finite(const Rect& r) { return std::isfinite(r.x0) && std::isfinite(r.y0) && std::isfinite(r.x1) && std::isfinite(r.y1); }
-
-Rect united(const Rect& a, const Rect& b) { return {std::min(a.x0, b.x0), std::min(a.y0, b.y0), std::max(a.x1, b.x1), std::max(a.y1, b.y1)}; }
-
 Rect shifted(const Rect& r, double by) { return {r.x0, r.y0 + by, r.x1, r.y1 + by}; }
 
 // The two overlap by more than the slack each way.
@@ -71,22 +68,6 @@ std::optional<Point> shift_in(const Matrix& ctm, const Matrix& to_view, double b
   const Point a = inverse->apply(Point{0, 0});
   const Point b = inverse->apply(Point{0, by});
   return Point{b.x - a.x, b.y - a.y};
-}
-
-// A run's glyphs as shown (their boxes, from the baseline's descent to its ascent); nullopt: none.
-std::optional<Rect> run_box(const graphics::ShowText& run, const Matrix& to_view) {
-  std::optional<Rect> out;
-  for (const graphics::Glyph& glyph : run.glyphs) {
-    const Rect box = run.vertical
-                         ? Rect{glyph.origin.x - (run.font_size / 2), glyph.origin.y - run.font_size, glyph.origin.x + (run.font_size / 2), glyph.origin.y}
-                         : Rect{glyph.origin.x, glyph.origin.y + (run.descent * run.font_size), glyph.origin.x + std::max(glyph.width, 0.0),
-                                glyph.origin.y + (run.ascent * run.font_size)};
-    const Rect view = transformed(box.normalized(), run.text_matrix.then(to_view));
-    if (finite(view)) {
-      out = out ? united(*out, view) : view;
-    }
-  }
-  return out;
 }
 
 // Whether an image is of one colour where it lies under an area (the page as shown): a background, not a
@@ -130,28 +111,14 @@ bool uniform_under(const graphics::DrawImage& image, const Matrix& to_view, cons
   return different * 200 <= samples;  // all but half a percent
 }
 
-// What is drawn: by one operator of a content stream the page's edits rewrite, or an annotation.
-struct Item {
-  Rect box;
-  std::uint32_t invocation = 0;
-  std::uint32_t operation = 0;
-  std::size_t command = 0;
-  std::vector<std::size_t> clips;  // the clips in force (Clip indices)
-  bool masked = false;             // under a soft mask
-  bool text_clip = false;          // text that clips (Tr 4–7)
+// What is drawn (layout/drawn), and what moving makes of it.
+struct Item : layout::detail::Item {
   bool moved = false;
   bool background = false;
-  bool plain = false;  // a fill of one simple shape, an image, a shading: what can be a background
   bool frame = false;  // it holds the paragraph whole (a box around it, a page's border)
 };
 
-struct Clip {
-  Rect box;
-  std::uint32_t invocation = 0;
-  std::uint32_t operation = 0;
-  std::size_t command = 0;
-  bool rewritable = false;
-  std::vector<std::size_t> under;  // the items it clips
+struct Clip : layout::detail::Clip {
   bool moved = false;
 };
 
@@ -174,157 +141,20 @@ Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const M
   const Matrix& to_view = page->to_view;
   const Rect shown = transformed(list->crop_box, to_view).normalized();
   const auto& invocations = list->invocations;
-  const auto rewritable = [&](std::uint32_t invocation) {
-    for (std::size_t depth = 0; depth < invocations.size() && invocation < invocations.size(); ++depth) {
-      const graphics::Invocation& inv = invocations[invocation];
-      if (inv.kind == graphics::Invocation::Kind::kPage) {
-        return true;
-      }
-      if (inv.kind != graphics::Invocation::Kind::kForm || !inv.form) {
-        return false;
-      }
-      invocation = inv.parent;
-    }
-    return false;
-  };
 
-  // 1. What each operator draws, and the clips and soft masks it is drawn in.
+  // 1. What each operator draws, and the clips and soft masks it is drawn in; the annotations.
+  layout::detail::Drawn inventory = layout::detail::drawn_items(document, *page, *list);
   std::vector<Item> items;
+  items.reserve(inventory.items.size());
+  for (layout::detail::Item& item : inventory.items) {
+    items.push_back({std::move(item)});
+  }
   std::vector<Clip> clips;
-  struct Frame {
-    std::vector<std::size_t> clips;
-    bool masked = false;
-  };
-  std::vector<Frame> frames(1);
-  std::size_t in_mask = 0;  // the commands of a soft mask's group: not drawn on the page
-  const auto clip_box = [&]() {
-    Rect box = shown;
-    for (const std::size_t c : frames.back().clips) {
-      box = Rect{std::max(box.x0, clips[c].box.x0), std::max(box.y0, clips[c].box.y0), std::min(box.x1, clips[c].box.x1), std::min(box.y1, clips[c].box.y1)};
-    }
-    return box;
-  };
-  for (std::size_t i = 0; i < list->commands.size() && i < list->origins.size(); ++i) {
-    const auto& command = list->commands[i];
-    const graphics::Origin origin = list->origins[i];
-    if (std::holds_alternative<graphics::Save>(command)) {
-      frames.push_back(frames.back());
-      continue;
-    }
-    if (std::holds_alternative<graphics::Restore>(command)) {
-      if (frames.size() > 1) {
-        frames.pop_back();
-      }
-      continue;
-    }
-    if (std::holds_alternative<graphics::BeginSoftMask>(command)) {
-      ++in_mask;
-      continue;
-    }
-    if (std::holds_alternative<graphics::EndSoftMask>(command)) {
-      in_mask -= in_mask > 0 ? 1 : 0;
-      frames.back().masked = true;
-      continue;
-    }
-    if (std::holds_alternative<graphics::ClearSoftMask>(command)) {
-      frames.back().masked = false;
-      continue;
-    }
-    if (in_mask > 0) {
-      continue;
-    }
-    const bool own = rewritable(origin.invocation);
-    if (const auto* clip = std::get_if<graphics::ClipPath>(&command)) {
-      const auto bounds = path_bounds(clip->path);
-      const Rect box = bounds ? transformed(*bounds, clip->ctm.then(to_view)).normalized() : Rect{};
-      clips.push_back({.box = finite(box) ? box : shown,
-                       .invocation = origin.invocation,
-                       .operation = origin.operation,
-                       .command = i,
-                       .rewritable = own,
-                       .under = {},
-                       .moved = false});
-      frames.back().clips.push_back(clips.size() - 1);
-      continue;
-    }
-    if (!own) {
-      continue;  // a Type 3 glyph's commands: they go with their run
-    }
-    std::optional<Rect> box;
-    bool text_clip = false;
-    bool plain = false;
-    if (const auto* fill = std::get_if<graphics::FillPath>(&command)) {
-      if (const auto b = path_bounds(fill->path)) {
-        box = transformed(*b, fill->ctm.then(to_view)).normalized();
-      }
-      // One shape (a rectangle, a polygon of a few sides): not the lines of a table, drawn as one path.
-      plain = fill->path.size() <= 8 && std::ranges::count(fill->path.verbs(), graphics::SegmentKind::kMove) == 1;
-    } else if (const auto* stroke = std::get_if<graphics::StrokePath>(&command)) {
-      if (const auto b = path_bounds(stroke->path)) {
-        box = transformed(*b, stroke->ctm.then(to_view)).normalized();
-      }
-    } else if (const auto* image = std::get_if<graphics::Boxed<graphics::DrawImage>>(&command)) {
-      box = transformed(Rect{0, 0, 1, 1}, (*image)->ctm.then(to_view)).normalized();
-      plain = true;
-    } else if (const auto* run = std::get_if<graphics::Boxed<graphics::ShowText>>(&command)) {
-      box = run_box(**run, to_view);
-      text_clip = (*run)->render_mode >= 4;
-    } else if (std::holds_alternative<graphics::Boxed<graphics::PaintShading>>(command) ||
-               std::holds_alternative<graphics::Boxed<graphics::PaintTiling>>(command)) {
-      box = clip_box();  // a shading or a pattern fills what the clip leaves
-      plain = true;
-    }
-    if (!box || !finite(*box)) {
-      continue;
-    }
-    items.push_back({.box = *box,
-                     .invocation = origin.invocation,
-                     .operation = origin.operation,
-                     .command = i,
-                     .clips = frames.back().clips,
-                     .masked = frames.back().masked,
-                     .text_clip = text_clip,
-                     .moved = false,
-                     .background = false,
-                     .plain = plain});
-    for (const std::size_t c : frames.back().clips) {
-      clips[c].under.push_back(items.size() - 1);
-    }
+  clips.reserve(inventory.clips.size());
+  for (layout::detail::Clip& clip : inventory.clips) {
+    clips.push_back({std::move(clip)});
   }
-  const std::size_t drawn = items.size();
-  // The annotations — form widgets too —, as items of their own (their geometry is moved); not popups,
-  // which go with their parent.
-  std::vector<std::optional<ObjectRef>> annotation_of;
-  if (const Object* entry = page->dict.find("Annots")) {
-    auto annots = document.resolve(*entry);
-    if (annots && annots->as_array() != nullptr) {
-      for (const Object& element : *annots->as_array()) {
-        auto annotation = document.resolve(element);
-        if (!annotation || annotation->as_dict() == nullptr || subtype_of(*annotation->as_dict()) == "Popup") {
-          continue;
-        }
-        const std::vector<double> r = content::numbers(document, *annotation->as_dict(), "Rect");
-        if (r.size() != 4) {
-          continue;
-        }
-        const Rect box = page->view(Rect{r[0], r[1], r[2], r[3]}.normalized());
-        if (!finite(box)) {
-          continue;
-        }
-        items.push_back({.box = box,
-                         .invocation = 0,
-                         .operation = 0,
-                         .command = 0,
-                         .clips = {},
-                         .masked = false,
-                         .text_clip = false,
-                         .moved = false,
-                         .background = false,
-                         .plain = false});
-        annotation_of.push_back(element.as_ref());
-      }
-    }
-  }
+  const std::size_t drawn = inventory.operators;
 
   // 2. A footer, a background; what is below the paragraph, across its width.
   const double width = shown.width();
@@ -401,7 +231,7 @@ Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const M
                          ? "an image lies across the paragraph's bottom (a scanned page, a form's background)"
                          : "something is drawn across the paragraph's bottom (a box, a table, a rule)");
     }
-    if (k >= drawn && annotation_of[k - drawn] == std::nullopt) {
+    if (k >= drawn && items[k].annotation == std::nullopt) {
       return refused("an annotation below it cannot be moved");
     }
     item.moved = true;
@@ -414,8 +244,7 @@ Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const M
     more = false;
     for (std::size_t k = 0; k < items.size(); ++k) {
       Item& item = items[k];
-      if (item.moved || item.background || item.frame || !follows(k) || item.box.y0 >= footer - kSlack ||
-          (k >= drawn && annotation_of[k - drawn] == std::nullopt)) {
+      if (item.moved || item.background || item.frame || !follows(k) || item.box.y0 >= footer - kSlack || (k >= drawn && items[k].annotation == std::nullopt)) {
         continue;
       }
       // Between things that move, above and below it across its width: it goes with them (a line's marker
@@ -715,7 +544,7 @@ Result<MovePlan> plan_move(Document& document, std::uint32_t page_index, const M
   }
   for (std::size_t k = drawn; k < items.size(); ++k) {
     if (items[k].moved) {
-      plan.annotations.push_back(*annotation_of[k - drawn]);
+      plan.annotations.push_back(*items[k].annotation);
     }
   }
   const Matrix& m = page->to_user;

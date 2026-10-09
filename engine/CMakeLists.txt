@@ -46,6 +46,9 @@ add_library(capriole_engine STATIC
   src/edit/pdfa.cpp
   src/render/raster.cpp
   src/text/extract.cpp
+  src/layout/drawn.cpp
+  src/layout/page_model.cpp
+  src/layout/paragraphs.cpp
   src/filters/basic.cpp
   src/filters/ccitt.cpp
   src/filters/dct.cpp

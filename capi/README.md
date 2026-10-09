@@ -99,6 +99,46 @@ operator's strings, and the font dictionary (`[number, generation]` or `null`). 
 `CAPRIOLE_TEXT_ORDER_CONTENT` (the content's order, the default) or `CAPRIOLE_TEXT_ORDER_LAYOUT` (by
 columns). Unlike the other functions, the text here is Unicode: the JSON is ASCII with `\uXXXX` escapes.
 
+`capriole_document_page_model_json` (the page's model, phase 10a; CAPRIOLE.md §5.2):
+
+```json
+{"page":0, "width":400.00, "height":400.00,
+ "paragraphs":[{"text":"…", "lines":[…], "chars":[…], "left":20.00, "indent":0.00, "right":180.00,
+   "top":31.00, "bottom":67.00, "pitch":12.00, "size":10.00, "alignment":"left", "mainStyle":0,
+   "styles":[{"font":[5,0], "size":10.00, "colour":[0.000,0.000,0.000], "scale":1.000}], "refusal":""}, …],
+ "elements":[{"kind":"paragraph", "role":"none", "zone":"body", "box":[x0,y0,x1,y1],
+   "commands":[…], "sources":[[invocation, operation], …], "paragraph":0, "column":0}, …],
+ "columns":[{"box":[x0,y0,x1,y1], "elements":[…]}, …],
+ "invocations":[{"kind":"page", "parent":0, "operation":0, "form":null}, …],
+ "commands":180, "drawn":[…], "warnings":[…], "missing_resources":[…]}
+```
+
+The paragraphs are the blocks of the page's text as laid out (`CAPRIOLE_TEXT_ORDER_LAYOUT`): their lines,
+words and characters are indices into that text, their characters only the page's content's (an
+annotation's are its own). `left` is the margin of the lines after the first, `indent` the first line's
+from it; `top` and `bottom` those of the glyph boxes; `pitch` from baseline to baseline. `refusal` says why
+the paragraph cannot be laid out anew (`capriole_document_page_replace_paragraph` refuses it with that
+message), empty when it can.
+
+An element is a `paragraph`, `glyphs` (text with nothing to read: a space alone off any line, glyphs whose
+font does not say what they are), an `image`, a `drawing` (paths grouped by what they touch, not what lies
+clear inside another), a `shading` (or a pattern), or an `annotation` (with `"annotation":[n,g]` or `null`
+for a direct dictionary, and its `"subtype"`). `role`: `background` (one simple shape, image or shading
+covering 90% of each side), `rule` (a line, 3 points across at most), `box` (a rectangle, with what touches
+it), `table` (three thin lines each way at least, a rectangle's outline counting two), `figure` (anything
+else, every image), `none` (text, annotations). `zone`: `header` (what ends in the page's first eighth, two
+lines of its text apart from the rest), `footer` (the same at the bottom), `body`. Elements are ordered by
+their tops, then their left sides; `box` is what they cover, strokes' width and glyphs' outlines included.
+
+Where an element comes from: `commands`, indices of the page's display list (`commands` is its length;
+`drawn` the commands the page's content streams draw — each in one element exactly, a text run in the
+paragraphs whose characters it shows), and `sources`, the operators behind them — an operator's ordinal
+among those of a content stream (`operation`, as `o`'s order in `capriole_document_page_content_json`),
+in `invocation`: an index of `invocations`, the page's content (`page`), a form XObject it draws (`form`,
+with `parent` the invocation that drew it and `operation` its `Do`), or what the page's edits do not
+rewrite (`other`: annotations' appearances, Type 3 glyphs). A column: body paragraphs one above the other,
+overlapping across half the narrower's width, no more than four of their lines apart.
+
 `capriole_document_page_render` draws the same interpreted page with the engine's rasterizer (Blend2D,
 ADR 0002) at the requested dpi: `width` × `height` pixels of straight RGBA, rows top to bottom, on an
 opaque white page, released with `capriole_free`. Bitmaps above 50 million pixels are refused with

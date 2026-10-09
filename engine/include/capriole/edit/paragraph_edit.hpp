@@ -34,13 +34,15 @@
 #include "capriole/edit/font_library.hpp"
 #include "capriole/edit/text_edit.hpp"
 #include "capriole/graphics/geometry.hpp"
+#include "capriole/layout/page_model.hpp"
 
 namespace capriole::edit {
 
 // How far shrinking may make the text smaller.
 inline constexpr double kMinShrink = 0.7;
 
-enum class ParagraphAlignment : std::uint8_t { kLeft, kJustified, kCentre, kRight };
+// How a paragraph's lines are set (layout/page_model.hpp).
+using ParagraphAlignment = layout::Alignment;
 
 struct ParagraphOptions {
   // When the new text does not fit, make it smaller (with its line pitch) until it does, down to kMinShrink.

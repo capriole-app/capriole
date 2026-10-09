@@ -1175,7 +1175,7 @@ Criterio: test e2e (una parola riscritta nel suo font, salvata, il resto della r
 annullata; Esc senza passo di «Annulla»; carattere che il font non ha → avviso del font simile, e la riga
 riscritta di nuovo per intero; testo di un'annotazione → rifiuto in italiano) verdi; gate verde.
 
-## Fase 9 — Editing avanzato del testo — 🔜 in corso (9a ✅, 9b ✅)
+## Fase 9 — Editing avanzato del testo — ✅ completata (2026-10-09)
 
 Passi: **9a** reflow dei paragrafi (9a-1 motore ✅, 9a-2 app ✅) · **9b** paragrafi con più stili ✅ · **9c** sottoinsiemi dei font estesi (9c-1 motore ✅, 9c-2 app ✅) · **9d** spostare ciò che segue su scelta (9d-1 motore ✅, 9d-2 app ✅). Gli altri (estendere i sottoinsiemi dei font
 incorporati, paragrafi con più stili, spostare il contenuto che segue su scelta esplicita) si fissano dopo.
@@ -1355,6 +1355,39 @@ pagina piena il rifiuto «andrebbe oltre il fondo della pagina (servono 14 pt, c
 «Riduci». Gate verde.
 
 ---
+
+## Fase 10 — Modello alto della pagina e oggetti — 🔜 in corso (10a ✅)
+
+Il modello alto di CAPRIOLE.md §5.2, costruito attorno a un primo uso: selezionare, spostare, ridimensionare
+ed eliminare immagini e disegni. **10a** il modello nel motore ✅ · **10b** le modifiche agli oggetti nel
+motore (spostare, ridimensionare, eliminare, toccando solo i loro operatori) · **10c** nell'app («Seleziona e
+sposta» su immagini e disegni: maniglie, trascinamento, Canc, annulla). Dopo: lo scorrimento del testo fra
+colonne e pagine, l'esportazione strutturata e i tag di accessibilità, che usano lo stesso modello.
+
+**10a (2026-10-09) — il modello della pagina, nel motore: uscita raggiunta.** Area nuova `layout/`
+(`capriole/layout/page_model.hpp`): `page_model(document, page)` dà i paragrafi (righe, parole, stili,
+margini, rientro, allineamento, interlinea, e perché uno non si può reimpaginare), gli elementi — paragrafi,
+testo senza niente da leggere (uno spazio fuori da ogni riga), immagini, disegni (tracciati raggruppati per
+ciò che toccano, non ciò che sta dentro un altro senza toccarlo), sfumature, annotazioni —, con ruolo
+(sfondo, filetto, riquadro, tabella, figura), zona (testata, corpo, piè di pagina: nell'ottavo estremo della
+pagina, a due righe dal resto), colonna e riquadro (spessore dei tratti e contorni dei glifi compresi), e per
+ognuno la provenienza: i comandi della display list e gli operatori dei content stream (la pagina, le forme)
+che li disegnano. È fatto dei pezzi che c'erano: il riconoscimento dei paragrafi della 9a
+(`layout::paragraph_of`, prima dentro `edit/paragraph_edit`) e l'inventario di ciò che è disegnato della 9d
+(`layout/drawn`, prima dentro `edit/content_move`), che le modifiche ora usano da lì — un riordino senza
+cambiare il comportamento: i controlli di 9a, 9b e 9d rilanciati danno report identici riga per riga (100/100,
+100/100, 100/100; gli stessi 147 rifiuti su 247 tentativi). API C `capriole_document_page_model_json`
+(anche in WASM), `cpdf model` e `cpdf model --without N` (la pagina disegnata senza alcuni elementi), fuzzing
+`fuzz_page_model` (con le invarianti di copertura: 10 minuti, 139 mila esecuzioni, nessun crash). Il lavoro è limitato contro le pagine ostili (coppie di
+tracciati confrontate, ricerca delle righe e delle colonne per ordine verticale).
+Criterio: `corpus-tools/check_page_model.py` su 100 pagine dei corpora — ogni comando disegnato dal contenuto
+sta in un solo elemento (un testo nei paragrafi di cui mostra i caratteri), nessun carattere in due paragrafi;
+per fino a 25 elementi a pagina, la pagina disegnata senza l'elemento differisce da quella intera solo dentro
+il suo riquadro (2 pixel di margine). **100/100**, 1967 elementi tolti e ridisegnati (462 non cambiano nulla:
+374 spazi, disegni coperti da altro, testo giapponese che senza il pacchetto di risorse non si disegna); 1747
+paragrafi in 480 colonne, 225 elementi nel piè di pagina e 21 in testata. Il controllo riconosce un riquadro
+sbagliato (lo stesso elemento con il riquadro abbassato di metà altezza: centinaia di pixel fuori). Report
+`CORPORA/reports/page-model-all-20261009-121114`.
 
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 

@@ -121,6 +121,16 @@ capriole_status capriole_document_page_render(capriole_document* document, uint3
 capriole_status capriole_document_page_text_json(capriole_document* document, uint32_t page_index, int order, char** json);
 
 /*
+ * The model of page page_index (0-based) as JSON (phase 10a): its paragraphs (lines, margins, alignment,
+ * line pitch, styles; why one cannot be laid out anew), the elements it shows — paragraphs, images,
+ * drawings (rules, boxes, tables, backgrounds), shadings, annotations —, each with its box, header or
+ * footer, column, and where it comes from (the display list's commands and the content streams'
+ * operators), and its columns. Coordinates as for capriole_document_page_text_json. Format in
+ * capi/README.md.
+ */
+capriole_status capriole_document_page_model_json(capriole_document* document, uint32_t page_index, char** json);
+
+/*
  * Registers a resource pages may need (fonts and CMaps too large to build into the engine: the resource
  * pack of scripts/fetch_resources.sh), by its name in the pack — "cmap/UniJIS-UCS2-H",
  * "font/NotoSansJP-Regular.otf" — with its bytes (copied). For every document of the process, from the
