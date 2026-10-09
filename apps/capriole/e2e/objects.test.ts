@@ -128,8 +128,12 @@ test('an image is selected, moved and resized; saved; undone', async ({ page }) 
 
   await page.getByRole('button', { name: 'Annulla' }).click();
   await page.getByRole('button', { name: 'Annulla' }).click();
-  await select(page, 310, 90, 'Immagine');
-  expect((await selected(page)).map(Math.round)).toEqual([300, 80, 320, 100]);
+  // The image may still be selected where the first undo left it while the page's model is read again:
+  // clicked until the outline is where it was at first.
+  await expect(async () => {
+    await select(page, 310, 90, 'Immagine');
+    expect((await selected(page)).map(Math.round)).toEqual([300, 80, 320, 100]);
+  }).toPass();
 });
 
 test('a box is deleted with Canc; undone', async ({ page }) => {
