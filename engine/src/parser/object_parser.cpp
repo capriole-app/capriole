@@ -232,6 +232,11 @@ Result<model::Dict> ObjectParser::parse_dict(std::size_t depth) {
       return std::unexpected(std::move(value_token.error()));
     }
     if (value_token->kind == TokenKind::kDictClose) {
+      if (mode_ == ParseMode::kTolerant) {
+        // Repair: a last key with no value ("<</Markedtrue>>": a value run into its key): left out, as a
+        // null value would be (§7.3.7).
+        return dict;
+      }
       return make_error(ErrorCode::kSyntax, "missing value for key /" + key->bytes, value_token->offset);
     }
     if (value_token->kind == TokenKind::kArrayClose && mode_ == ParseMode::kTolerant) {

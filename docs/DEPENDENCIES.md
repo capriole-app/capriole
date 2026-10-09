@@ -59,7 +59,10 @@ input di prova, mai nel repository. Per lo spostamento di ciò che segue un para
 scrive la pagina originale traslata, che Capriole e Poppler disegnano come riferimento
 (`corpus-tools/check_paragraph_move.py`). Per la firma con una chiave su smart card (fase 11a): SoftHSM2 (BSD,
 `softhsm2-util` e `libsofthsm2.so`: una smart card PKCS#11 in software, creata per ogni giro) e `pkcs11-tool`
-di OpenSC (LGPL, solo eseguito: firma sul token) — `corpus-tools/check_signatures.py --pkcs11`.
+di OpenSC (LGPL, solo eseguito: firma sul token) — `corpus-tools/check_signatures.py --pkcs11`. Per la revoca e
+le firme a lungo termine (fase 11b): pyHanko 0.37 con pyhanko-cli (MIT, in un venv fuori dal repo,
+`CORPORA/tools/pyhanko-venv`: `adesverify` e la sonda `corpus-tools/pyhanko_probe.py`), `openssl ocsp` e
+`openssl ca -gencrl` per il responder e la CRL di prova (`tests/data/signing/make_ltv_fixtures.sh`).
 
 
 OSS-Fuzz (`ci/oss-fuzz/`, quando il progetto sarà iscritto): l'immagine `gcr.io/oss-fuzz-base/base-builder`

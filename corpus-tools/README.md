@@ -158,7 +158,23 @@ NSS con la CA di prova) e OpenSSL (`openssl cms -verify`, `openssl ts -verify`) 
 la firma sia una revisione incrementale e `qpdf --check` non peggiori, che Capriole la rilegga valida e
 fidata al livello fatto, e che un byte cambiato la renda non valida per tutti e tre; su ogni file dei
 corpora con una `/ByteRange` confronta il verdetto di Capriole con quello di Poppler. Strumenti esterni:
-`pdfsig`, `certutil` (NSS), `openssl`, `qpdf`.
+`pdfsig`, `certutil` (NSS), `openssl`, `qpdf`. Con `--pkcs11 <modulo>` (fase 11a) le chiavi stanno su un
+token SoftHSM creato per il giro e il motore non le vede: `cpdf sign --to-sign`, `pkcs11-tool --sign`
+(OpenSC), `cpdf sign --value`; in più, ogni firma RSA dev'essere lo stesso file, byte per byte, di quella
+fatta col `.p12`.
+
+`check_ltv.py` (criterio di uscita della fase 11b): firma con la marca temporale (B-T) col firmatario
+di prova che dice dove chiedere (uno su cinque col firmatario revocato), poi fa ciò che farà l'app
+desktop — `cpdf ltv needs`, le risposte fatte offline (`openssl ocsp -index`, o la CRL della CA),
+`cpdf ltv add` (B-LT), `cpdf doc-timestamp` e i dati della catena della TSA (B-LTA) — e controlla che
+pyHanko (`adesverify`, `--pyhanko`, in `CORPORA/tools/pyhanko-venv`) dia la firma integra e fidata (il
+revocato: revocata), Capriole valida con la revoca «buona» dai soli dati del file al livello B-LTA,
+`pdfsig` valida, incrementale, qpdf non peggiore. Gli indirizzi nei certificati non rispondono: ciò che
+i verificatori trovano, lo trovano nel file. Prima, `pyhanko_probe.py` (con il Python di pyHanko) dice
+che cosa pyHanko fa dell'originale: uno che non sa leggere non è giudicato da pyHanko; uno che legge solo
+con `--no-strict-syntax` è giudicato così; un rifiuto delle revisioni successive è scusato solo se la
+causa è l'originale (metadati non XMP, annotazioni dirette nelle pagine, un albero della struttura con
+radice nulla, una firma preesistente illeggibile) — ognuno contato nel rapporto.
 
 ## PDF/A
 

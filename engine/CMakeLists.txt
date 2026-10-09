@@ -20,6 +20,7 @@ add_library(capriole_engine STATIC
   src/crypto/mbed.cpp
   src/crypto/pkcs12.cpp
   src/crypto/rc2.cpp
+  src/crypto/revocation.cpp
   src/crypto/hash.cpp
   src/crypto/security_handler.cpp
   src/document/document.cpp
@@ -34,6 +35,7 @@ add_library(capriole_engine STATIC
   src/edit/facturx.cpp
   src/edit/common.cpp
   src/edit/content_move.cpp
+  src/edit/dss.cpp
   src/edit/content_rewrite.cpp
   src/edit/forms.cpp
   src/edit/object_edit.cpp

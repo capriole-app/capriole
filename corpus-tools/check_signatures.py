@@ -46,12 +46,14 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 
 from check_pages import qpdf_severity
 from compare_render import run
 
 SIGNING = Path(__file__).resolve().parent.parent / "tests" / "data" / "signing"
+TOKEN = threading.Lock()
 DATE = "D:20261004150000Z"
 TOKEN_OID = bytes.fromhex("060b2a864886f70d010910020e")  # id-aa-signatureTimeStampToken
 
@@ -158,8 +160,9 @@ def token_value(args: argparse.Namespace, base: list[str], work: Path, key: str)
     rsa = key.startswith("rsa")
     # RSA hashes on the token; ECDSA signs the hash (SoftHSM has no CKM_ECDSA_SHA256, nor do many cards).
     data.write_bytes(bytes.fromhex(json.loads(to_sign.read_text())["data" if rsa else "hash"]))
-    signed = run(["pkcs11-tool", "--module", args.pkcs11, "--login", "--pin", "1234", "--sign", "--id", "01" if rsa else "02",
-                  "--mechanism", "SHA256-RSA-PKCS" if rsa else "ECDSA", "--input-file", str(data), "--output-file", str(value)], args.timeout)
+    with TOKEN:  # one process at a time on the token, as on a card (SoftHSM fails two at once)
+        signed = run(["pkcs11-tool", "--module", args.pkcs11, "--login", "--pin", "1234", "--sign", "--id", "01" if rsa else "02",
+                      "--mechanism", "SHA256-RSA-PKCS" if rsa else "ECDSA", "--input-file", str(data), "--output-file", str(value)], args.timeout)
     if not value.exists() or value.stat().st_size == 0:
         return None, "pkcs11-tool: " + signed["output"].strip()[:300]
     return base + ["--value", str(value)], ""

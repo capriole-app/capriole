@@ -10,7 +10,8 @@
 #   - nopass.p12               the ECDSA key with an empty password;
 #   - other.pem                a CA that signed none of them (an untrusted anchor);
 #   - tsa.key / tsa.pem / tsa.cnf  a time-stamping authority signed by the CA (openssl ts -reply);
-#   - timestamp.tsr            its response for a time stamp of the bytes "capriole".
+#   - timestamp.tsr            its response for a time stamp of the bytes "capriole";
+#   - and the revocation fixtures of make_ltv_fixtures.sh (OCSP, CRL, a revoked signer).
 set -euo pipefail
 cd "$(dirname "$0")"
 work=$(mktemp -d)
@@ -62,3 +63,6 @@ openssl ts -query -data "$work/value" -sha256 -cert -out "$work/query.tsq" 2>/de
 echo 01 > "$work/tsa-serial"
 (cd "$work" && openssl ts -reply -queryfile query.tsq -inkey "$OLDPWD/tsa.key" -signer "$OLDPWD/tsa.pem" -chain "$OLDPWD/ca.pem" \
   -config "$OLDPWD/tsa.cnf" -out "$OLDPWD/timestamp.tsr" 2>/dev/null)
+
+# The revocation fixtures, under the CA just made.
+./make_ltv_fixtures.sh

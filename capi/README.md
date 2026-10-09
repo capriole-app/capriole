@@ -329,6 +329,8 @@ NULL: the signers' identity is not checked):
   "level":"B-B" | "B-T" | "B-LT" | "B-LTA" | "", "timestamp":"D:…" | "", "timestampInvalid":false,
   "signingTime":"D:…", "certificateValidAtSigning":true,
   "trust":"trusted" | "untrusted" | "notChecked", "trustProblem":"…",
+  "revocation":"good" | "revoked" | "unknown" | "notChecked", "revocationInFile":true,
+  "revocationProblem":"…", "revokedAt":"D:…" | "",
   "page":0 | null, "rect":[x0,y0,x1,y1] | null}, …]
 ```
 
@@ -336,7 +338,15 @@ NULL: the signers' identity is not checked):
 ETSI.CAdES.detached, adbe.pkcs7.sha1, adbe.x509.rsa_sha1, ETSI.RFC3161 document time stamps);
 `coversWholeFile` false: revisions were added after it (later changes, or other signatures).
 `signingTime`: the time stamp's (verified) when there is one, else `/M`, what the signer claims.
-`certificateValidAtSigning`: within the certificate's validity at that time. Revocation is not checked.
+`certificateValidAtSigning`: within the certificate's validity at that time.
+`revocation`: of every certificate of the signer's chain but the root, from the OCSP responses and CRLs
+the file keeps (its `/DSS`, the signature's adbe-revocationInfoArchival attribute) and, with
+`capriole_document_signatures_validate_json(document, anchors, size, data_json, &json)`, those the host
+fetched (`data_json`: `{"certificates":[hex…], "ocsps":[hex…], "crls":[hex…]}`, DER); `notChecked` when
+there are none at all; `unknown` when a certificate has no answer that can be used (none for it, not
+signed by its issuer or a responder the issuer authorised, or its issuer not known); `revoked` unless a
+verified signature time stamp is earlier than the revocation (then `good`, with a note in
+`revocationProblem`). `revocationInFile`: what `good` rests on is all in the file — long-term validation.
 `rect` and `page`: where a visible signature is shown (the page as shown); null for an invisible one.
 
 Signing takes a PKCS#12 file (`capriole_pkcs12_info` reads its certificate first:
@@ -377,6 +387,35 @@ RSA PKCS#1 v1.5, ECDSA as DER or as r‖s (what PKCS#11 gives) — after checkin
 certificate's key (`CAPRIOLE_ERROR_CORRUPT_DATA` when it does not verify: another key, another
 document); then the time stamp request and `capriole_document_sign_finish` as above. A key that signs
 the same bytes gives the same file as through a `.p12`.
+
+### Long-term validation (B-LT, B-LTA)
+
+The engine makes no network calls: it says what to ask, the host asks (the desktop app does), and the
+answers are written into the document security store as a new revision.
+
+1. `capriole_document_validation_needs_json(document, data_json, &json)` lists, once each, the
+   certificates of every signature's chain (and of its time stamp authority's; document time stamps
+   too) but the roots:
+
+   ```json
+   [{"certificate":"hex", "subject":"Luca Verdi (test)", "issuer":"hex" | null, "ocspRequest":"hex" | null,
+     "ocsp":["http://…"], "crl":["http://…"], "caIssuers":["http://…"], "answered":false}, …]
+   ```
+
+   `issuer` null: the issuer's certificate is not known — fetch it from `caIssuers` and ask again with it
+   in `data_json` (what the host already has, as above, or NULL). `ocspRequest`: the DER to POST to an
+   `ocsp` URL (`application/ocsp-request`). `answered`: the file, or `data_json`, already says whether it
+   is revoked.
+2. `capriole_document_add_validation_data(document, spec_json, &data, &size, &json)` with
+   `{"date":"D:…", "certificates":[hex…], "ocsps":[hex…], "crls":[hex…]}` writes them into the `/DSS`
+   (each item once, after what it held; the chains' certificates too) with a `/VRI` entry per signature,
+   as an incremental save; `*json`: `{"certificates":n, "ocsps":n, "crls":n}`, what the `/DSS` holds now.
+   An item that is not what it is given as is refused (`CAPRIOLE_ERROR_SYNTAX`). The document is reopened
+   from the file. The signatures are then B-LT.
+3. `capriole_document_timestamp_begin(document, {"date":"D:…", "fieldName":"…"}, &signing)` prepares a
+   document time stamp (`/SubFilter /ETSI.RFC3161`, an invisible field); `capriole_signing_timestamp_request`
+   gives the request for the authority, `capriole_document_sign_finish` takes its response (required) —
+   B-LTA. Then the validation data of the authority's chain, as in 1 and 2.
 
 ## Attachments and Factur-X
 

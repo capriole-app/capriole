@@ -12,8 +12,11 @@
 //   after it was signed, or other signatures: telling them apart, as DocMDP does, is not done yet).
 // - Time: the signature time stamp's, verified, else /M — what the signer claims.
 // - Identity: whether the signer's certificate chains to a trusted root, only when the host gives the
-//   roots it trusts (the engine trusts no one by itself); its validity at the signing time. Revocation
-//   (OCSP, CRL, the /DSS) is not checked.
+//   roots it trusts (the engine trusts no one by itself); its validity at the signing time.
+// - Revocation (PLAN.md phase 11b): of each certificate of the signer's chain but the root, from the
+//   OCSP responses and CRLs the file keeps (the /DSS, ETSI EN 319 142-1 §5.4; the signature's
+//   adbe-revocationInfoArchival attribute) and those the host fetched (VerifyOptions). Not checked when
+//   there are none at all.
 
 #include <cstddef>
 #include <cstdint>
@@ -37,6 +40,13 @@ enum class Integrity : std::uint8_t {
   kUnsupported,  // a format or algorithm not read here, or a signature that cannot be read
 };
 
+enum class Revocation : std::uint8_t {
+  kNotChecked,  // no revocation data, in the file or given
+  kGood,        // every certificate of the chain but the root has an answer, and none is revoked
+  kRevoked,     // one is revoked (and no verified time stamp says the signature came first)
+  kUnknown,     // one has no answer that can be used (none, or not for it, or not verified)
+};
+
 enum class Trust : std::uint8_t {
   kNotChecked,  // no roots given
   kTrusted,     // the signer's certificate chains to one of them
@@ -58,6 +68,8 @@ struct SignatureInfo {
   std::string level;         // PAdES baseline level ("B-B", "B-T", "B-LT", "B-LTA"); empty when not PAdES
   std::string signing_time;  // the time stamp's, else /M
   std::string trust_problem;
+  std::string revocation_problem;        // why not kGood, or a note (revoked after a time stamp)
+  std::string revoked_at;                // kRevoked: since when, a PDF date
   std::optional<std::string> timestamp;  // the time of a verified time stamp, a PDF date
   // Where it is shown: none for an invisible signature (no page, or a rectangle of no area).
   std::optional<graphics::Rect> rect;             // as shown (edit/annotations.hpp)
@@ -70,13 +82,50 @@ struct SignatureInfo {
   bool timestamp_invalid = false;  // a time stamp that does not verify
   bool certificate_valid_at_signing = false;
   Trust trust = Trust::kNotChecked;
+  Revocation revocation = Revocation::kNotChecked;
+  bool revocation_in_file = false;  // what kGood rests on is all in the file (long-term validation)
   std::optional<crypto::DigestAlgorithm> digest;
 };
 
 struct VerifyOptions {
   // The roots the host trusts: a PEM bundle, or DER certificates one after the other; none: not checked.
   std::span<const std::byte> trust_anchors;
+  // Validation data the host fetched (DER): issuers' certificates, OCSP responses, CRLs.
+  std::vector<std::vector<std::byte>> certificates;
+  std::vector<std::vector<std::byte>> ocsp_responses;
+  std::vector<std::vector<std::byte>> crls;
 };
+
+// The validation data a file keeps in its /DSS (DER, in its order), at most a few hundred of each.
+struct ValidationData {
+  std::vector<std::vector<std::byte>> certificates;
+  std::vector<std::vector<std::byte>> ocsp_responses;
+  std::vector<std::vector<std::byte>> crls;
+};
+[[nodiscard]] Result<ValidationData> document_validation_data(Document& document);
+
+// The chain of a signer's certificate up to a root (self-signed) or as far as the certificates known go:
+// certificates[signer] first; complete is false when an issuer is missing.
+struct Chain {
+  std::vector<std::vector<std::byte>> certificates;
+  bool complete = false;
+};
+[[nodiscard]] Chain chain_of(std::span<const std::byte> certificate, const std::vector<std::vector<std::byte>>& known);
+
+// What a signature is made of, for those who add to it (edit/dss.hpp): its /Contents as the file has it
+// (padding included), its certificates, the signer's among them.
+struct SignatureParts {
+  std::string field_name;
+  std::vector<std::byte> contents;
+  std::vector<std::vector<std::byte>> certificates;
+  std::optional<std::size_t> signer;
+  // Its signature time stamp's (the time-stamping authority's certificates), when it has one.
+  std::vector<std::vector<std::byte>> timestamp_certificates;
+  std::optional<std::size_t> timestamp_signer;
+  bool document_timestamp = false;
+};
+// The parts of the signed signature fields whose dictionary reads, in the order of list_signatures.
+[[nodiscard]] Result<std::vector<SignatureParts>> signature_parts(Document& document);
 
 // The signature fields that are signed, in the order of the form's field tree. Empty for a document with
 // no form; a signature that cannot be read is listed as kUnsupported with what is wrong.

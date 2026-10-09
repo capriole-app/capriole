@@ -54,6 +54,10 @@ set(_capriole_exports
   _capriole_document_sign_finish
   _capriole_signing_free
   _capriole_document_signatures_json
+  _capriole_document_signatures_validate_json
+  _capriole_document_validation_needs_json
+  _capriole_document_add_validation_data
+  _capriole_document_timestamp_begin
   _capriole_document_convert_pdfa
   _capriole_document_page_replace_text
   _capriole_document_page_replace_paragraph

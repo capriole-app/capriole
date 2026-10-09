@@ -42,6 +42,10 @@ constexpr std::string_view kSigningCertificate = "1.2.840.113549.1.9.16.2.12";
 constexpr std::string_view kSigningCertificateV2 = "1.2.840.113549.1.9.16.2.47";
 constexpr std::string_view kTimestampToken = "1.2.840.113549.1.9.16.2.14";
 constexpr std::string_view kTstInfo = "1.2.840.113549.1.9.16.1.4";
+// Adobe's adbe-revocationInfoArchival (ISO 32000-2 §12.8.3.3.2): CRLs and OCSP responses kept in the signature.
+constexpr std::string_view kRevocationArchival = "1.2.840.113583.1.1.8";
+// It keeps at most this many of each (hostile input).
+constexpr std::size_t kMaxArchived = 64;
 constexpr std::string_view kRsaPss = "1.2.840.113549.1.1.10";
 constexpr std::string_view kSha256WithRsa = "1.2.840.113549.1.1.11";
 constexpr std::string_view kEcdsaWithSha256 = "1.2.840.10045.4.3.2";
@@ -206,6 +210,32 @@ bool names(const Element& value, bool v2, int depth, std::span<const std::byte> 
   return cert_hash && std::ranges::equal(cert_hash->content, Digest::of(hash, certificate));
 }
 
+// RevocationInfoArchival ::= SEQUENCE { crl [0] EXPLICIT SEQUENCE OF CRL, ocsp [1] EXPLICIT SEQUENCE OF
+// OCSPResponse, otherRevInfo [2] … }: what can be read of it (the rest is ignored).
+void read_archival(const Element& value, int depth, CmsVerification& out) {
+  auto r = Reader::into(value, depth);
+  while (r && !r->empty()) {
+    auto part = r->next();
+    if (!part) {
+      return;
+    }
+    auto& to = part->tag == der::context_constructed(0) ? out.archived_crls : out.archived_ocsps;
+    if (part->tag != der::context_constructed(0) && part->tag != der::context_constructed(1)) {
+      continue;
+    }
+    auto pr = Reader::into(*part, r->depth());
+    auto list = pr ? pr->expect(der::kSequence) : Result<Element>(std::unexpected(pr.error()));
+    auto lr = list ? Reader::into(*list, pr->depth()) : Result<Reader>(std::unexpected(list.error()));
+    while (lr && !lr->empty() && to.size() < kMaxArchived) {
+      auto item = lr->expect(der::kSequence);
+      if (!item) {
+        break;
+      }
+      to.emplace_back(item->whole.begin(), item->whole.end());
+    }
+  }
+}
+
 std::string text_of(const mbedtls_x509_name& name) {
   std::array<char, 1024> buffer{};
   const int n = mbedtls_x509_dn_gets(buffer.data(), buffer.size(), &name);
@@ -291,7 +321,7 @@ std::size_t longest_value(std::span<const std::byte> certificate) {
   if (!parsed.add(certificate)) {
     return 0;
   }
-  mbedtls_pk_context& pk = parsed.get()->pk;
+  const mbedtls_pk_context& pk = parsed.get()->pk;
   const std::size_t bytes = (mbedtls_pk_get_bitlen(&pk) + 7) / 8;
   if (mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA) != 0) {
     return bytes;
@@ -358,8 +388,8 @@ Result<CmsSignature> sign_detached(const Credentials& credentials, std::span<con
   if (!out) {
     return out;
   }
-  if (auto signed_ = sign_with(*out, credentials); !signed_) {
-    return std::unexpected(std::move(signed_.error()));
+  if (auto made = sign_with(*out, credentials); !made) {
+    return std::unexpected(std::move(made.error()));
   }
   return out;
 }
@@ -388,7 +418,10 @@ Bytes encode(const CmsSignature& signature, std::span<const std::byte> timestamp
 }
 
 Bytes timestamp_request(std::span<const std::byte> signature_value) {
-  const auto imprint = Digest::of(DigestAlgorithm::kSha256, signature_value);
+  return timestamp_request_of_digest(Digest::of(DigestAlgorithm::kSha256, signature_value));
+}
+
+Bytes timestamp_request_of_digest(std::span<const std::byte> imprint) {
   // A nonce from the imprint: the same signature, the same request (the TSA's answer differs anyway).
   std::array<std::byte, 8> nonce{};
   std::copy_n(imprint.begin(), nonce.size(), nonce.begin());
@@ -399,6 +432,10 @@ Bytes timestamp_request(std::span<const std::byte> signature_value) {
 }
 
 Result<Bytes> timestamp_token(std::span<const std::byte> response, std::span<const std::byte> signature_value) {
+  return timestamp_token_of_digest(response, Digest::of(DigestAlgorithm::kSha256, signature_value));
+}
+
+Result<Bytes> timestamp_token_of_digest(std::span<const std::byte> response, std::span<const std::byte> imprint) {
   // TimeStampResp ::= SEQUENCE { status PKIStatusInfo, timeStampToken ContentInfo OPTIONAL }
   Reader top(response);
   auto resp = top.expect(der::kSequence);
@@ -428,7 +465,7 @@ Result<Bytes> timestamp_token(std::span<const std::byte> response, std::span<con
   if (!info) {
     return std::unexpected(std::move(info.error()));
   }
-  if (info->imprint != Digest::of(info->imprint_algorithm, signature_value)) {
+  if (info->imprint_algorithm != DigestAlgorithm::kSha256 || !std::ranges::equal(info->imprint, imprint)) {
     return make_error(ErrorCode::kCorruptData, "the time stamp is not of this signature");
   }
   return bytes;
@@ -570,6 +607,8 @@ Result<CmsVerification> verify_cms(std::span<const std::byte> cms, const Content
       } else if (id == kSigningCertificateV2 || id == kSigningCertificate) {
         signing_certificate = value;
         signing_certificate_v2 = id == kSigningCertificateV2;
+      } else if (id == kRevocationArchival) {
+        read_archival(value, si->depth(), out);
       }
     }
     out.digest_matches = message_digest && message_digest->tag == der::kOctetString && std::ranges::equal(message_digest->content, content_hash);
@@ -658,6 +697,16 @@ bool verify_pkcs1(std::span<const std::byte> certificate, DigestAlgorithm digest
   mbed::Certificates c;
   return c.add(certificate) && mbedtls_pk_can_do(&c.get()->pk, MBEDTLS_PK_RSA) != 0 &&
          mbedtls_pk_verify(&c.get()->pk, mbed::md_of(digest), mbed::uchars(hash), hash.size(), mbed::uchars(signature), signature.size()) == 0;
+}
+
+std::vector<Bytes> certificates_of(std::span<const std::byte> bundle) {
+  mbed::Certificates parsed;
+  (void)parsed.add_all(bundle);
+  std::vector<Bytes> out;
+  for (const mbedtls_x509_crt* c = parsed.get(); c != nullptr && c->raw.p != nullptr; c = c->next) {
+    out.emplace_back(span_of(c->raw).begin(), span_of(c->raw).end());
+  }
+  return out;
 }
 
 ChainCheck check_chain(const std::vector<der::Bytes>& certificates, std::size_t signer, std::span<const std::byte> anchors) {

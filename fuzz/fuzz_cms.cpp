@@ -23,10 +23,10 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     for (const auto& certificate : detached->certificates) {
       (void)certificate_info(certificate);
       (void)longest_value(certificate);
-      if (auto unsigned_ = unsigned_detached(certificate, {}, Digest::of(DigestAlgorithm::kSha256, content))) {
-        (void)digest_info(*unsigned_);
-        (void)set_value(*unsigned_, certificate, input);
-        (void)set_value(*unsigned_, certificate, detached->signature);
+      if (auto prepared = unsigned_detached(certificate, {}, Digest::of(DigestAlgorithm::kSha256, content))) {
+        (void)digest_info(*prepared);
+        (void)set_value(*prepared, certificate, input);
+        (void)set_value(*prepared, certificate, detached->signature);
       }
     }
     if (detached->signer) {

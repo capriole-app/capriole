@@ -1436,7 +1436,7 @@ pagina rifiutato in italiano, senza passo di annulla, ancora selezionato dov'era
 
 CAPRIOLE.md §6.1: la firma qualificata con smart card e la validazione completa sono funzioni dell'app
 desktop; il motore resta senza rete e senza accesso ai dispositivi. **11a** la firma con una chiave che il
-motore non ha ✅ · **11b** revoca (OCSP, CRL) e firme a lungo termine (B-LT: `/DSS`, `/VRI`; B-LTA: marca
+motore non ha ✅ · **11b** ✅ revoca (OCSP, CRL) e firme a lungo termine (B-LT: `/DSS`, `/VRI`; B-LTA: marca
 temporale di documento) nel motore, in scrittura e in verifica · **11c** nell'app desktop: PKCS#11
 (`cryptoki`: il modulo del produttore della carta — OpenSC, CNS, CIE), PIN, scelta del certificato; le
 chiamate di rete a TSA, OCSP e CRL, dichiarate nel dialogo. Nessuna carta reale a disposizione (2026-10-09):
@@ -1465,6 +1465,55 @@ un byte cambiato la invalida) — **100/100** (51 visibili, 24 con marca tempora
 riparati); le 52 firme RSA sono lo stesso file, byte per byte, di quelle col `.p12`. Il controllo della 8h
 rifatto con il `.p12`: 100/100, e 143/143 file con firme già presenti, come prima. Rapporti:
 `CORPORA/reports/signatures-pkcs11-20261009-173443/`, `CORPORA/reports/signatures-all-20261009-173510/`.
+
+**11b (2026-10-09) — revoca e firme a lungo termine nel motore: uscita raggiunta.** Il motore resta
+senza rete: dice che cosa chiedere, l'host chiede, le risposte si verificano qui.
+- `crypto/revocation`: gli indirizzi di un certificato (OCSP, certificato dell'emittente, CRL: solo
+  http/https), la richiesta OCSP (CertID SHA-1, senza nonce: stessa richiesta per lo stesso certificato),
+  le risposte OCSP (firmate dall'emittente o da un responder che ha autorizzato — id-kp-OCSPSigning —,
+  solo per il certificato che nominano: buono, revocato da quando, sconosciuto) e le CRL (dell'emittente,
+  firmate da lui); `ocsp_produced_at`/`crl_this_update` per riconoscerle. Tutto è input ostile, letto col
+  DER del motore.
+- `signature/signatures`: la revoca di ogni certificato della catena del firmatario tranne la radice, con
+  le risposte e le CRL del `/DSS` e dell'attributo adbe-revocationInfoArchival della firma e con quelle
+  date dall'host; «non controllata» se non ce ne sono affatto; revocato a meno che una marca temporale
+  verificata preceda la revoca; `revocation_in_file` quando il «buono» poggia solo sul file.
+  `document_validation_data`, `chain_of`, `signature_parts` (anche la catena della TSA della marca).
+- `edit/dss`: `validation_needs` (per ogni catena di ogni firma, e della sua TSA: il certificato,
+  l'emittente se noto, la richiesta OCSP, gli indirizzi, se ha già una risposta) e `add_validation_data`
+  (nel `/DSS`, ogni elemento una volta, dopo ciò che c'era, con le catene; una voce `/VRI` per firma —
+  quelle già nel file restano com'erano —; salvataggio incrementale: B-LT).
+- `edit/sign`: `prepare_document_timestamp` (campo invisibile, `/SubFilter /ETSI.RFC3161`, il token
+  sopra gli intervalli; solo nel modulo, non sulla pagina: nessuna pagina cambia dopo le firme che sigilla)
+  con `finish_signature`: B-LTA.
+API C `capriole_document_signatures_validate_json`, `capriole_document_validation_needs_json`,
+`capriole_document_add_validation_data`, `capriole_document_timestamp_begin` (anche WASM); nel JSON delle
+firme `revocation`, `revocationInFile`, `revocationProblem`, `revokedAt`. `cpdf signatures … --validation`,
+`cpdf ltv needs|add`, `cpdf doc-timestamp`. Fixture `tests/data/signing/make_ltv_fixtures.sh` (responder
+autorizzato, firmatario con gli indirizzi, firmatario revocato, CRL, risposte); fuzz target
+`fuzz_revocation` (6 milioni di esecuzioni in 15 minuti, pulito), `fuzz_cms` e `fuzz_signatures` coprono
+l'attributo d'archivio e il `/DSS`; test.
+Corretto strada facendo, con il suo test: un dizionario la cui ultima chiave non ha valore
+(`<</Markedtrue>>`, in un catalogo di `unsafe/x008`) era rifiutato anche dal lettore tollerante — il
+documento restava senza catalogo e il salvataggio completo lo scriveva null —: ora la chiave è lasciata
+fuori, come un null (§7.3.7). E una seconda aggiunta di dati riscriveva la `/VRI` della firma, che pyHanko
+prende per una manomissione: ora resta com'era.
+Criterio: `corpus-tools/check_ltv.py` — 100 file firmati B-T (20 col firmatario revocato), poi ciò che
+farà l'app desktop: `cpdf ltv needs`, risposte fatte offline (`openssl ocsp -index`; un file su due la CRL),
+`cpdf ltv add`, `cpdf doc-timestamp`, i dati della catena della TSA. Gli indirizzi dei certificati non
+rispondono: tutto viene dal file. **100/100**: pyHanko (`adesverify`, validazione passata con le marche come
+prove d'esistenza) integra e fidata — la revocata revocata —, Capriole valida, revoca «buona» dai soli dati
+del file, B-LTA, `pdfsig` valida, incrementale, qpdf non peggiore. pyHanko non giudica 12 originali (5 non li
+legge, 7 hanno una firma che non sa leggere); ne legge 20 solo con `--no-strict-syntax`; su 14 gira senza
+l'analisi delle modifiche (va in errore su un albero della struttura con radice nulla) e su 2 la rifiuta per
+l'originale (metadati non XMP, annotazioni dirette nelle pagine: rifiuterebbe allo stesso modo un suo
+aggiornamento) — ognuno contato, mai scusato per ciò che scrive Capriole. Sulle firme già nei corpora, dove
+Capriole controlla la revoca dai dati del file (5 file), pyHanko concorda. Rifatti i controlli della 8h e
+della 11a: 100/100, 143/143 (le firme lette sono 131, una in più grazie alla correzione del lettore), e col
+token 100/100, 52 firme RSA identiche al `.p12`. Rapporto: `CORPORA/reports/ltv-all-20261009-185847/`.
+Limiti dichiarati: la freschezza delle risposte rispetto al momento della firma non è giudicata (vale
+qualunque risposta valida); la catena del responder OCSP non è controllata oltre l'autorizzazione; niente
+richieste di marca temporale per rinnovare un B-LTA già fatto (un'altra marca di documento lo fa).
 
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 

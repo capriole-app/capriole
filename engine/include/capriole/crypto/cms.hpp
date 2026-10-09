@@ -13,7 +13,7 @@
 // Verifying: hostile input. The signer's certificate is found by its identifier, else by trying each
 // certificate's key; RSA (PKCS#1 v1.5, PSS) and ECDSA, the hashes MD5 to SHA-512. Whether a certificate
 // chains to a trusted root is a separate question (check_chain), asked with roots the host gives: the
-// engine trusts no one by itself. Revocation (OCSP, CRL) is not checked.
+// engine trusts no one by itself. Revocation is crypto/revocation.hpp's.
 
 #include <cstddef>
 #include <functional>
@@ -80,6 +80,9 @@ struct CmsSignature {
 [[nodiscard]] der::Bytes timestamp_request(std::span<const std::byte> signature_value);
 // The token of a granted RFC 3161 response, checked: its imprint is that of the signature value.
 [[nodiscard]] Result<der::Bytes> timestamp_token(std::span<const std::byte> response, std::span<const std::byte> signature_value);
+// The same with the SHA-256 imprint given (a document time stamp's: the digest of the byte ranges).
+[[nodiscard]] der::Bytes timestamp_request_of_digest(std::span<const std::byte> imprint);
+[[nodiscard]] Result<der::Bytes> timestamp_token_of_digest(std::span<const std::byte> response, std::span<const std::byte> imprint);
 
 struct CmsVerification {
   DigestAlgorithm digest = DigestAlgorithm::kSha256;
@@ -95,7 +98,12 @@ struct CmsVerification {
   std::string content_type;                   // the encapsulated content's type
   std::optional<der::Bytes> content;          // and the content itself, when encapsulated
   der::Bytes signature;                       // the signature value
+  // Revocation data the signer kept in a signed attribute (adbe-revocationInfoArchival).
+  std::vector<der::Bytes> archived_crls;
+  std::vector<der::Bytes> archived_ocsps;
 };
+// The certificates of a PEM bundle, or of DER certificates one after the other, as DER.
+[[nodiscard]] std::vector<der::Bytes> certificates_of(std::span<const std::byte> bundle);
 
 // content_digest: the digest of the detached content with the signer's algorithm; none: the
 // encapsulated content is what is signed.

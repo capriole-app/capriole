@@ -16,6 +16,7 @@
 #include "capriole/crypto/cms.hpp"
 #include "capriole/crypto/der.hpp"
 #include "capriole/crypto/digest.hpp"
+#include "capriole/crypto/revocation.hpp"
 #include "capriole/document/document.hpp"
 #include "capriole/edit/forms.hpp"
 #include "capriole/model/object.hpp"
@@ -33,6 +34,23 @@ using model::Object;
 // revocation data, tens).
 constexpr std::uint64_t kMaxContents = std::uint64_t{8} * 1024 * 1024;
 constexpr std::size_t kChunk = std::size_t{64} * 1024;
+
+// A /DSS keeps at most this many of each kind; a chain is at most this long (hostile input).
+constexpr std::size_t kMaxValidationItems = 512;
+constexpr std::size_t kMaxChain = 10;
+
+using Bytes = std::vector<std::byte>;
+
+// What verifying a signature found that checking its revocation needs.
+struct Found {
+  std::vector<Bytes> certificates;
+  std::optional<std::size_t> signer;
+  std::vector<Bytes> archived_ocsps;
+  std::vector<Bytes> archived_crls;
+  // The signature time stamp's: the authority's certificates, its among them.
+  std::vector<Bytes> timestamp_certificates;
+  std::optional<std::size_t> timestamp_signer;
+};
 
 struct ByteRange {
   std::array<std::uint64_t, 4> v{};
@@ -169,7 +187,7 @@ void read_signer(const std::vector<crypto::der::Bytes>& certificates, std::optio
 }
 
 // Verifies one signature dictionary.
-void verify(Document& document, const Dict& signature, SignatureInfo& info, const VerifyOptions& options) {
+void verify(Document& document, const Dict& signature, SignatureInfo& info, const VerifyOptions& options, Found& found) {
   ByteSource& source = document.source();
   auto range = byte_range_of(document, signature, source.size());
   if (!range) {
@@ -229,6 +247,8 @@ void verify(Document& document, const Dict& signature, SignatureInfo& info, cons
       info.problem = "the signature does not verify (the document was changed after it was signed, or the signature is damaged)";
     }
     read_signer(certificates, 0, info, options);
+    found.certificates = std::move(certificates);
+    found.signer = 0;
     return;
   }
 
@@ -268,19 +288,199 @@ void verify(Document& document, const Dict& signature, SignatureInfo& info, cons
     read_timestamp(*cms, info);
   }
   read_signer(cms->certificates, cms->signer, info, options);
+  found.certificates = cms->certificates;
+  found.signer = cms->signer;
+  found.archived_ocsps = cms->archived_ocsps;
+  found.archived_crls = cms->archived_crls;
+  if (cms->timestamp_token) {
+    if (auto token = crypto::verify_cms(*cms->timestamp_token)) {
+      found.timestamp_certificates = std::move(token->certificates);
+      found.timestamp_signer = token->signer;
+    }
+  }
   if (sf == "ETSI.CAdES.detached" && cms->signing_certificate) {
     info.level = info.timestamp ? "B-T" : "B-B";
   }
 }
 
+// What the answers say of one certificate, issued by issuer: the first revoked, else the first good.
+struct Answer {
+  crypto::RevocationStatus status = crypto::RevocationStatus::kUnknown;
+  std::string revoked_at;
+  bool in_file = false;
+};
+
+Answer answer_for(const Bytes& certificate, const Bytes& issuer, const std::vector<const Bytes*>& ocsps, const std::vector<const Bytes*>& crls,
+                  std::size_t from_file_ocsps, std::size_t from_file_crls) {
+  Answer best;
+  const auto take = [&](const Result<crypto::RevocationInfo>& r, bool in_file) {
+    if (!r || r->status == crypto::RevocationStatus::kUnknown) {
+      return false;
+    }
+    if (r->status == crypto::RevocationStatus::kRevoked) {
+      best = {.status = r->status, .revoked_at = r->revoked_at, .in_file = in_file};
+      return true;
+    }
+    if (best.status != crypto::RevocationStatus::kGood || (in_file && !best.in_file)) {
+      best = {.status = r->status, .revoked_at = {}, .in_file = in_file};
+    }
+    return false;
+  };
+  for (std::size_t i = 0; i < ocsps.size(); ++i) {
+    if (take(crypto::check_ocsp(*ocsps[i], certificate, issuer), i < from_file_ocsps)) {
+      return best;
+    }
+  }
+  for (std::size_t i = 0; i < crls.size(); ++i) {
+    if (take(crypto::check_crl(*crls[i], certificate, issuer), i < from_file_crls)) {
+      return best;
+    }
+  }
+  return best;
+}
+
+void check_revocation(const Found& found, const ValidationData& file, const VerifyOptions& options, const std::vector<Bytes>& anchors, SignatureInfo& info) {
+  if (!found.signer || *found.signer >= found.certificates.size()) {
+    return;
+  }
+  // The file's answers first (long-term validation rests on them), then the host's.
+  std::vector<const Bytes*> ocsps;
+  std::vector<const Bytes*> crls;
+  for (const auto* list : {&file.ocsp_responses, &found.archived_ocsps}) {
+    for (const Bytes& b : *list) {
+      ocsps.push_back(&b);
+    }
+  }
+  for (const auto* list : {&file.crls, &found.archived_crls}) {
+    for (const Bytes& b : *list) {
+      crls.push_back(&b);
+    }
+  }
+  const std::size_t file_ocsps = ocsps.size();
+  const std::size_t file_crls = crls.size();
+  for (const Bytes& b : options.ocsp_responses) {
+    ocsps.push_back(&b);
+  }
+  for (const Bytes& b : options.crls) {
+    crls.push_back(&b);
+  }
+  if (ocsps.empty() && crls.empty()) {
+    return;
+  }
+  std::vector<Bytes> known = found.certificates;
+  for (const auto* list : {&file.certificates, &options.certificates, &anchors}) {
+    known.insert(known.end(), list->begin(), list->end());
+  }
+  const Chain chain = chain_of(found.certificates[*found.signer], known);
+  info.revocation = Revocation::kGood;
+  info.revocation_in_file = true;
+  for (std::size_t i = 0; i < chain.certificates.size(); ++i) {
+    const Bytes& certificate = chain.certificates[i];
+    if (std::ranges::find(anchors, certificate) != anchors.end() || (chain.complete && i + 1 == chain.certificates.size())) {
+      break;  // a trusted root, or the root: nothing to ask about it
+    }
+    const auto name = [&] {
+      auto c = crypto::certificate_info(certificate);
+      return c ? c->common_name : std::string("a certificate");
+    };
+    if (i + 1 >= chain.certificates.size()) {
+      info.revocation = Revocation::kUnknown;
+      info.revocation_problem = std::format("the issuer of {} is not known: its revocation cannot be checked", name());
+      info.revocation_in_file = false;
+      return;
+    }
+    const Answer a = answer_for(certificate, chain.certificates[i + 1], ocsps, crls, file_ocsps, file_crls);
+    if (a.status == crypto::RevocationStatus::kRevoked) {
+      // A verified time stamp from before the revocation: the signature came first, and stands.
+      if (info.timestamp && !a.revoked_at.empty() && *info.timestamp < a.revoked_at) {
+        info.revocation_problem = std::format("{} was revoked on {}, after the signature's time stamp", name(), a.revoked_at);
+        info.revocation_in_file = info.revocation_in_file && a.in_file;
+        continue;
+      }
+      info.revocation = Revocation::kRevoked;
+      info.revoked_at = a.revoked_at;
+      info.revocation_problem = std::format("{} is revoked (since {})", name(), a.revoked_at.empty() ? std::string("a time not said") : a.revoked_at);
+      info.revocation_in_file = false;
+      return;
+    }
+    if (a.status != crypto::RevocationStatus::kGood && info.revocation == Revocation::kGood) {
+      info.revocation = Revocation::kUnknown;
+      info.revocation_problem = std::format("no OCSP response or CRL that can be used says whether {} is revoked", name());
+    }
+    info.revocation_in_file = info.revocation_in_file && a.in_file;
+  }
+  if (info.revocation != Revocation::kGood) {
+    info.revocation_in_file = false;
+  }
+}
+
 }  // namespace
 
-Result<std::vector<SignatureInfo>> list_signatures(Document& document, const VerifyOptions& options) {
+Result<ValidationData> document_validation_data(Document& document) {
+  ValidationData out;
+  auto catalog = document.catalog();
+  if (!catalog) {
+    return std::unexpected(std::move(catalog.error()));
+  }
+  const Object* entry = (*catalog)->find("DSS");
+  auto dss = entry != nullptr ? document.resolve(*entry) : Result<Object>(Object());
+  if (!dss || dss->as_dict() == nullptr) {
+    return out;
+  }
+  for (const auto& [key, to] : {std::pair{"Certs", &out.certificates}, std::pair{"OCSPs", &out.ocsp_responses}, std::pair{"CRLs", &out.crls}}) {
+    const Object* list_entry = dss->as_dict()->find(key);
+    auto list = list_entry != nullptr ? document.resolve(*list_entry) : Result<Object>(Object());
+    if (!list || list->as_array() == nullptr) {
+      continue;
+    }
+    for (const Object& item : *list->as_array()) {
+      if (to->size() >= kMaxValidationItems) {
+        break;
+      }
+      auto value = document.resolve(item);
+      if (!value || value->as_stream() == nullptr) {
+        continue;
+      }
+      if (auto data = document.decode_stream(*value->as_stream())) {
+        to->push_back(std::move(*data));
+      }
+    }
+  }
+  return out;
+}
+
+Chain chain_of(std::span<const std::byte> certificate, const std::vector<std::vector<std::byte>>& known) {
+  Chain chain;
+  chain.certificates.emplace_back(certificate.begin(), certificate.end());
+  while (chain.certificates.size() < kMaxChain) {
+    const Bytes& current = chain.certificates.back();
+    if (crypto::issued_by(current, current)) {
+      chain.complete = true;
+      break;
+    }
+    const auto issuer = std::ranges::find_if(known, [&](const Bytes& k) {
+      return k != current && std::ranges::find(chain.certificates, k) == chain.certificates.end() && crypto::issued_by(current, k);
+    });
+    if (issuer == known.end()) {
+      break;
+    }
+    chain.certificates.push_back(*issuer);
+  }
+  return chain;
+}
+
+namespace {
+
+// The signatures, verified; and what verifying found, with each one's /Contents, when asked.
+Result<std::vector<SignatureInfo>> walk(Document& document, const VerifyOptions& options, std::vector<SignatureParts>* parts) {
   auto fields = edit::list_fields(document);
   if (!fields) {
     return std::unexpected(std::move(fields.error()));
   }
   std::vector<SignatureInfo> out;
+  auto file_data = document_validation_data(document);
+  const ValidationData file = file_data ? std::move(*file_data) : ValidationData{};
+  const std::vector<Bytes> anchors = options.trust_anchors.empty() ? std::vector<Bytes>() : crypto::certificates_of(options.trust_anchors);
   for (const edit::FieldInfo& field : *fields) {
     if (field.type != edit::FieldType::kSignature) {
       continue;
@@ -317,10 +517,26 @@ Result<std::vector<SignatureInfo>> list_signatures(Document& document, const Ver
         break;
       }
     }
-    verify(document, *signature, info, options);
+    Found found;
+    verify(document, *signature, info, options, found);
     info.signing_time = info.timestamp.value_or(info.date);
     if (info.signer && !info.signing_time.empty()) {
       info.certificate_valid_at_signing = crypto::valid_at(*info.signer, info.signing_time);
+    }
+    if (info.integrity != Integrity::kUnsupported) {
+      check_revocation(found, file, options, anchors, info);
+    }
+    if (parts != nullptr) {
+      const Object* contents = signature->find("Contents");
+      const auto bytes =
+          contents != nullptr && contents->as_string() != nullptr ? crypto::der::bytes_of(contents->as_string()->bytes) : std::span<const std::byte>();
+      parts->push_back({.field_name = info.field_name,
+                        .contents = {bytes.begin(), bytes.end()},
+                        .certificates = std::move(found.certificates),
+                        .signer = found.signer,
+                        .timestamp_certificates = std::move(found.timestamp_certificates),
+                        .timestamp_signer = found.timestamp_signer,
+                        .document_timestamp = info.document_timestamp});
     }
     out.push_back(std::move(info));
   }
@@ -340,6 +556,18 @@ Result<std::vector<SignatureInfo>> list_signatures(Document& document, const Ver
     }
   }
   return out;
+}
+
+}  // namespace
+
+Result<std::vector<SignatureInfo>> list_signatures(Document& document, const VerifyOptions& options) { return walk(document, options, nullptr); }
+
+Result<std::vector<SignatureParts>> signature_parts(Document& document) {
+  std::vector<SignatureParts> parts;
+  if (auto listed = walk(document, {}, &parts); !listed) {
+    return std::unexpected(std::move(listed.error()));
+  }
+  return parts;
 }
 
 }  // namespace capriole::signature

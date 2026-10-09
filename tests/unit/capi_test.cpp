@@ -613,6 +613,67 @@ TEST(CApiDocument, SigningWithAKeyElsewhere) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, LongTermValidation) {
+  const auto read = [](const char* name) {
+    std::ifstream in(std::string(CAPRIOLE_TEST_DATA_DIR) + "/signing/" + name, std::ios::binary);
+    return std::vector<char>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  };
+  const auto hex = [](const std::vector<char>& bytes) {
+    std::string out;
+    for (const char c : bytes) {
+      out += std::format("{:02x}", static_cast<unsigned char>(c));
+    }
+    return out;
+  };
+  const auto p12 = read("ltv.p12");
+  capriole_document* document = open_document(sample_pdf());
+  capriole_signing* signing = nullptr;
+  ASSERT_EQ(capriole_document_sign_begin(document, R"({"date":"D:20261009150000Z"})",
+                                         reinterpret_cast<const std::uint8_t*>(p12.data()),  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+                                         p12.size(), "capriole", &signing),
+            CAPRIOLE_OK)
+      << capriole_last_error_message();
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  ASSERT_EQ(capriole_document_sign_finish(document, signing, nullptr, 0, &data, &size), CAPRIOLE_OK);
+  capriole_signing_free(signing);
+  capriole_free(data);
+
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_validation_needs_json(document, nullptr, &json), CAPRIOLE_OK) << capriole_last_error_message();
+  const std::string needs = take_json(json);
+  EXPECT_NE(needs.find(R"x("subject":"Luca Verdi (test)")x"), std::string::npos) << needs;
+  EXPECT_NE(needs.find(R"("ocsp":["http://127.0.0.1:9/ocsp"])"), std::string::npos) << needs;
+  EXPECT_NE(needs.find(R"("answered":false)"), std::string::npos) << needs;
+  EXPECT_EQ(capriole_document_validation_needs_json(document, R"({"ocsps":["zz"]})", &json), CAPRIOLE_ERROR_SYNTAX);
+
+  // The answer, given while verifying; then written into the /DSS.
+  const std::string ocsp = hex(read("ocsp-ltv.der"));
+  const std::string given = std::format(R"({{"ocsps":["{}"]}})", ocsp);
+  ASSERT_EQ(capriole_document_signatures_validate_json(document, nullptr, 0, given.c_str(), &json), CAPRIOLE_OK);
+  const std::string checked = take_json(json);
+  EXPECT_NE(checked.find(R"("revocation":"good","revocationInFile":false)"), std::string::npos) << checked;
+  const std::string spec = std::format(R"({{"date":"D:20261009160000Z","ocsps":["{}"]}})", ocsp);
+  EXPECT_EQ(capriole_document_add_validation_data(document, R"({"ocsps":[]})", &data, &size, &json), CAPRIOLE_ERROR_SYNTAX);  // no date
+  ASSERT_EQ(capriole_document_add_validation_data(document, spec.c_str(), &data, &size, &json), CAPRIOLE_OK) << capriole_last_error_message();
+  EXPECT_EQ(take_json(json), R"({"certificates":2,"ocsps":1,"crls":0})");
+  capriole_free(data);
+  ASSERT_EQ(capriole_document_signatures_json(document, nullptr, 0, &json), CAPRIOLE_OK);
+  const std::string after = take_json(json);
+  EXPECT_NE(after.find(R"("level":"B-LT")"), std::string::npos) << after;
+  EXPECT_NE(after.find(R"("revocation":"good","revocationInFile":true)"), std::string::npos) << after;
+
+  // A document time stamp: its request; no response, no time stamp.
+  ASSERT_EQ(capriole_document_timestamp_begin(document, R"({"date":"D:20261009170000Z"})", &signing), CAPRIOLE_OK) << capriole_last_error_message();
+  ASSERT_EQ(capriole_signing_timestamp_request(signing, &data, &size), CAPRIOLE_OK);
+  EXPECT_GT(size, 40U);
+  capriole_free(data);
+  EXPECT_EQ(capriole_document_sign_finish(document, signing, nullptr, 0, &data, &size), CAPRIOLE_ERROR_UNSUPPORTED);
+  capriole_signing_free(signing);
+  EXPECT_EQ(capriole_document_timestamp_begin(document, "{}", &signing), CAPRIOLE_ERROR_SYNTAX);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, MissingResourcesAreReportedThenUsed) {
   // A Japanese font that is not embedded, with a predefined CMap: both come from the resource pack.
   capriole::test::PdfBuilder b;

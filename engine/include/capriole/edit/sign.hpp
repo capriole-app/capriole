@@ -71,7 +71,9 @@ struct PreparedSignature {
   crypto::CmsSignature cms;
   std::vector<std::byte> timestamp_request;  // RFC 3161, when SignRequest::timestamp (once the value is in)
   std::string field_name;
-  bool timestamp = false;  // SignRequest::timestamp
+  bool timestamp = false;                 // SignRequest::timestamp
+  bool document_timestamp = false;        // prepare_document_timestamp's
+  std::vector<std::byte> content_digest;  // SHA-256 of the byte ranges
 };
 
 // The signer's certificate (DER) and the others to include in the signature (its chain), for a key that
@@ -86,6 +88,16 @@ struct SignerCertificates {
 [[nodiscard]] Result<PreparedSignature> prepare_signature(Document& document, const SignerCertificates& signer, const SignRequest& request);
 // The value made outside (crypto::set_value: RSA PKCS#1 v1.5, ECDSA as DER or r‖s), checked.
 [[nodiscard]] Result<void> set_signature_value(PreparedSignature& prepared, std::span<const std::byte> value);
+
+// A document time stamp (ETSI EN 319 142-1 §5.5, ISO 32000-2 §12.8.5): an invisible signature field whose
+// /Contents is an RFC 3161 token over the byte ranges — what makes the signatures before it, with the
+// validation data in the /DSS (edit/dss.hpp), B-LTA. PreparedSignature::timestamp_request goes to the
+// time-stamping authority, finish_signature takes its response (required).
+struct DocumentTimestampRequest {
+  std::string date;        // the revision's /ModDate, a PDF date
+  std::string field_name;  // empty: "Signature1", "Signature2"…
+};
+[[nodiscard]] Result<PreparedSignature> prepare_document_timestamp(Document& document, const DocumentTimestampRequest& request);
 
 // The signed file (kUnsupported while the value is missing); with the time stamp of an RFC 3161 response when given (checked: granted, of this
 // signature, verified).

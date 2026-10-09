@@ -119,7 +119,9 @@ void print_usage() {
                "  sign <file> <certificate> <json> <output> [--chain <der>] --to-sign <json> | --value <file> [timestamp options]\n"
                "                  sign with a PKCS#12 key (password in CAPRIOLE_P12_PASSWORD): {\"page\":0,\"rect\":[x0,y0,x1,y1]|null,\n"
                "                  \"lines\":[…],\"reason\",\"location\",\"date\",\"timestamp\":false}; a time stamp in two runs\n"
-               "  signatures <file> [anchors.pem]   the signatures, verified (identity against the roots given)\n"
+               "  signatures <file> [anchors.pem] [--validation <json>]   the signatures, verified (identity, revocation)\n"
+               "  ltv needs <file> [<json>] | ltv add <file> <json> <output>   long-term validation data (/DSS)\n"
+               "  doc-timestamp <file> <json> <output> --timestamp-request <tsq> | --timestamp-response <tsr>\n"
                "  p12 <file>      the certificate of a PKCS#12 file\n"
                "  edit-text [--font FILE]... <file> <page> <x0,y0,x1,y1> <text> <output>\n"
                "                  replace the text in an area (one line)\n"
@@ -1176,24 +1178,49 @@ int cmd_p12(std::string_view path) {
   return kExitOk;
 }
 
-// signatures <file> [anchors]: the document's signatures, verified (the signers' identity against the
-// roots in anchors, a PEM bundle, when given).
+// The text of a file, NUL-terminated (a JSON argument too large for the command line).
+std::optional<std::string> text_file(std::string_view path) {
+  auto bytes = read_file(path);
+  if (!bytes) {
+    return std::nullopt;
+  }
+  return std::string(bytes->begin(), bytes->end());
+}
+
+// signatures <file> [anchors] [--validation <json file>]: the document's signatures, verified (the
+// signers' identity against the roots in anchors, a PEM bundle, when given; the revocation of their
+// chains with the validation data the file keeps and, given, {"certificates","ocsps","crls"} in hex).
 int cmd_signatures(std::span<char* const> args) {
-  capriole_document* document = open_capi(args[0]);
-  if (document == nullptr) {
-    return kExitFailure;
+  std::optional<std::string> validation;
+  std::optional<std::string_view> anchors_path;
+  for (std::size_t i = 1; i < args.size(); ++i) {
+    if (std::string_view(args[i]) == "--validation" && i + 1 < args.size()) {
+      validation = text_file(args[++i]);
+      if (!validation) {
+        return kExitFailure;
+      }
+    } else if (!anchors_path) {
+      anchors_path = args[i];
+    } else {
+      print_usage();
+      return kExitUsage;
+    }
   }
   std::vector<char> anchors;
-  if (args.size() > 1) {
-    auto read = read_file(args[1]);
+  if (anchors_path) {
+    auto read = read_file(*anchors_path);
     if (!read) {
-      capriole_document_close(document);
       return kExitFailure;
     }
     anchors = std::move(*read);
   }
+  capriole_document* document = open_capi(args[0]);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
   char* json = nullptr;
-  const capriole_status status = capriole_document_signatures_json(document, anchors.empty() ? nullptr : u8(anchors), anchors.size(), &json);
+  const capriole_status status = capriole_document_signatures_validate_json(document, anchors.empty() ? nullptr : u8(anchors), anchors.size(),
+                                                                            validation ? validation->c_str() : nullptr, &json);
   capriole_document_close(document);
   if (status != CAPRIOLE_OK) {
     std::cerr << std::format("cpdf: {}: {}\n", args[0], capriole_last_error_message());
@@ -1202,6 +1229,89 @@ int cmd_signatures(std::span<char* const> args) {
   std::cout << json << '\n';
   capriole_free(json);
   return kExitOk;
+}
+
+// ltv needs <file> [<json file>] | ltv add <file> <json file> <output>: long-term validation — what
+// every signature's chain needs answers for (given what the host already has), and writing what it
+// fetched into the /DSS ({"date", "certificates", "ocsps", "crls"}, hex).
+int cmd_ltv(std::span<char* const> args) {
+  const bool add = std::string_view(args[0]) == "add";
+  std::optional<std::string> spec;
+  if (args.size() > 2) {
+    spec = text_file(args[2]);
+    if (!spec) {
+      return kExitFailure;
+    }
+  }
+  capriole_document* document = open_capi(args[1]);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  char* json = nullptr;
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  const capriole_status status = add && spec ? capriole_document_add_validation_data(document, spec->c_str(), &data, &size, &json)
+                                             : capriole_document_validation_needs_json(document, spec ? spec->c_str() : nullptr, &json);
+  capriole_document_close(document);
+  if (status != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: ltv: {}\n", args[1], capriole_last_error_message());
+    return kExitFailure;
+  }
+  int exit = kExitOk;
+  if (add) {
+    exit = write_file(args[3], std::span(data, size)) ? kExitOk : kExitFailure;
+    std::cout << std::format("{}: {} bytes, the /DSS: {}\n", args[3], size, json);
+  } else {
+    std::cout << json << '\n';
+  }
+  capriole_free(data);
+  capriole_free(json);
+  return exit;
+}
+
+// doc-timestamp <file> <json> <output> --timestamp-request <tsq> | --timestamp-response <tsr>: a document
+// time stamp ({"date", "fieldName"}), in two runs with the same date: the request for the authority,
+// then its response.
+int cmd_doc_timestamp(std::span<char* const> args) {
+  const std::string_view option = args[3];
+  if (option != "--timestamp-request" && option != "--timestamp-response") {
+    print_usage();
+    return kExitUsage;
+  }
+  std::optional<std::vector<char>> response;
+  if (option == "--timestamp-response") {
+    response = read_file(args[4]);
+    if (!response) {
+      return kExitFailure;
+    }
+  }
+  capriole_document* document = open_capi(args[0]);
+  if (document == nullptr) {
+    return kExitFailure;
+  }
+  capriole_signing* signing = nullptr;
+  if (capriole_document_timestamp_begin(document, args[1], &signing) != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: doc-timestamp: {}\n", args[0], capriole_last_error_message());
+    capriole_document_close(document);
+    return kExitFailure;
+  }
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  int exit = kExitOk;
+  if (!response) {
+    exit = capriole_signing_timestamp_request(signing, &data, &size) == CAPRIOLE_OK && write_file(args[4], std::span(data, size)) ? kExitOk : kExitFailure;
+    std::cout << std::format("{}: time stamp request, {} bytes\n", args[4], size);
+  } else if (capriole_document_sign_finish(document, signing, u8(*response), response->size(), &data, &size) != CAPRIOLE_OK) {
+    std::cerr << std::format("cpdf: {}: doc-timestamp: {}\n", args[0], capriole_last_error_message());
+    exit = kExitFailure;
+  } else {
+    exit = write_file(args[2], std::span(data, size)) ? kExitOk : kExitFailure;
+    std::cout << std::format("{}: {} bytes (time-stamped)\n", args[2], size);
+  }
+  capriole_free(data);
+  capriole_signing_free(signing);
+  capriole_document_close(document);
+  return exit;
 }
 
 // sign <file> <p12> <json> <output> [--timestamp-request <file>] [--timestamp-response <file>]: signs
@@ -1735,8 +1845,15 @@ int run(std::span<char*> args) {
   if (command == "sign" && args.size() >= 6 && args.size() % 2 == 0) {
     return cmd_sign(args.subspan(2));
   }
-  if (command == "signatures" && (args.size() == 3 || args.size() == 4)) {
+  if (command == "signatures" && args.size() >= 3 && args.size() <= 6) {
     return cmd_signatures(args.subspan(2));
+  }
+  if (command == "ltv" &&
+      ((args.size() >= 4 && args.size() <= 5 && std::string_view(args[2]) == "needs") || (args.size() == 6 && std::string_view(args[2]) == "add"))) {
+    return cmd_ltv(args.subspan(2));
+  }
+  if (command == "doc-timestamp" && args.size() == 7) {
+    return cmd_doc_timestamp(args.subspan(2));
   }
   if (command == "edit-text" && args.size() >= 7) {
     return cmd_edit_text(args.subspan(2));

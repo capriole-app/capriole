@@ -352,6 +352,33 @@ void capriole_signing_free(capriole_signing* signing);
  * the signers' identity.
  */
 capriole_status capriole_document_signatures_json(capriole_document* document, const uint8_t* anchors, size_t anchors_size, char** json);
+/*
+ * The same, with validation data the host fetched (PLAN.md phase 11b): data_json {"certificates":
+ * [hex…], "ocsps": [hex…], "crls": [hex…]} (DER, each list optional), or NULL; the revocation of each
+ * signer's chain is checked with it and with what the file keeps.
+ */
+capriole_status capriole_document_signatures_validate_json(capriole_document* document, const uint8_t* anchors, size_t anchors_size, const char* data_json,
+                                                           char** json);
+
+/*
+ * Long-term validation (B-LT, B-LTA; format in capi/README.md). What every signature's chain needs
+ * answers for, as JSON: [{"certificate", "subject", "issuer" (hex, null when unknown: fetch it from
+ * "caIssuers" first), "ocspRequest" (hex, or null), "ocsp", "crl", "caIssuers" (URLs), "answered"}].
+ * data_json: what the host already fetched (as for capriole_document_signatures_validate_json), or NULL.
+ */
+capriole_status capriole_document_validation_needs_json(capriole_document* document, const char* data_json, char** json);
+/*
+ * Writes validation data into the document's /DSS as a new revision: spec_json {"date": PDF date,
+ * "certificates", "ocsps", "crls"} (hex lists). *json: {"certificates", "ocsps", "crls"}, how many the
+ * /DSS holds now. The document is reopened from the file.
+ */
+capriole_status capriole_document_add_validation_data(capriole_document* document, const char* spec_json, uint8_t** data, size_t* size, char** json);
+/*
+ * A document time stamp (B-LTA after the validation data), in the two steps of a signature's time
+ * stamp: spec_json {"date": PDF date, "fieldName"}; then capriole_signing_timestamp_request, and
+ * capriole_document_sign_finish with the authority's response (required).
+ */
+capriole_status capriole_document_timestamp_begin(capriole_document* document, const char* spec_json, capriole_signing** signing);
 
 /*
  * The document's attachments as JSON (an array): for each its file specification's reference, its name

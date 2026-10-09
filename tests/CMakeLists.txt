@@ -25,6 +25,8 @@ add_executable(capriole_unit_tests
   unit/attachment_test.cpp
   unit/redact_test.cpp
   unit/crypto_signing_test.cpp
+  unit/revocation_test.cpp
+  unit/ltv_test.cpp
   unit/sign_test.cpp
   unit/pdfa_test.cpp
   unit/text_edit_test.cpp

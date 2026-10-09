@@ -29,6 +29,7 @@
 #include "capriole/document/document.hpp"
 #include "capriole/edit/annotations.hpp"
 #include "capriole/edit/attachments.hpp"
+#include "capriole/edit/dss.hpp"
 #include "capriole/edit/facturx.hpp"
 #include "capriole/edit/font_library.hpp"
 #include "capriole/edit/forms.hpp"
@@ -1013,6 +1014,93 @@ std::string_view trust_name(capriole::signature::Trust trust) {
   return "";
 }
 
+std::string_view revocation_name(capriole::signature::Revocation revocation) {
+  switch (revocation) {
+    case capriole::signature::Revocation::kGood:
+      return "good";
+    case capriole::signature::Revocation::kRevoked:
+      return "revoked";
+    case capriole::signature::Revocation::kUnknown:
+      return "unknown";
+    case capriole::signature::Revocation::kNotChecked:
+      return "notChecked";
+  }
+  return "notChecked";
+}
+
+std::string hex_of(std::span<const std::byte> bytes) {
+  std::string out;
+  out.reserve(bytes.size() * 2);
+  for (const std::byte b : bytes) {
+    out += std::format("{:02x}", static_cast<unsigned>(b));
+  }
+  return out;
+}
+
+capriole::Result<std::vector<std::byte>> bytes_of_hex(const std::string& hex) {
+  if (hex.size() % 2 != 0) {
+    return capriole::make_error(capriole::ErrorCode::kSyntax, "hexadecimal digits in pairs expected");
+  }
+  std::vector<std::byte> out;
+  out.reserve(hex.size() / 2);
+  const auto nibble = [](char c) -> int {
+    if (c >= '0' && c <= '9') {
+      return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+      return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+      return c - 'A' + 10;
+    }
+    return -1;
+  };
+  for (std::size_t i = 0; i < hex.size(); i += 2) {
+    const int high = nibble(hex[i]);
+    const int low = nibble(hex[i + 1]);
+    if (high < 0 || low < 0) {
+      return capriole::make_error(capriole::ErrorCode::kSyntax, "hexadecimal digits expected");
+    }
+    out.push_back(static_cast<std::byte>((high << 4) | low));
+  }
+  return out;
+}
+
+// {"certificates":[hex…], "ocsps":[hex…], "crls":[hex…]} (each optional); NULL: none.
+capriole::Result<capriole::signature::ValidationData> validation_data_of(const char* json) {
+  capriole::signature::ValidationData data;
+  if (json == nullptr) {
+    return data;
+  }
+  auto spec = capriole::capi::parse_json(json);
+  if (!spec) {
+    return std::unexpected(std::move(spec.error()));
+  }
+  if (spec->object() == nullptr) {
+    return capriole::make_error(capriole::ErrorCode::kSyntax, "a JSON object expected");
+  }
+  for (const auto& [key, to] : {std::pair{"certificates", &data.certificates}, std::pair{"ocsps", &data.ocsp_responses}, std::pair{"crls", &data.crls}}) {
+    const auto* list = spec->get(key);
+    if (list == nullptr) {
+      continue;
+    }
+    if (list->array() == nullptr) {
+      return capriole::make_error(capriole::ErrorCode::kSyntax, std::format("{}: an array of hexadecimal strings expected", key));
+    }
+    for (const auto& item : *list->array()) {
+      if (item.string() == nullptr) {
+        return capriole::make_error(capriole::ErrorCode::kSyntax, std::format("{}: an array of hexadecimal strings expected", key));
+      }
+      auto bytes = bytes_of_hex(*item.string());
+      if (!bytes) {
+        return capriole::make_error(capriole::ErrorCode::kSyntax, std::format("{}: {}", key, bytes.error().message));
+      }
+      to->push_back(std::move(*bytes));
+    }
+  }
+  return data;
+}
+
 std::string signatures_json(const std::vector<capriole::signature::SignatureInfo>& list) {
   std::string out = "[";
   for (std::size_t i = 0; i < list.size(); ++i) {
@@ -1046,6 +1134,10 @@ std::string signatures_json(const std::vector<capriole::signature::SignatureInfo
     capriole::capi::append_json_string(out, s.signing_time);
     out += std::format(R"(,"certificateValidAtSigning":{},"trust":"{}")", s.certificate_valid_at_signing, trust_name(s.trust));
     text("trustProblem", s.trust_problem);
+    out += std::format(R"(,"revocation":"{}","revocationInFile":{})", revocation_name(s.revocation), s.revocation_in_file);
+    text("revocationProblem", s.revocation_problem);
+    out += R"(,"revokedAt":)";
+    capriole::capi::append_json_string(out, s.revoked_at);
     out += s.page ? std::format(R"(,"page":{})", *s.page) : std::string(R"(,"page":null)");
     out += s.rect ? std::format(R"(,"rect":[{},{},{},{}]}})", capriole::writer::format_real(s.rect->x0), capriole::writer::format_real(s.rect->y0),
                                 capriole::writer::format_real(s.rect->x1), capriole::writer::format_real(s.rect->y1))
@@ -1809,6 +1901,145 @@ capriole_status capriole_document_signatures_json(capriole_document* document, c
       return fail(list.error());
     }
     return hand_over(signatures_json(*list), json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_signatures_validate_json(capriole_document* document, const uint8_t* anchors, size_t anchors_size, const char* data_json,
+                                                           char** json) {
+  g_last_error.clear();
+  if (document == nullptr || (anchors == nullptr && anchors_size != 0) || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto data = validation_data_of(data_json);
+    if (!data) {
+      return fail(data.error());
+    }
+    capriole::signature::VerifyOptions options;
+    options.trust_anchors = std::as_bytes(std::span(anchors, anchors_size));
+    options.certificates = std::move(data->certificates);
+    options.ocsp_responses = std::move(data->ocsp_responses);
+    options.crls = std::move(data->crls);
+    auto list = capriole::signature::list_signatures(document->document, options);
+    if (!list) {
+      return fail(list.error());
+    }
+    return hand_over(signatures_json(*list), json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_validation_needs_json(capriole_document* document, const char* data_json, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto data = validation_data_of(data_json);
+    if (!data) {
+      return fail(data.error());
+    }
+    auto needs = capriole::edit::validation_needs(document->document, *data);
+    if (!needs) {
+      return fail(needs.error());
+    }
+    std::string out = "[";
+    const auto urls = [&](std::string_view key, const std::vector<std::string>& list) {
+      out += std::format(R"(,"{}":[)", key);
+      for (std::size_t k = 0; k < list.size(); ++k) {
+        out += k == 0 ? "" : ",";
+        capriole::capi::append_json_string(out, list[k]);
+      }
+      out += "]";
+    };
+    for (std::size_t i = 0; i < needs->size(); ++i) {
+      const auto& n = (*needs)[i];
+      out += std::format(R"({}{{"certificate":"{}","subject":)", i == 0 ? "" : ",", hex_of(n.certificate));
+      capriole::capi::append_json_text(out, capriole::model::from_utf8(n.subject));
+      out += n.issuer ? std::format(R"(,"issuer":"{}")", hex_of(*n.issuer)) : std::string(R"(,"issuer":null)");
+      out += n.ocsp_request.empty() ? std::string(R"(,"ocspRequest":null)") : std::format(R"(,"ocspRequest":"{}")", hex_of(n.ocsp_request));
+      urls("ocsp", n.urls.ocsp);
+      urls("crl", n.urls.crl);
+      urls("caIssuers", n.urls.ca_issuers);
+      out += std::format(R"(,"answered":{}}})", n.answered);
+    }
+    return hand_over(out + "]", json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_add_validation_data(capriole_document* document, const char* spec_json, uint8_t** data, size_t* size, char** json) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || data == nullptr || size == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    auto spec = capriole::capi::parse_json(spec_json);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    const auto* date = spec->get("date");
+    if (date == nullptr || date->string() == nullptr) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "date: a PDF date expected");
+    }
+    auto items = validation_data_of(spec_json);
+    if (!items) {
+      return fail(items.error());
+    }
+    auto result = capriole::edit::add_validation_data(document->document, *items, *date->string());
+    if (!result) {
+      return fail(result.error());
+    }
+    auto reopened = capriole::Document::open(std::make_unique<capriole::MemoryByteSource>(std::vector<std::byte>(result->file)),
+                                             capriole::OpenOptions{.limits = capriole::kDefaultParseLimits, .password = "", .repair = true});
+    if (!reopened) {
+      return fail(reopened.error());
+    }
+    document->document = std::move(*reopened);
+    if (const capriole_status status =
+            hand_over(std::format(R"({{"certificates":{},"ocsps":{},"crls":{}}})", result->certificates, result->ocsp_responses, result->crls), json);
+        status != CAPRIOLE_OK) {
+      return status;
+    }
+    return hand_over(result->file, data, size);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_timestamp_begin(capriole_document* document, const char* spec_json, capriole_signing** signing) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || signing == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  *signing = nullptr;
+  try {
+    auto spec = capriole::capi::parse_json(spec_json);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    capriole::edit::DocumentTimestampRequest request;
+    const auto* date = spec->get("date");
+    if (date == nullptr || date->string() == nullptr) {
+      return fail(CAPRIOLE_ERROR_SYNTAX, "date: a PDF date expected");
+    }
+    request.date = *date->string();
+    if (const auto* name = spec->get("fieldName")) {
+      if (name->string() == nullptr) {
+        return fail(CAPRIOLE_ERROR_SYNTAX, "fieldName: a string expected");
+      }
+      request.field_name = *name->string();
+    }
+    auto prepared = capriole::edit::prepare_document_timestamp(document->document, request);
+    if (!prepared) {
+      return fail(prepared.error());
+    }
+    *signing = new capriole_signing{.prepared = std::move(*prepared)};  // NOLINT(cppcoreguidelines-owning-memory): released by capriole_signing_free
+    return CAPRIOLE_OK;
   } catch (...) {
     return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
   }

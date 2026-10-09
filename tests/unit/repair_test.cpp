@@ -216,6 +216,22 @@ TEST(TolerantParsing, StringsThatLostTheirOpeningParenthesis) {
   EXPECT_EQ(dict->find("Pages")->as_ref()->number, 2U);  // what matters survives
 }
 
+TEST(TolerantParsing, ALastKeyWithoutValueIsLeftOut) {
+  // A catalog of the corpus (unsafe/x008): "/Marked true" run together. Strict reading refused it, the
+  // tolerant one too — the document had no catalog, and a full save wrote it as null.
+  const auto object = parse_tolerant("1 0 obj <</Type/Catalog/Pages 2 0 R/MarkInfo<</Markedtrue>>/Lang (it)>> endobj");
+  ASSERT_TRUE(object.has_value()) << object.error().message;
+  const auto* dict = object->object.as_dict();
+  EXPECT_EQ(dict->find("Pages")->as_ref()->number, 2U);
+  ASSERT_NE(dict->find("MarkInfo"), nullptr);
+  EXPECT_TRUE(dict->find("MarkInfo")->as_dict()->empty());
+  EXPECT_EQ(dict->find("Lang")->as_string()->bytes, "it");
+  auto source = source_of("1 0 obj <</MarkInfo<</Markedtrue>>>> endobj");
+  SourceReader reader(*source);
+  parser::ObjectParser strict(reader, kDefaultParseLimits, parser::ParseMode::kStrict);
+  EXPECT_FALSE(strict.parse_indirect_object().has_value());  // strict: an error, as before
+}
+
 TEST(TolerantParsing, ArrayOfNamesThatLostItsOpeningBracket) {
   const auto object = parse_tolerant("1 0 obj <</ProcSet /PDF /Text ]/Font 9 0 R>> endobj");
   ASSERT_TRUE(object.has_value()) << object.error().message;
