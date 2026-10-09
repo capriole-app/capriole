@@ -15,6 +15,7 @@
   import { colors, css, sameColor } from '$lib/colors';
   import { getEditor, type Rgb } from '$lib/editor.svelte';
   import { lineAt, paragraphAt } from '$lib/textedit';
+  import { objectAt, objectName } from '$lib/objects';
 
   const editor = getEditor();
   const index = $derived(editor.viewing ?? 0);
@@ -85,8 +86,11 @@
   }
 
   type Point = [number, number];
+  type Corner = 0 | 1 | 2 | 3; // top left, top right, bottom right, bottom left
   type Drag =
     | { kind: 'move'; ref: [number, number]; start: Point; current: Point }
+    | { kind: 'object'; start: Point; current: Point }
+    | { kind: 'resize'; corner: Corner; start: Point; current: Point }
     | { kind: 'markup'; from: number; to: number }
     | { kind: 'ink'; points: Point[] }
     | { kind: 'shape'; start: Point; current: Point };
@@ -152,9 +156,23 @@
       }
     }
     if (tool === 'select') {
-      const hit = [...editor.annotations].reverse().find((a) => a.editable && a.ref && inside(p, a.rect, 3));
+      // A corner of the object selected: resized; else an annotation (over the page), else an object.
+      const object = editor.object;
+      const corner = object ? cornerAt(object.box, p) : null;
+      const hit =
+        corner === null
+          ? [...editor.annotations].reverse().find((a) => a.editable && a.ref && inside(p, a.rect, 3))
+          : undefined;
       editor.selectedAnnotation = hit?.ref ?? null;
-      if (hit?.ref) drag = { kind: 'move', ref: hit.ref, start: p, current: p };
+      if (corner !== null) {
+        drag = { kind: 'resize', corner, start: p, current: p };
+      } else if (hit?.ref) {
+        editor.selectedObject = null;
+        drag = { kind: 'move', ref: hit.ref, start: p, current: p };
+      } else {
+        editor.selectedObject = objectAt(editor.elements, p[0], p[1]);
+        if (editor.selectedObject !== null) drag = { kind: 'object', start: p, current: p };
+      }
     } else if (tool === 'highlight' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly') {
       const word = wordAt(page, p);
       if (word !== null) drag = { kind: 'markup', from: word, to: word };
@@ -171,6 +189,42 @@
       drag = { kind: 'shape', start: p, current: p };
     }
     (event.currentTarget as Element).setPointerCapture(event.pointerId);
+  }
+
+  /** The corner of a box under a point (within a few points), if any. */
+  function cornerAt(b: readonly number[], p: Point): Corner | null {
+    const corners: Point[] = [
+      [b[0]!, b[1]!],
+      [b[2]!, b[1]!],
+      [b[2]!, b[3]!],
+      [b[0]!, b[3]!],
+    ];
+    const at = corners.findIndex((c) => Math.abs(c[0] - p[0]) <= kHandle && Math.abs(c[1] - p[1]) <= kHandle);
+    return at >= 0 ? (at as Corner) : null;
+  }
+
+  /** How far from a corner of an object selected it can be taken to resize it (points as shown). */
+  const kHandle = 5;
+
+  /** An object's box while dragged: moved, or with a corner where the pointer is (the opposite one kept). */
+  function draggedBox(b: readonly number[], d: Drag): [number, number, number, number] {
+    const [x0, y0, x1, y1] = b as [number, number, number, number];
+    if (d.kind === 'object') {
+      const dx = d.current[0] - d.start[0];
+      const dy = d.current[1] - d.start[1];
+      return [x0 + dx, y0 + dy, x1 + dx, y1 + dy];
+    }
+    if (d.kind !== 'resize') return [x0, y0, x1, y1];
+    const [cx, cy] = d.current;
+    const moving: [number, number, number, number] =
+      d.corner === 0
+        ? [cx, cy, x1, y1]
+        : d.corner === 1
+          ? [x0, cy, cx, y1]
+          : d.corner === 2
+            ? [x0, y0, cx, cy]
+            : [cx, y0, x1, cy];
+    return box([moving[0], moving[1]], [moving[2], moving[3]]);
   }
 
   /** The topmost free text under a point (its reference). */
@@ -191,7 +245,8 @@
     }
     if (!drag) return;
     const p = pointOf(event);
-    if (drag.kind === 'move' || drag.kind === 'shape') drag = { ...drag, current: p };
+    if (drag.kind === 'move' || drag.kind === 'shape' || drag.kind === 'object' || drag.kind === 'resize')
+      drag = { ...drag, current: p };
     else if (drag.kind === 'ink') drag = { ...drag, points: [...drag.points, p] };
     else {
       const word = wordAt(page, p);
@@ -209,6 +264,20 @@
       const dx = done.current[0] - done.start[0];
       const dy = done.current[1] - done.start[1];
       if (Math.hypot(dx, dy) > 0.5) editor.changeAnnotation(done.ref, { moveBy: [dx, dy] });
+    } else if (done.kind === 'object') {
+      const dx = done.current[0] - done.start[0];
+      const dy = done.current[1] - done.start[1];
+      if (Math.hypot(dx, dy) > 0.5) editor.moveObject(dx, dy);
+    } else if (done.kind === 'resize') {
+      const object = editor.object;
+      if (!object) return;
+      const to = draggedBox(object.box, done);
+      if (
+        to[2] - to[0] >= 2 &&
+        to[3] - to[1] >= 2 &&
+        Math.hypot(done.current[0] - done.start[0], done.current[1] - done.start[1]) > 0.5
+      )
+        editor.resizeObject(to);
     } else if (done.kind === 'markup' && tool === 'redact') {
       const quads = quadsOf(page, done.from, done.to);
       if (quads.length > 0) editor.annotate({ kind: 'redact', quads, color: kMark, fill: [0, 0, 0] });
@@ -331,6 +400,23 @@
   );
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    // Delete: the object selected goes (not while a box of text has the keys).
+    const target = e.target as HTMLElement | null;
+    if (
+      (e.key === 'Delete' || e.key === 'Backspace') &&
+      editor.tool === 'select' &&
+      editor.selectedObject !== null &&
+      !editor.busy &&
+      !(target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)))
+    ) {
+      e.preventDefault();
+      editor.deleteObject();
+    }
+  }}
+/>
+
 <div class="flex min-h-0 flex-1">
   <main class="min-w-0 flex-1 overflow-auto bg-muted p-6">
     {#if failure}
@@ -351,7 +437,7 @@
           style:cursor
           role="application"
           aria-label="Pagina {index + 1}: {editor.tool === 'select'
-            ? 'seleziona un’annotazione'
+            ? 'seleziona un’annotazione o un oggetto'
             : editor.tool === 'form'
               ? 'il modulo'
               : editor.tool === 'edittext'
@@ -419,6 +505,38 @@
               />
             {/if}
           {/each}
+          {#if editor.tool === 'select' && editor.object}
+            {@const o =
+              drag?.kind === 'object' || drag?.kind === 'resize'
+                ? draggedBox(editor.object.box, drag)
+                : editor.object.box}
+            <rect
+              x={o[0]}
+              y={o[1]}
+              width={o[2] - o[0]}
+              height={o[3] - o[1]}
+              fill="transparent"
+              class="stroke-primary"
+              stroke-width="1"
+              stroke-dasharray="3 2"
+              vector-effect="non-scaling-stroke"
+              pointer-events="none"
+              data-testid="object-selected"
+            />
+            {#each [[o[0], o[1]], [o[2], o[1]], [o[2], o[3]], [o[0], o[3]]] as const as [cx, cy], i (i)}
+              <rect
+                x={cx - 2.5}
+                y={cy - 2.5}
+                width="5"
+                height="5"
+                class="fill-background stroke-primary"
+                stroke-width="1"
+                vector-effect="non-scaling-stroke"
+                style:cursor={i % 2 === 0 ? 'nwse-resize' : 'nesw-resize'}
+                data-testid="object-handle"
+              />
+            {/each}
+          {/if}
           {#if drag?.kind === 'markup'}
             {#each quadsOf(page, drag.from, drag.to) as q, i (i)}
               <rect
@@ -499,7 +617,22 @@
     class="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm"
     aria-label="Annotazioni"
   >
-    {#if editor.annotation}
+    {#if editor.tool === 'select' && editor.object && !editor.annotation}
+      {@const o = editor.object}
+      <section class="flex flex-col gap-3" data-testid="object-panel">
+        <h2 class="font-semibold">{objectName(o)}</h2>
+        <p class="text-muted-foreground">
+          Trascinalo per spostarlo, o da un angolo per cambiarne la misura; Canc per eliminarlo. Si cambia solo
+          l’oggetto: il resto della pagina resta com’è.
+        </p>
+        <button
+          type="button"
+          class="flex items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-danger hover:bg-danger-background disabled:opacity-60"
+          disabled={editor.busy}
+          onclick={() => editor.deleteObject()}><Trash2 class="size-4" /> Elimina</button
+        >
+      </section>
+    {:else if editor.annotation}
       {@const a = editor.annotation}
       {@const ref = a.ref!}
       <section class="flex flex-col gap-3" data-testid="annotation-panel">
@@ -553,7 +686,7 @@
               : editor.tool === 'form'
                 ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
                 : editor.tool === 'select'
-                  ? 'Clic su un’annotazione per modificarla; trascinala per spostarla.'
+                  ? 'Clic su un’annotazione per modificarla, o su un’immagine o un disegno della pagina per spostarlo, ridimensionarlo o eliminarlo; trascina per spostare.'
                   : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
       </p>
       {#if editor.tool === 'edittext'}

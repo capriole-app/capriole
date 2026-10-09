@@ -138,6 +138,48 @@ export interface PageText {
   missing_resources: string[];
 }
 
+/** What an element of a page's model is (capi/README.md, capriole_document_page_model_json). */
+export type ElementKind = 'paragraph' | 'glyphs' | 'image' | 'drawing' | 'shading' | 'annotation';
+export type ElementRole = 'none' | 'background' | 'rule' | 'box' | 'table' | 'figure';
+
+/** An element of a page's model: what it is, where (the page as shown, points), and where it comes from. */
+export interface PageElement {
+  kind: ElementKind;
+  role: ElementRole;
+  zone: 'body' | 'header' | 'footer';
+  box: [number, number, number, number];
+  commands: number[];
+  sources: [number, number][];
+  paragraph?: number;
+  column: number | null;
+  annotation?: [number, number] | null;
+  subtype?: string;
+}
+
+/** A page's model (phase 10a): its elements, top to bottom; paragraphs and columns kept as the engine gives them. */
+export interface PageModel {
+  page: number;
+  width: number;
+  height: number;
+  elements: PageElement[];
+  columns: { box: [number, number, number, number]; elements: number[] }[];
+  warnings: string[];
+  missing_resources: string[];
+}
+
+/** An edit of an image, a drawing or a shading of the page: by its index in the page's model as it is now. */
+export type ObjectEditSpec =
+  | { element: number; move: [number, number] }
+  | { element: number; box: [number, number, number, number] }
+  | { element: number; delete: true };
+
+export interface ObjectEditReport {
+  /** The operators changed or taken out. */
+  operators: number;
+  /** Where it is now (deleted: where it was). */
+  box: [number, number, number, number];
+}
+
 /** An annotation of a page, as the engine lists it (capi/README.md). Coordinates: the page as shown, points. */
 export interface AnnotationInfo {
   ref: [number, number] | null;
@@ -434,6 +476,8 @@ export type Request =
   | { kind: 'pagePreview'; index: number }
   | { kind: 'pageRender'; index: number; dpi: number }
   | { kind: 'pageText'; index: number; order: TextOrder }
+  | { kind: 'pageModel'; index: number }
+  | { kind: 'objectEdit'; index: number; spec: ObjectEditSpec }
   | { kind: 'stream'; number: number; decoded: boolean }
   | { kind: 'openForEditing'; data: ArrayBuffer; password: string }
   | { kind: 'pagesRotate'; pages: number[]; degrees: number }

@@ -1356,7 +1356,7 @@ pagina piena il rifiuto «andrebbe oltre il fondo della pagina (servono 14 pt, c
 
 ---
 
-## Fase 10 — Modello alto della pagina e oggetti — 🔜 in corso (10a ✅, 10b ✅)
+## Fase 10 — Modello alto della pagina e oggetti — ✅ completata (2026-10-09)
 
 Il modello alto di CAPRIOLE.md §5.2, costruito attorno a un primo uso: selezionare, spostare, ridimensionare
 ed eliminare immagini e disegni. **10a** il modello nel motore ✅ · **10b** le modifiche agli oggetti nel
@@ -1418,6 +1418,19 @@ Report `CORPORA/reports/object-edit-all-20261009-130141`. Messo a punto strada f
 motore: un oggetto spostato accanto a un altro si unisce a lui nel modello nuovo (si guardano i suoi
 operatori); un'immagine ridimensionata è ricampionata da ciascun lettore (si confronta senza i bordi, che
 Poppler allinea ai pixel); dove i lettori già prima disegnavano diversamente si chiede di non peggiorare.
+
+**10c (2026-10-09) — «Seleziona e sposta» su immagini e disegni, nell'app: uscita raggiunta.** Con lo
+strumento «Seleziona e sposta» un clic su un'immagine o un disegno della pagina (il più piccolo che contiene il
+punto: un filetto dentro un riquadro) lo seleziona, con il contorno e quattro maniglie; trascinarlo lo sposta,
+trascinare un angolo lo ridimensiona (l'angolo opposto resta), Canc o «Elimina» nel pannello lo elimina. Il
+pannello dice che cos'è (Immagine, Riquadro, Filetto, Tabella, Disegno, Sfumatura). Ogni modifica è un passo
+di annulla; dopo, il modello si rilegge e l'oggetto resta selezionato dov'è andato. I rifiuti del motore
+sono detti in italiano («Così l'oggetto uscirebbe dalla pagina», «… dal riquadro che lo contiene»), senza
+passo di annulla. Client: `pageModel`, `editObject`; `lib/objects.ts` (cosa si può modificare, il nome,
+l'oggetto sotto il puntatore, i rifiuti). Criterio, e2e (`e2e/objects.test.ts`): un'immagine selezionata,
+spostata di (30, 20) e ingrandita da un angolo, il file salvato con il testo com'era e l'immagine dentro una
+matrice, due «Annulla» la riportano; un riquadro eliminato con Canc, annullato; uno portato fuori dalla
+pagina rifiutato in italiano, senza passo di annulla, ancora selezionato dov'era. Gate verde.
 
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 

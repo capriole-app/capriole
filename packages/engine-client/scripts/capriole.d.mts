@@ -28,6 +28,8 @@ export interface CaprioleModule {
     outHeight: number,
   ): number;
   _capriole_document_page_text_json(document: number, pageIndex: number, order: number, out: number): number;
+  _capriole_document_page_model_json(document: number, pageIndex: number, out: number): number;
+  _capriole_document_page_object_edit(document: number, pageIndex: number, spec: number, out: number): number;
   _capriole_document_stream_data(
     document: number,
     objectNumber: number,

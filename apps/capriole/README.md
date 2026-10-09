@@ -35,6 +35,13 @@ text or colour or remove it, drag it to move it; the panel also lists the page's
 keyboard's way: Delete removes the selected one, Escape lets it go, then goes back to the pages). Every
 annotation gets its appearance from the engine, so other readers show it the same.
 
+**The page's objects** (phase 10c): with "Seleziona e sposta", a click on an image or a drawing of the page
+itself (a box, a rule, a table's lines, a figure — the engine's page model, phase 10a; not the text, nor a
+background) selects it: drag it to move it, drag a corner to resize it, Delete (or "Elimina" in the panel)
+to delete it. Only its operators change (phase 10b); each edit is one step of undo; an edit the engine
+refuses (off the page, out of the frame that clips it) is said why, in Italian, and leaves the page as it
+was.
+
 **The page's own text** (phases 8j, 9a–9d): the tool "Modifica testo" writes a line again (a double
 click; Enter writes it) or a paragraph, laid out anew inside its box with its margins, alignment and the
 styles of its words ("Paragrafo"; Ctrl+Enter). A text that does not fit is offered smaller, or room: what

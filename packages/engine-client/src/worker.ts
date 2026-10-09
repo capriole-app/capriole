@@ -237,6 +237,20 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
       if (await supplyMissing(m)) value = text();
       return { value, transfer: [] };
     }
+    case 'pageModel': {
+      const model = () =>
+        takeJson(m, (out) => m._capriole_document_page_model_json(requireDocument(), request.index, out));
+      let value = model();
+      if (await supplyMissing(m)) value = model();
+      return { value, transfer: [] };
+    }
+    case 'objectEdit':
+      return {
+        value: withString(m, JSON.stringify(request.spec), (spec) =>
+          takeJson(m, (out) => m._capriole_document_page_object_edit(requireDocument(), request.index, spec, out)),
+        ),
+        transfer: [],
+      };
     case 'stream': {
       const data = takeBytes(m, (outData, outSize) =>
         m._capriole_document_stream_data(requireDocument(), request.number, request.decoded ? 1 : 0, outData, outSize),

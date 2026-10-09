@@ -13,6 +13,9 @@ import {
   type FacturxInfo,
   type FieldInfo,
   type PageRaster,
+  type ObjectEditReport,
+  type ObjectEditSpec,
+  type PageElement,
   type PageText,
   type ParagraphRoom,
   type PdfaReport,
@@ -35,6 +38,7 @@ import {
   type LineText,
   type ParagraphText,
 } from './textedit';
+import { nearest, objectRefusal } from './objects';
 import { fontId, fontRefusal, forgetFont, loadFonts, rememberFont, type StoredFont } from './fonts';
 import { fromBrowser, pickPdf, saveFile, savePdf, type PickedFile } from './platform';
 
@@ -129,6 +133,9 @@ export class Editor {
   fields = $state.raw<FieldInfo[]>([]);
   /** The annotation selected on it (its reference). */
   selectedAnnotation = $state.raw<[number, number] | null>(null);
+  /** The elements of the page shown's model (its objects among them: objects.ts), and the object selected (its index there). */
+  elements = $state.raw<PageElement[]>([]);
+  selectedObject = $state<number | null>(null);
   tool = $state<Tool>('select');
   color = $state.raw<Rgb>([1, 0.82, 0]);
   /** The document's attachments, its Factur-X invoice (null: none) and what its XML says. */
@@ -769,6 +776,7 @@ export class Editor {
     const first = this.viewing === null;
     this.viewing = index;
     this.selectedAnnotation = null;
+    this.selectedObject = null;
     await this.#run(async () => {
       await this.#loadAnnotations();
       await this.#loadFields();
@@ -794,7 +802,50 @@ export class Editor {
     this.textNotice = null;
     this.missingFonts = [];
     this.selectedAnnotation = null;
+    this.elements = [];
+    this.selectedObject = null;
     this.tool = 'select';
+  }
+
+  /** The selected object of the page shown (an image, a drawing), as its model gives it. */
+  get object(): PageElement | null {
+    return this.selectedObject === null ? null : (this.elements[this.selectedObject] ?? null);
+  }
+
+  /** Moves the selected object by (dx, dy), as shown. */
+  moveObject(dx: number, dy: number): Promise<void> {
+    return this.#editObject((element) => ({ element, move: [dx, dy] }));
+  }
+
+  /** Resizes the selected object to a box, as shown. */
+  resizeObject(box: [number, number, number, number]): Promise<void> {
+    return this.#editObject((element) => ({ element, box }));
+  }
+
+  /** Deletes the selected object. */
+  deleteObject(): Promise<void> {
+    return this.#editObject((element) => ({ element, delete: true }));
+  }
+
+  async #editObject(spec: (element: number) => ObjectEditSpec): Promise<void> {
+    const page = this.viewing;
+    const element = this.selectedObject;
+    const object = this.object;
+    if (page === null || element === null || !object) return;
+    const edit = spec(element);
+    let report: ObjectEditReport | null = null;
+    await this.#editPage(async () => {
+      try {
+        report = await this.engine.editObject(page, edit);
+      } catch (error) {
+        if (error instanceof EngineError && error.status === Status.unsupported)
+          throw new Error(objectRefusal(error.message));
+        throw error;
+      }
+    });
+    // Selected still where it went (the model was read again), unless deleted; refused, as it was.
+    const done = report as ObjectEditReport | null;
+    if (done) this.selectedObject = 'delete' in edit ? null : nearest(this.elements, object.kind, done.box);
   }
 
   /** The selected annotation, as listed. */
@@ -1052,6 +1103,9 @@ export class Editor {
 
   async #loadAnnotations(): Promise<void> {
     this.annotations = this.viewing === null ? [] : await this.engine.annotations(this.viewing);
+    // The page's objects too: the model is read again with them (an edit changes both).
+    this.elements = this.viewing === null ? [] : (await this.engine.pageModel(this.viewing)).elements;
+    if (this.selectedObject !== null && !this.elements[this.selectedObject]) this.selectedObject = null;
   }
 
   /**

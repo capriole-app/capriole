@@ -12,6 +12,9 @@ import type {
   TextEditReport,
   ParagraphEditReport,
   ParagraphRoom,
+  PageModel,
+  ObjectEditSpec,
+  ObjectEditReport,
   CertificateInfo,
   FontFace,
   SignatureInfo,
@@ -106,6 +109,23 @@ export class EngineClient {
   /** The text of page `index` (0-based): words, lines, blocks and every character's provenance. */
   pageText(index: number, order: TextOrder): Promise<PageText> {
     return this.#call({ kind: 'pageText', index, order });
+  }
+
+  /**
+   * The model of a page (phase 10a): its paragraphs, images, drawings, shadings and annotations, with
+   * their boxes (the page as shown) and where they come from.
+   */
+  pageModel(index: number): Promise<PageModel> {
+    return this.#call({ kind: 'pageModel', index });
+  }
+
+  /**
+   * Moves, resizes or deletes an image, a drawing or a shading of the page — an element of its model as it
+   * is now (phase 10b). Refused (Status.unsupported, "cannot edit the object: …") for text, annotations, off
+   * the page, out of a clip that holds it; Status.outOfRange: no such element.
+   */
+  editObject(index: number, spec: ObjectEditSpec): Promise<ObjectEditReport> {
+    return this.#call({ kind: 'objectEdit', index, spec });
   }
 
   /**
