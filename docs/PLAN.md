@@ -1432,6 +1432,40 @@ spostata di (30, 20) e ingrandita da un angolo, il file salvato con il testo com
 matrice, due «Annulla» la riportano; un riquadro eliminato con Canc, annullato; uno portato fuori dalla
 pagina rifiutato in italiano, senza passo di annulla, ancora selezionato dov'era. Gate verde.
 
+## Fase 11 — Firma con smart card e a lungo termine — in corso
+
+CAPRIOLE.md §6.1: la firma qualificata con smart card e la validazione completa sono funzioni dell'app
+desktop; il motore resta senza rete e senza accesso ai dispositivi. **11a** la firma con una chiave che il
+motore non ha ✅ · **11b** revoca (OCSP, CRL) e firme a lungo termine (B-LT: `/DSS`, `/VRI`; B-LTA: marca
+temporale di documento) nel motore, in scrittura e in verifica · **11c** nell'app desktop: PKCS#11
+(`cryptoki`: il modulo del produttore della carta — OpenSC, CNS, CIE), PIN, scelta del certificato; le
+chiamate di rete a TSA, OCSP e CRL, dichiarate nel dialogo. Nessuna carta reale a disposizione (2026-10-09):
+la 11c si prova con SoftHSM, ed è un limite dichiarato.
+
+**11a (2026-10-09) — la firma con una chiave fuori dal motore: uscita raggiunta.** `crypto/cms`: la firma
+staccata in due tempi — `unsigned_detached` (attributi firmati, firmatario, certificati: tutto tranne il
+valore, dal solo certificato), `to_be_signed` (l'impronta SHA-256 degli attributi) e `digest_info` (la stessa
+in un DigestInfo, per `CKM_RSA_PKCS`), `longest_value` (lo spazio da tenere in `/Contents`), `set_value` (il
+valore fatto fuori: RSA PKCS#1 v1.5, ECDSA in DER o come r‖s — ciò che dà PKCS#11 —, verificato con la chiave
+del certificato prima di accettarlo); `sign_with` lo fa con la chiave di un `.p12`, e `sign_detached` è i
+due insieme. `edit/sign`: `prepare_signature` con `SignerCertificates` (il certificato e la sua catena) e
+`set_signature_value`; quella con le credenziali passa dalla stessa strada, così una chiave che firma gli
+stessi byte dà lo stesso file. Lo spazio in `/Contents` si misura dalla lunghezza massima del valore della
+chiave (prima: con una firma di prova). API C `capriole_document_sign_begin_external`,
+`capriole_signing_to_sign_json` (`hash`, `digestInfo`, `data`, `key`), `capriole_signing_set_value` (anche
+WASM); `cpdf sign <file> <certificato> … --to-sign | --value [--chain]`; `fuzz_cms` esteso (ogni certificato
+dell'input firma senza chiave, l'input stesso come valore: 1,1 milioni di esecuzioni in 15 minuti, pulito);
+test (stessi byte del `.p12` per RSA ed ECDSA con r‖s, anche con marca temporale; valore di un'altra chiave
+rifiutato; il percorso dall'API C).
+Criterio: `corpus-tools/check_signatures.py --pkcs11 /usr/lib/softhsm/libsofthsm2.so` — le chiavi di prova
+su un token SoftHSM creato per il giro, il motore senza: `cpdf sign --to-sign`, `pkcs11-tool --sign`
+(`CKM_SHA256_RSA_PKCS` sugli attributi, `CKM_ECDSA` sull'impronta con il valore r‖s), `cpdf sign --value`; gli
+stessi controlli della 8h (pdfsig con la CA di prova, `openssl cms`/`ts -verify`, incrementale, qpdf, rilettura,
+un byte cambiato la invalida) — **100/100** (51 visibili, 24 con marca temporale, 28 riscritti prima perché
+riparati); le 52 firme RSA sono lo stesso file, byte per byte, di quelle col `.p12`. Il controllo della 8h
+rifatto con il `.p12`: 100/100, e 143/143 file con firme già presenti, come prima. Rapporti:
+`CORPORA/reports/signatures-pkcs11-20261009-173443/`, `CORPORA/reports/signatures-all-20261009-173510/`.
+
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 
 Tutto ciò che serve a rendere pubblico il repository, senza renderlo pubblico (lo decide il titolare:

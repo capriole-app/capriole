@@ -21,6 +21,16 @@ And over every file of the corpora with a /ByteRange (the signatures they have):
 
 Exit criterion of phase 8h (engine): every signed file passes 1–4, and 5 holds for every signature.
 
+With --pkcs11 <module> (SoftHSM's libsofthsm2.so: a smart card in software; PLAN.md phase 11a) the keys
+are on a token instead, made for the run, and the engine never has them: `cpdf sign --to-sign` gives
+what the key signs, `pkcs11-tool --sign` (OpenSC) signs it on the token — CKM_SHA256_RSA_PKCS over the
+signed attributes, or CKM_ECDSA over their hash with the value as r‖s —, `cpdf sign --value` puts it in. 1–4 the same, and:
+
+6. an RSA signature made so (no time stamp: the TSA answers anew) is the same file, byte for byte, as
+   with the .p12 (RSA PKCS#1 v1.5 is deterministic; ECDSA on the token is not).
+
+Exit criterion of phase 11a: every signed file passes 1–4 and 6.
+
     corpus-tools/check_signatures.py ../CORPORA/safedocs/0000 ../CORPORA/unsafe/x002 ../CORPORA/unsafe/x008 \\
         --cpdf build/release/tools/cpdf/cpdf --report-dir ../CORPORA/reports --name signatures-all
 """
@@ -138,9 +148,60 @@ def openssl_verifies(work: Path, signed: bytes, cms: bytes, timeout: float) -> t
     return True, ""
 
 
+def token_value(args: argparse.Namespace, base: list[str], work: Path, key: str) -> tuple[list[str] | None, str]:
+    """What the key on the token makes for the signature of `base` (a cpdf sign command with a certificate)."""
+    to_sign = work / "to-sign.json"
+    result = run(base + ["--to-sign", str(to_sign)], args.timeout)
+    if not to_sign.exists():
+        return None, result["output"].strip()[:300]
+    data, value = work / "data.bin", work / "value.bin"
+    rsa = key.startswith("rsa")
+    # RSA hashes on the token; ECDSA signs the hash (SoftHSM has no CKM_ECDSA_SHA256, nor do many cards).
+    data.write_bytes(bytes.fromhex(json.loads(to_sign.read_text())["data" if rsa else "hash"]))
+    signed = run(["pkcs11-tool", "--module", args.pkcs11, "--login", "--pin", "1234", "--sign", "--id", "01" if rsa else "02",
+                  "--mechanism", "SHA256-RSA-PKCS" if rsa else "ECDSA", "--input-file", str(data), "--output-file", str(value)], args.timeout)
+    if not value.exists() or value.stat().st_size == 0:
+        return None, "pkcs11-tool: " + signed["output"].strip()[:300]
+    return base + ["--value", str(value)], ""
+
+
+def make_token(args: argparse.Namespace, work: Path) -> None:
+    """A SoftHSM token with the test keys: RSA as id 01, ECDSA as id 02 (PIN 1234)."""
+    tokens = work / "tokens"
+    tokens.mkdir()
+    conf = work / "softhsm2.conf"
+    conf.write_text(f"directories.tokendir = {tokens}\nobjectstore.backend = file\n")
+    os.environ["SOFTHSM2_CONF"] = str(conf)
+    run(["softhsm2-util", "--init-token", "--free", "--label", "capriole", "--pin", "1234", "--so-pin", "123456"], 60)
+    for name, key_id in (("rsa", "01"), ("ec", "02")):
+        key = work / f"{name}.key.der"
+        run(["openssl", "pkcs12", "-in", str(SIGNING / f"{name}.p12"), "-passin", "pass:capriole", "-nocerts", "-nodes", "-out", str(work / f"{name}.pem")], 60)
+        run(["openssl", "pkey", "-in", str(work / f"{name}.pem"), "-outform", "DER", "-out", str(key)], 60)
+        loaded = run(["pkcs11-tool", "--module", args.pkcs11, "--login", "--pin", "1234", "--write-object", str(key), "--type", "privkey",
+                      "--id", key_id, "--label", name], 60)
+        if loaded["status"] != 0:
+            raise SystemExit(f"the token did not take the {name} key: {loaded['output'][:300]}")
+        (work / f"{name}.pem").unlink()
+        key.unlink()
+        # The certificate, DER, and the rest of the chain, for cpdf.
+        pem = run(["openssl", "pkcs12", "-in", str(SIGNING / f"{name}.p12"), "-passin", "pass:capriole", "-nokeys", "-clcerts"], 60)["output"]
+        cert = work / f"{name}.p12.der"
+        (work / "cert.pem").write_text(pem)
+        run(["openssl", "x509", "-in", str(work / "cert.pem"), "-outform", "DER", "-out", str(cert)], 60)
+        run(["openssl", "x509", "-in", str(SIGNING / "ca.pem"), "-outform", "DER", "-out", str(work / "chain.der")], 60)
+    args.token_dir = work
+
+
 def sign(args: argparse.Namespace, path: Path, out: Path, work: Path, spec: dict, key: str) -> tuple[bool, str]:
     text = json.dumps(spec)
-    base = [args.cpdf, "sign", str(path), str(SIGNING / key), text, str(out)]
+    if args.pkcs11:
+        certificate = args.token_dir / f"{key}.der"
+        made, why = token_value(args, [args.cpdf, "sign", str(path), str(certificate), text, str(out), "--chain", str(args.token_dir / "chain.der")], work, key)
+        if made is None:
+            return False, why
+        base = made
+    else:
+        base = [args.cpdf, "sign", str(path), str(SIGNING / key), text, str(out)]
     if spec.get("timestamp"):
         query, reply = work / "query.tsq", work / "reply.tsr"
         result = run(base + ["--timestamp-request", str(query)], args.timeout)
@@ -198,6 +259,14 @@ def check_file(args: argparse.Namespace, path: Path, index: int, work_root: Path
         level = "B-T" if spec.get("timestamp") else "B-B"
         if not mine or mine[-1]["integrity"] != "valid" or mine[-1]["level"] != level or mine[-1]["trust"] != "trusted":
             failures.append({"check": "capriole", "detail": json.dumps(mine[-1] if mine else None)[:300]})
+        if args.pkcs11 and key.startswith("rsa") and not spec.get("timestamp"):  # a TSA answers anew each time
+            with_p12 = work / "with-p12.pdf"
+            p12 = argparse.Namespace(**{**vars(args), "pkcs11": None})
+            made, why = sign(p12, path, with_p12, work, spec, key)
+            if not made or with_p12.read_bytes() != out.read_bytes():
+                failures.append({"check": "same-as-p12", "detail": why if not made else "the token's signature is not the .p12's, byte for byte"})
+            else:
+                record["same_as_p12"] = True
 
         # One byte changed in the first signed range, past the header: no verifier may find it valid.
         data = bytearray(out.read_bytes())
@@ -244,6 +313,7 @@ def main() -> None:
     parser.add_argument("--jobs", type=int, default=3)
     parser.add_argument("--report-dir", default="../CORPORA/reports")
     parser.add_argument("--name", default="signatures")
+    parser.add_argument("--pkcs11", help="a PKCS#11 module (SoftHSM): the keys on a token, the engine without them")
     args = parser.parse_args()
     args.cpdf = str(Path(args.cpdf).resolve())
     os.environ["CAPRIOLE_P12_PASSWORD"] = "capriole"
@@ -258,6 +328,8 @@ def main() -> None:
     run(["certutil", "-N", "-d", f"sql:{args.nss}", "--empty-password"], 60)
     run(["certutil", "-A", "-d", f"sql:{args.nss}", "-n", "capriole-test-ca", "-t", "CT,C,C", "-i", str(SIGNING / "ca.pem")], 60)
 
+    if args.pkcs11:
+        make_token(args, work)
     files = [p.resolve() for d in args.corpus for p in Path(d).glob("*.pdf")]
     files.sort(key=lambda f: hashlib.sha256(f"{args.seed}:{f.name}".encode()).hexdigest())
     results: list[dict] = []
@@ -273,7 +345,7 @@ def main() -> None:
                 elif len(results) < args.files:
                     results.append(r)
                     log.write(json.dumps(r) + "\n")
-        existing = [c for c in pool.map(lambda p: compare_existing(args, p), files) if c is not None]
+        existing = [] if args.pkcs11 else [c for c in pool.map(lambda p: compare_existing(args, p), files) if c is not None]
     with open(report / "existing.jsonl", "w") as log:
         for c in existing:
             log.write(json.dumps(c) + "\n")
@@ -289,8 +361,10 @@ def main() -> None:
              f"{len(passed)} / {len(results)}**",
              f"- Of them: visible {sum(r.get('visible', False) for r in results)}, with a time stamp {sum(r.get('timestamp', False) for r in results)}, "
              f"written anew first (repairs) {sum(r.get('rewritten', False) for r in results)}; passed over (encrypted, not opening) {skipped}",
-             f"- **Signatures already in the corpora: Capriole's verdict is Poppler's for {len(existing) - len(disagreeing)} / {len(existing)} files** "
-             f"({signatures} signatures, {valid} valid)",
+             (f"- Keys on a PKCS#11 token; RSA signatures the same file as with the .p12, byte for byte: {sum(r.get('same_as_p12', False) for r in results)}"
+              if args.pkcs11 else
+              f"- **Signatures already in the corpora: Capriole's verdict is Poppler's for {len(existing) - len(disagreeing)} / {len(existing)} files** "
+              f"({signatures} signatures, {valid} valid)"),
              f"- Exit criterion: **{'met' if met else 'not met'}**", "", "## Failures", ""]
     lines += [f"- {Path(r['file']).name}: " + "; ".join(f"{c['check']}: {c['detail']}" for c in r["checks"])[:700]
               for r in results if r["outcome"] == "fail"] or ["- none"]

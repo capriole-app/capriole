@@ -47,6 +47,9 @@ set(_capriole_exports
   _capriole_document_page_apply_redactions
   _capriole_pkcs12_info
   _capriole_document_sign_begin
+  _capriole_document_sign_begin_external
+  _capriole_signing_to_sign_json
+  _capriole_signing_set_value
   _capriole_signing_timestamp_request
   _capriole_document_sign_finish
   _capriole_signing_free

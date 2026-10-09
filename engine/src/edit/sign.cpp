@@ -161,7 +161,7 @@ std::optional<std::size_t> find_once(std::string_view file, std::string_view wha
 
 }  // namespace
 
-Result<PreparedSignature> prepare_signature(Document& document, const crypto::Credentials& credentials, const SignRequest& request) {
+Result<PreparedSignature> prepare_signature(Document& document, const SignerCertificates& signer_certificates, const SignRequest& request) {
   if (document.security() != nullptr) {
     return make_error(ErrorCode::kUnsupported, "signing an encrypted document is not supported yet");
   }
@@ -171,7 +171,7 @@ Result<PreparedSignature> prepare_signature(Document& document, const crypto::Cr
   if (request.date.empty() || !crypto::der::generalized_time(request.date)) {
     return make_error(ErrorCode::kUnsupported, "a signature needs its date (a PDF date)");
   }
-  auto signer = crypto::certificate_info(credentials.certificate());
+  auto signer = crypto::certificate_info(signer_certificates.certificate);
   if (!signer) {
     return std::unexpected(std::move(signer.error()));
   }
@@ -188,13 +188,13 @@ Result<PreparedSignature> prepare_signature(Document& document, const crypto::Cr
     return make_error(ErrorCode::kUnsupported, std::format("the form already has a field named {}", field_name));
   }
 
-  // The room /Contents needs: a signature of the same key over any digest is as long (an ECDSA
-  // signature's DER can be two bytes shorter), with some margin.
+  // The room /Contents needs: the signature with the longest value the key can give, with some margin.
   const std::vector<std::byte> zero(32);
-  auto trial = crypto::sign_detached(credentials, zero);
+  auto trial = crypto::unsigned_detached(signer_certificates.certificate, signer_certificates.others, zero);
   if (!trial) {
     return std::unexpected(std::move(trial.error()));
   }
+  trial->signature.assign(crypto::longest_value(signer_certificates.certificate), std::byte{0xFF});
   const std::size_t capacity = crypto::encode(*trial).size() + 64 + (request.timestamp ? kTimestampRoom : 0);
 
   // The appearance: lines in the rectangle as shown, in page space (/BBox is /Rect); none for an invisible one.
@@ -303,20 +303,49 @@ Result<PreparedSignature> prepare_signature(Document& document, const crypto::Cr
   crypto::Digest digest(crypto::DigestAlgorithm::kSha256);
   digest.update(std::span(out.file).first(*contents));
   digest.update(std::span(out.file).subspan(gap_end));
-  auto cms = crypto::sign_detached(credentials, digest.finish());
+  auto cms = crypto::unsigned_detached(signer_certificates.certificate, signer_certificates.others, digest.finish());
   if (!cms) {
     return std::unexpected(std::move(cms.error()));
   }
   out.cms = std::move(*cms);
   out.contents_offset = *contents + 1;
   out.contents_capacity = capacity;
-  if (request.timestamp) {
-    out.timestamp_request = crypto::timestamp_request(out.cms.signature);
+  out.timestamp = request.timestamp;
+  return out;
+}
+
+Result<PreparedSignature> prepare_signature(Document& document, const crypto::Credentials& credentials, const SignRequest& request) {
+  const SignerCertificates certificates{.certificate = {credentials.certificate().begin(), credentials.certificate().end()}, .others = credentials.chain()};
+  auto out = prepare_signature(document, certificates, request);
+  if (!out) {
+    return out;
+  }
+  if (auto signed_ = crypto::sign_with(out->cms, credentials); !signed_) {
+    return std::unexpected(std::move(signed_.error()));
+  }
+  if (out->timestamp) {
+    out->timestamp_request = crypto::timestamp_request(out->cms.signature);
   }
   return out;
 }
 
+Result<void> set_signature_value(PreparedSignature& prepared, std::span<const std::byte> value) {
+  if (prepared.cms.certificates.empty()) {
+    return make_error(ErrorCode::kOutOfRange, "not a prepared signature");
+  }
+  if (auto set = crypto::set_value(prepared.cms, prepared.cms.certificates.front(), value); !set) {
+    return set;
+  }
+  if (prepared.timestamp) {
+    prepared.timestamp_request = crypto::timestamp_request(prepared.cms.signature);
+  }
+  return {};
+}
+
 Result<std::vector<std::byte>> finish_signature(PreparedSignature prepared, std::span<const std::byte> timestamp_response) {
+  if (prepared.cms.signature.empty()) {
+    return make_error(ErrorCode::kUnsupported, "the signature has no value yet (set_signature_value)");
+  }
   std::vector<std::byte> token;
   if (!timestamp_response.empty()) {
     auto t = crypto::timestamp_token(timestamp_response, prepared.cms.signature);

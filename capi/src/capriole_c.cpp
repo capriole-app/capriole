@@ -1677,6 +1677,85 @@ capriole_status capriole_document_sign_begin(capriole_document* document, const 
   }
 }
 
+capriole_status capriole_document_sign_begin_external(capriole_document* document, const char* spec_json, const uint8_t* certificate, size_t certificate_size,
+                                                      const uint8_t* others, size_t others_size, capriole_signing** signing) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || certificate == nullptr || (others == nullptr && others_size != 0) || signing == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  *signing = nullptr;
+  try {
+    auto request = sign_request_of(spec_json);
+    if (!request) {
+      return fail(request.error());
+    }
+    capriole::edit::SignerCertificates signer;
+    const auto cert = std::as_bytes(std::span(certificate, certificate_size));
+    signer.certificate.assign(cert.begin(), cert.end());
+    // The others: DER elements one after the other.
+    capriole::crypto::der::Reader reader(std::as_bytes(std::span(others, others_size)));
+    while (!reader.empty()) {
+      auto element = reader.next();
+      if (!element || element->tag != capriole::crypto::der::kSequence) {
+        return fail(CAPRIOLE_ERROR_SYNTAX, "others: DER certificates one after the other expected");
+      }
+      signer.others.emplace_back(element->whole.begin(), element->whole.end());
+    }
+    auto prepared = capriole::edit::prepare_signature(document->document, signer, *request);
+    if (!prepared) {
+      return fail(prepared.error());
+    }
+    *signing = new capriole_signing{.prepared = std::move(*prepared)};  // NOLINT(cppcoreguidelines-owning-memory): released by capriole_signing_free
+    return CAPRIOLE_OK;
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_signing_to_sign_json(capriole_signing* signing, char** json) {
+  g_last_error.clear();
+  if (signing == nullptr || json == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    const auto& cms = signing->prepared.cms;
+    if (cms.certificates.empty()) {
+      return fail(CAPRIOLE_ERROR_OUT_OF_RANGE, "not a prepared signature");
+    }
+    const auto hex = [](std::span<const std::byte> bytes) {
+      std::string out;
+      for (const std::byte b : bytes) {
+        out += std::format("{:02x}", static_cast<unsigned>(b));
+      }
+      return out;
+    };
+    auto info = capriole::crypto::certificate_info(cms.certificates.front());
+    if (!info) {
+      return fail(info.error());
+    }
+    return hand_over(std::format(R"({{"hash":"{}","digestInfo":"{}","data":"{}","key":"{}"}})", hex(capriole::crypto::to_be_signed(cms)),
+                                 hex(capriole::crypto::digest_info(cms)), hex(cms.signed_attributes), info->key),
+                     json);
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_signing_set_value(capriole_signing* signing, const uint8_t* value, size_t size) {
+  g_last_error.clear();
+  if (signing == nullptr || value == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    if (auto set = capriole::edit::set_signature_value(signing->prepared, std::as_bytes(std::span(value, size))); !set) {
+      return fail(set.error());
+    }
+    return CAPRIOLE_OK;
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
 capriole_status capriole_signing_timestamp_request(capriole_signing* signing, uint8_t** data, size_t* size) {
   g_last_error.clear();
   if (signing == nullptr || data == nullptr || size == nullptr) {

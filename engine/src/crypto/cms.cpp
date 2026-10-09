@@ -248,18 +248,14 @@ bool valid_at(const CertificateInfo& certificate, std::string_view pdf_date) {
   return at && from && to && *from <= *at && *at <= *to;
 }
 
-Result<CmsSignature> sign_detached(const Credentials& credentials, std::span<const std::byte> content_digest) {
-  mbed::Certificates certificate;
-  if (!certificate.add(credentials.certificate())) {
+Result<CmsSignature> unsigned_detached(std::span<const std::byte> certificate, const std::vector<Bytes>& others, std::span<const std::byte> content_digest) {
+  mbed::Certificates parsed;
+  if (!parsed.add(certificate)) {
     return make_error(ErrorCode::kSyntax, "the signer's certificate cannot be read");
   }
-  mbed::Pk key;
-  if (auto parsed = mbed::parse_private_key(key, credentials.key()); !parsed) {
-    return std::unexpected(std::move(parsed.error()));
-  }
-  const mbedtls_x509_crt& c = *certificate.get();
-  const bool rsa = mbedtls_pk_can_do(key.get(), MBEDTLS_PK_RSA) != 0;
-  if (!rsa && mbedtls_pk_can_do(key.get(), MBEDTLS_PK_ECDSA) == 0) {
+  const mbedtls_x509_crt& c = *parsed.get();
+  const bool rsa = mbedtls_pk_can_do(&c.pk, MBEDTLS_PK_RSA) != 0;
+  if (!rsa && mbedtls_pk_can_do(&c.pk, MBEDTLS_PK_ECDSA) == 0) {
     return make_error(ErrorCode::kUnsupported, "the key is neither RSA nor ECDSA");
   }
 
@@ -270,32 +266,100 @@ Result<CmsSignature> sign_detached(const Credentials& credentials, std::span<con
   // ESSCertIDv2 (RFC 5035): SHA-256 (the default, left out), the certificate's hash, its issuer and serial.
   const Bytes issuer_serial =
       der::sequence({der::sequence({der::tlv(der::context_constructed(4), span_of(c.issuer_raw))}), der::tlv(der::kInteger, span_of(c.serial))});
-  const Bytes cert_id = der::sequence({der::octet_string(Digest::of(DigestAlgorithm::kSha256, credentials.certificate())), issuer_serial});
+  const Bytes cert_id = der::sequence({der::octet_string(Digest::of(DigestAlgorithm::kSha256, certificate)), issuer_serial});
   out.signed_attributes = der::set_of({
       attribute(kContentType, der::oid(kData)),
       attribute(kMessageDigest, der::octet_string(content_digest)),
       attribute(kSigningCertificateV2, der::sequence({der::sequence({cert_id})})),
   });
-  const auto hash = Digest::of(out.digest, out.signed_attributes);
+  out.signature_algorithm = rsa ? algorithm_identifier(kSha256WithRsa, true) : algorithm_identifier(kEcdsaWithSha256, false);
+  out.certificates.emplace_back(certificate.begin(), certificate.end());
+  for (const auto& other : others) {
+    out.certificates.push_back(other);
+  }
+  return out;
+}
 
+std::vector<std::byte> to_be_signed(const CmsSignature& signature) { return Digest::of(signature.digest, signature.signed_attributes); }
+
+Bytes digest_info(const CmsSignature& signature) {
+  return der::sequence({algorithm_identifier(oid_of(signature.digest), true), der::octet_string(to_be_signed(signature))});
+}
+
+std::size_t longest_value(std::span<const std::byte> certificate) {
+  mbed::Certificates parsed;
+  if (!parsed.add(certificate)) {
+    return 0;
+  }
+  mbedtls_pk_context& pk = parsed.get()->pk;
+  const std::size_t bytes = (mbedtls_pk_get_bitlen(&pk) + 7) / 8;
+  if (mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA) != 0) {
+    return bytes;
+  }
+  // Ecdsa-Sig-Value: a SEQUENCE of two INTEGERs, each with a leading zero at most.
+  return (2 * (bytes + 1 + 3)) + 3;
+}
+
+Result<void> set_value(CmsSignature& signature, std::span<const std::byte> certificate, std::span<const std::byte> value) {
+  mbed::Certificates parsed;
+  if (!parsed.add(certificate)) {
+    return make_error(ErrorCode::kSyntax, "the signer's certificate cannot be read");
+  }
+  mbedtls_pk_context& pk = parsed.get()->pk;
+  Bytes v(value.begin(), value.end());
+  if (mbedtls_pk_can_do(&pk, MBEDTLS_PK_ECDSA) != 0) {
+    // DER when it reads as a whole SEQUENCE of two INTEGERs; else r‖s, two halves of the same length.
+    Reader r(value);
+    const auto sequence = r.next();
+    auto inner = sequence && sequence->tag == der::kSequence && r.empty() ? Reader::into(*sequence) : Result<Reader>(std::unexpected(Error{}));
+    auto first = inner ? inner->expect(der::kInteger) : Result<Element>(std::unexpected(Error{}));
+    auto second = first ? inner->expect(der::kInteger) : Result<Element>(std::unexpected(Error{}));
+    if (!second || !inner->empty()) {
+      if (value.empty() || value.size() % 2 != 0) {
+        return make_error(ErrorCode::kCorruptData, "the signature value is neither DER nor r and s");
+      }
+      const std::size_t half = value.size() / 2;
+      v = der::sequence({der::integer(value.first(half)), der::integer(value.subspan(half))});
+    }
+  }
+  const auto hash = to_be_signed(signature);
+  if (mbedtls_pk_verify(&pk, mbed::md_of(signature.digest), mbed::uchars(hash), hash.size(), mbed::uchars(std::span<const std::byte>(v)), v.size()) != 0) {
+    return make_error(ErrorCode::kCorruptData, "the signature value does not verify with the certificate's key (another key signed, or something else)");
+  }
+  signature.signature = std::move(v);
+  return {};
+}
+
+Result<void> sign_with(CmsSignature& signature, const Credentials& credentials) {
+  mbed::Pk key;
+  if (auto parsed = mbed::parse_private_key(key, credentials.key()); !parsed) {
+    return parsed;
+  }
+  const auto hash = to_be_signed(signature);
   // Blinding randomness from the key and what is signed: the same input, the same signature.
   std::vector<std::byte> seed(credentials.key().begin(), credentials.key().end());
   seed.insert(seed.end(), hash.begin(), hash.end());
   mbed::Drbg drbg(seed);
   mbedtls_platform_zeroize(seed.data(), seed.size());
-  std::vector<unsigned char> signature(MBEDTLS_PK_SIGNATURE_MAX_SIZE);
+  std::vector<unsigned char> value(MBEDTLS_PK_SIGNATURE_MAX_SIZE);
   std::size_t length = 0;
-  if (const int rc = mbedtls_pk_sign(key.get(), MBEDTLS_MD_SHA256, mbed::uchars(hash), hash.size(), signature.data(), signature.size(), &length,
-                                     mbed::Drbg::random, &drbg);
+  if (const int rc =
+          mbedtls_pk_sign(key.get(), MBEDTLS_MD_SHA256, mbed::uchars(hash), hash.size(), value.data(), value.size(), &length, mbed::Drbg::random, &drbg);
       rc != 0) {
     return make_error(ErrorCode::kUnsupported, std::format("signing failed (Mbed TLS {:#x})", -rc));
   }
-  out.signature.resize(length);
-  std::ranges::copy(std::as_bytes(std::span(signature.data(), length)), out.signature.begin());
-  out.signature_algorithm = rsa ? algorithm_identifier(kSha256WithRsa, true) : algorithm_identifier(kEcdsaWithSha256, false);
-  out.certificates.emplace_back(credentials.certificate().begin(), credentials.certificate().end());
-  for (const auto& other : credentials.chain()) {
-    out.certificates.push_back(other);
+  signature.signature.resize(length);
+  std::ranges::copy(std::as_bytes(std::span(value.data(), length)), signature.signature.begin());
+  return {};
+}
+
+Result<CmsSignature> sign_detached(const Credentials& credentials, std::span<const std::byte> content_digest) {
+  auto out = unsigned_detached(credentials.certificate(), credentials.chain(), content_digest);
+  if (!out) {
+    return out;
+  }
+  if (auto signed_ = sign_with(*out, credentials); !signed_) {
+    return std::unexpected(std::move(signed_.error()));
   }
   return out;
 }

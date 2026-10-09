@@ -360,6 +360,24 @@ Signing takes a PKCS#12 file (`capriole_pkcs12_info` reads its certificate first
 
 The same document, key and spec give the same bytes (the date is the caller's).
 
+A key the engine is not given (a smart card, reached through PKCS#11 by the desktop app) adds a step
+between the two: `capriole_document_sign_begin_external(document, spec_json, certificate, size, others,
+others_size, &signing)` takes the signer's certificate (DER) and the others to include (its chain, DER
+certificates one after the other) instead of the `.p12`; `capriole_signing_to_sign_json` says what the
+key signs, as hexadecimal strings:
+
+```json
+{"hash":"…", "digestInfo":"…", "data":"…", "key":"RSA 2048"}
+```
+
+`hash` is the SHA-256 digest of the signed attributes (for `CKM_ECDSA`), `digestInfo` the same in a
+DigestInfo (for `CKM_RSA_PKCS`), `data` the signed attributes themselves (for `CKM_SHA256_RSA_PKCS`,
+`CKM_ECDSA_SHA256`). `capriole_signing_set_value(signing, value, size)` puts in what the key made —
+RSA PKCS#1 v1.5, ECDSA as DER or as r‖s (what PKCS#11 gives) — after checking it against the
+certificate's key (`CAPRIOLE_ERROR_CORRUPT_DATA` when it does not verify: another key, another
+document); then the time stamp request and `capriole_document_sign_finish` as above. A key that signs
+the same bytes gives the same file as through a `.p12`.
+
 ## Attachments and Factur-X
 
 `capriole_document_attachments_json` lists the document's attachments — the `/EmbeddedFiles` name

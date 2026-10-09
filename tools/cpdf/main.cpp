@@ -116,6 +116,7 @@ void print_usage() {
                "  attach remove <file> <number> <output>\n"
                "  facturx <file>                 the Factur-X invoice embedded, as JSON (null: none)\n"
                "  sign <file> <p12> <json> <output> [--timestamp-request <tsq>] [--timestamp-response <tsr>]\n"
+               "  sign <file> <certificate> <json> <output> [--chain <der>] --to-sign <json> | --value <file> [timestamp options]\n"
                "                  sign with a PKCS#12 key (password in CAPRIOLE_P12_PASSWORD): {\"page\":0,\"rect\":[x0,y0,x1,y1]|null,\n"
                "                  \"lines\":[…],\"reason\",\"location\",\"date\",\"timestamp\":false}; a time stamp in two runs\n"
                "  signatures <file> [anchors.pem]   the signatures, verified (identity against the roots given)\n"
@@ -1207,27 +1208,53 @@ int cmd_signatures(std::span<char* const> args) {
 // with the key of a PKCS#12 file (the password in CAPRIOLE_P12_PASSWORD). The date is now unless the
 // JSON gives one. A time stamp in two runs with the same date (the signature is deterministic): the first
 // writes the RFC 3161 request and no output, the second takes the authority's response.
+// With a key elsewhere (a smart card), <p12> is the signer's certificate (DER), with [--chain <file>] (DER
+// certificates one after the other), and one run more: --to-sign <file> writes what the key signs (JSON,
+// capi/README.md) and no output; then --value <file> gives the value it made (the time stamp options go
+// with it). The runs agree with the same date and JSON.
 int cmd_sign(std::span<char* const> args) {
   const std::string_view path = args[0];
   std::optional<std::string_view> request_path;
   std::optional<std::string_view> response_path;
+  std::optional<std::string_view> chain_path;
+  std::optional<std::string_view> to_sign_path;
+  std::optional<std::string_view> value_path;
   for (std::size_t i = 4; i + 1 < args.size(); i += 2) {
     const std::string_view option = args[i];
     if (option == "--timestamp-request") {
       request_path = args[i + 1];
     } else if (option == "--timestamp-response") {
       response_path = args[i + 1];
+    } else if (option == "--chain") {
+      chain_path = args[i + 1];
+    } else if (option == "--to-sign") {
+      to_sign_path = args[i + 1];
+    } else if (option == "--value") {
+      value_path = args[i + 1];
     } else {
       print_usage();
       return kExitUsage;
     }
+  }
+  const bool external = to_sign_path || value_path;
+  if ((chain_path && !external) || (to_sign_path && (value_path || request_path || response_path))) {
+    print_usage();
+    return kExitUsage;
   }
   const auto p12 = read_file(args[1]);
   std::optional<std::vector<char>> response;
   if (response_path) {
     response = read_file(*response_path);
   }
-  if (!p12 || (response_path && !response)) {
+  std::optional<std::vector<char>> chain;
+  if (chain_path) {
+    chain = read_file(*chain_path);
+  }
+  std::optional<std::vector<char>> value;
+  if (value_path) {
+    value = read_file(*value_path);
+  }
+  if (!p12 || (response_path && !response) || (chain_path && !chain) || (value_path && !value)) {
     return kExitFailure;
   }
   std::string spec(args[2]);
@@ -1242,7 +1269,13 @@ int cmd_sign(std::span<char* const> args) {
   }
   const auto* key = u8(*p12);
   capriole_signing* signing = nullptr;
-  capriole_status status = capriole_document_sign_begin(document, spec.c_str(), key, p12->size(), password, &signing);
+  const auto begin = [&] {
+    if (external) {
+      return capriole_document_sign_begin_external(document, spec.c_str(), key, p12->size(), chain ? u8(*chain) : nullptr, chain ? chain->size() : 0, &signing);
+    }
+    return capriole_document_sign_begin(document, spec.c_str(), key, p12->size(), password, &signing);
+  };
+  capriole_status status = begin();
   if (status == CAPRIOLE_ERROR_UNSUPPORTED && std::string_view(capriole_last_error_message()).find("needed repairs") != std::string_view::npos) {
     // A structure that reads only with repairs: written anew first, then signed (earlier signatures,
     // if any, do not survive that).
@@ -1258,16 +1291,32 @@ int cmd_sign(std::span<char* const> args) {
         return kExitFailure;
       }
       std::cerr << std::format("cpdf: {}: its structure needed repairs: written anew, then signed\n", path);
-      status = capriole_document_sign_begin(document, spec.c_str(), key, p12->size(), password, &signing);
+      status = begin();
     }
+  }
+  if (status == CAPRIOLE_OK && value) {
+    status = capriole_signing_set_value(signing, u8(*value), value->size());
   }
   if (status != CAPRIOLE_OK) {
     std::cerr << std::format("cpdf: {}: sign: {}\n", path, capriole_last_error_message());
+    capriole_signing_free(signing);
     capriole_document_close(document);
     return kExitFailure;
   }
   int exit = kExitOk;
-  if (request_path) {
+  if (to_sign_path) {
+    char* json = nullptr;
+    if (capriole_signing_to_sign_json(signing, &json) != CAPRIOLE_OK) {
+      std::cerr << std::format("cpdf: {}: sign: {}\n", path, capriole_last_error_message());
+      exit = kExitFailure;
+    } else {
+      const std::string_view text(json);
+      const std::vector<char> bytes(text.begin(), text.end());
+      exit = write_file(*to_sign_path, std::span(u8(bytes), bytes.size())) ? kExitOk : kExitFailure;
+      std::cout << std::format("{}: what the key signs\n", *to_sign_path);
+    }
+    capriole_free(json);
+  } else if (request_path) {
     std::uint8_t* data = nullptr;
     std::size_t size = 0;
     if (capriole_signing_timestamp_request(signing, &data, &size) != CAPRIOLE_OK || size == 0) {

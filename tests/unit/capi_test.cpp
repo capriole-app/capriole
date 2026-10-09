@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <fstream>
@@ -8,8 +9,11 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "capriole/capriole.h"
+#include "capriole/crypto/cms.hpp"
+#include "capriole/crypto/pkcs12.hpp"
 #include "support/pdf_builder.hpp"
 
 namespace {
@@ -556,6 +560,56 @@ TEST(CApiDocument, Signing) {
   EXPECT_NE(after.find(R"("integrity":"valid")"), std::string::npos) << after;
   EXPECT_NE(after.find(R"("coversWholeFile":false)"), std::string::npos) << after;
   capriole_document_close(edited);
+  capriole_document_close(document);
+}
+
+TEST(CApiDocument, SigningWithAKeyElsewhere) {
+  std::ifstream in(std::string(CAPRIOLE_TEST_DATA_DIR) + "/signing/rsa.p12", std::ios::binary);
+  const std::vector<char> p12_chars((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  auto credentials = capriole::crypto::read_pkcs12(std::as_bytes(std::span(p12_chars)), "capriole");
+  ASSERT_TRUE(credentials.has_value());
+  const auto as_u8 = [](std::span<const std::byte> b) {
+    return reinterpret_cast<const std::uint8_t*>(b.data());
+  };  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  std::vector<std::byte> chain;
+  for (const auto& c : credentials->chain()) {
+    chain.insert(chain.end(), c.begin(), c.end());
+  }
+  capriole_document* document = open_document(sample_pdf());
+  capriole_signing* signing = nullptr;
+  const char* spec = R"({"date":"D:20261009150000Z"})";
+  const std::array<std::uint8_t, 3> garbage{1, 2, 3};
+  EXPECT_EQ(capriole_document_sign_begin_external(document, spec, as_u8(credentials->certificate()), credentials->certificate().size(), garbage.data(),
+                                                  garbage.size(), &signing),
+            CAPRIOLE_ERROR_SYNTAX);
+  ASSERT_EQ(capriole_document_sign_begin_external(document, spec, as_u8(credentials->certificate()), credentials->certificate().size(), as_u8(chain),
+                                                  chain.size(), &signing),
+            CAPRIOLE_OK)
+      << capriole_last_error_message();
+  char* json = nullptr;
+  ASSERT_EQ(capriole_signing_to_sign_json(signing, &json), CAPRIOLE_OK);
+  const std::string to_sign = take_json(json);
+  EXPECT_NE(to_sign.find(R"("key":"RSA 2048")"), std::string::npos) << to_sign;
+  std::uint8_t* data = nullptr;
+  std::size_t size = 0;
+  EXPECT_EQ(capriole_document_sign_finish(document, signing, nullptr, 0, &data, &size), CAPRIOLE_ERROR_UNSUPPORTED);  // no value yet
+
+  // The key signs "data" (the signed attributes), as CKM_SHA256_RSA_PKCS would.
+  const auto at = to_sign.find(R"("data":")") + 8;
+  const std::string hex = to_sign.substr(at, to_sign.find('"', at) - at);
+  capriole::crypto::CmsSignature made;
+  for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
+    made.signed_attributes.push_back(static_cast<std::byte>(std::stoi(hex.substr(i, 2), nullptr, 16)));
+  }
+  ASSERT_TRUE(capriole::crypto::sign_with(made, *credentials).has_value());
+  EXPECT_EQ(capriole_signing_set_value(signing, garbage.data(), garbage.size()), CAPRIOLE_ERROR_CORRUPT_DATA);
+  ASSERT_EQ(capriole_signing_set_value(signing, as_u8(made.signature), made.signature.size()), CAPRIOLE_OK) << capriole_last_error_message();
+  ASSERT_EQ(capriole_document_sign_finish(document, signing, nullptr, 0, &data, &size), CAPRIOLE_OK) << capriole_last_error_message();
+  capriole_signing_free(signing);
+  capriole_free(data);
+  ASSERT_EQ(capriole_document_signatures_json(document, nullptr, 0, &json), CAPRIOLE_OK);
+  const std::string list = take_json(json);
+  EXPECT_NE(list.find(R"("integrity":"valid")"), std::string::npos) << list;
   capriole_document_close(document);
 }
 

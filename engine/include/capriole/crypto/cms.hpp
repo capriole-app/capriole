@@ -56,6 +56,24 @@ struct CmsSignature {
 
 // content_digest: the SHA-256 digest of what is signed (a PDF signature's byte ranges).
 [[nodiscard]] Result<CmsSignature> sign_detached(const Credentials& credentials, std::span<const std::byte> content_digest);
+
+// The same signature in two steps, for a key that is elsewhere (a smart card, PKCS#11): everything but
+// the value, from the signer's certificate and the others to include; what the key signs is to_be_signed
+// — the SHA-256 digest of signed_attributes (or the attributes themselves, for a mechanism that hashes:
+// CKM_SHA256_RSA_PKCS, CKM_ECDSA_SHA256). kUnsupported for a key neither RSA nor EC.
+[[nodiscard]] Result<CmsSignature> unsigned_detached(std::span<const std::byte> certificate, const std::vector<der::Bytes>& others,
+                                                     std::span<const std::byte> content_digest);
+[[nodiscard]] std::vector<std::byte> to_be_signed(const CmsSignature& signature);
+// The DigestInfo (RFC 8017 §9.2) of to_be_signed: what a raw RSA PKCS#1 v1.5 mechanism (CKM_RSA_PKCS) signs.
+[[nodiscard]] der::Bytes digest_info(const CmsSignature& signature);
+// The longest value the signer's key can give (the room a PDF keeps for the signature); 0 when unknown.
+[[nodiscard]] std::size_t longest_value(std::span<const std::byte> certificate);
+// The value made by the key: RSA PKCS#1 v1.5; ECDSA as DER, or as r‖s (what PKCS#11 gives), made DER.
+// Checked against the certificate's key first: kCorruptData when it does not verify (another key, another
+// digest).
+[[nodiscard]] Result<void> set_value(CmsSignature& signature, std::span<const std::byte> certificate, std::span<const std::byte> value);
+// The value made here, with the credentials' key (what sign_detached does after unsigned_detached).
+[[nodiscard]] Result<void> sign_with(CmsSignature& signature, const Credentials& credentials);
 // The ContentInfo, DER; with a time stamp token when given (an unsigned attribute).
 [[nodiscard]] der::Bytes encode(const CmsSignature& signature, std::span<const std::byte> timestamp_token = {});
 // The RFC 3161 request for a time stamp of a signature value (SHA-256, certificates asked for).

@@ -15,6 +15,13 @@
 // the response's token in and gives the signed file. Without a time stamp, finish_signature right away.
 // The same document, credentials and request give the same bytes (the date is the caller's).
 //
+// For a key that is elsewhere (a smart card: PKCS#11, in the desktop app) a third step between the two:
+// prepare_signature with the signer's certificates gives what the key signs (crypto::to_be_signed of
+// PreparedSignature::cms, or its crypto::digest_info for CKM_RSA_PKCS), the host has it signed, and
+// set_signature_value puts the value in (checked against the certificate's key); the time stamp request
+// is made then. With credentials (a .p12) the engine makes the value itself, the same way: a key that
+// signs the same bytes gives the same file either way.
+//
 // The document is changed (the field, the widget, the form): the signed file is what to go on with —
 // reopened, so that what comes next is appended after the signature.
 //
@@ -62,13 +69,25 @@ struct PreparedSignature {
   std::uint64_t contents_offset = 0;  // of the first hexadecimal digit of /Contents
   std::size_t contents_capacity = 0;  // bytes it holds
   crypto::CmsSignature cms;
-  std::vector<std::byte> timestamp_request;  // RFC 3161, when SignRequest::timestamp
+  std::vector<std::byte> timestamp_request;  // RFC 3161, when SignRequest::timestamp (once the value is in)
   std::string field_name;
+  bool timestamp = false;  // SignRequest::timestamp
+};
+
+// The signer's certificate (DER) and the others to include in the signature (its chain), for a key that
+// is not given to the engine.
+struct SignerCertificates {
+  std::vector<std::byte> certificate;
+  std::vector<std::vector<std::byte>> others;
 };
 
 [[nodiscard]] Result<PreparedSignature> prepare_signature(Document& document, const crypto::Credentials& credentials, const SignRequest& request);
+// Without the value: PreparedSignature::cms has everything but it.
+[[nodiscard]] Result<PreparedSignature> prepare_signature(Document& document, const SignerCertificates& signer, const SignRequest& request);
+// The value made outside (crypto::set_value: RSA PKCS#1 v1.5, ECDSA as DER or r‖s), checked.
+[[nodiscard]] Result<void> set_signature_value(PreparedSignature& prepared, std::span<const std::byte> value);
 
-// The signed file; with the time stamp of an RFC 3161 response when given (checked: granted, of this
+// The signed file (kUnsupported while the value is missing); with the time stamp of an RFC 3161 response when given (checked: granted, of this
 // signature, verified).
 [[nodiscard]] Result<std::vector<std::byte>> finish_signature(PreparedSignature prepared, std::span<const std::byte> timestamp_response = {});
 

@@ -57,7 +57,9 @@ Chromium di Playwright (`page.pdf()`) per generare documenti con sottoinsiemi de
 (`corpus-tools/make_font_docs.py`, in `CORPORA/generated/`); i font installati (DejaVu, Liberation, Noto…) sono
 input di prova, mai nel repository. Per lo spostamento di ciò che segue un paragrafo (fase 9d): `pikepdf` (già sopra)
 scrive la pagina originale traslata, che Capriole e Poppler disegnano come riferimento
-(`corpus-tools/check_paragraph_move.py`).
+(`corpus-tools/check_paragraph_move.py`). Per la firma con una chiave su smart card (fase 11a): SoftHSM2 (BSD,
+`softhsm2-util` e `libsofthsm2.so`: una smart card PKCS#11 in software, creata per ogni giro) e `pkcs11-tool`
+di OpenSC (LGPL, solo eseguito: firma sul token) — `corpus-tools/check_signatures.py --pkcs11`.
 
 
 OSS-Fuzz (`ci/oss-fuzz/`, quando il progetto sarà iscritto): l'immagine `gcr.io/oss-fuzz-base/base-builder`

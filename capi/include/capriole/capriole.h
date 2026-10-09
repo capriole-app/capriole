@@ -318,6 +318,24 @@ typedef struct capriole_signing capriole_signing;
  */
 capriole_status capriole_document_sign_begin(capriole_document* document, const char* spec_json, const uint8_t* p12, size_t p12_size, const char* password,
                                              capriole_signing** signing);
+/*
+ * The same, for a key that is not given to the engine (a smart card): the signer's certificate (DER) and
+ * the others to include (its chain: DER certificates one after the other; NULL for none). The value is
+ * missing until capriole_signing_set_value: capriole_signing_to_sign_json says what the key signs.
+ */
+capriole_status capriole_document_sign_begin_external(capriole_document* document, const char* spec_json, const uint8_t* certificate, size_t certificate_size,
+                                                      const uint8_t* others, size_t others_size, capriole_signing** signing);
+/*
+ * What the key signs, as JSON with hexadecimal strings: {"hash": SHA-256 of the signed attributes (what
+ * CKM_ECDSA signs), "digestInfo": the hash in a DigestInfo (CKM_RSA_PKCS), "data": the signed attributes
+ * (CKM_SHA256_RSA_PKCS, CKM_ECDSA_SHA256), "key": "RSA 2048" | "EC 256" …}.
+ */
+capriole_status capriole_signing_to_sign_json(capriole_signing* signing, char** json);
+/*
+ * The value the key made: RSA PKCS#1 v1.5, ECDSA as DER or r‖s. Checked against the certificate's key
+ * (CAPRIOLE_ERROR_CORRUPT_DATA when it does not verify).
+ */
+capriole_status capriole_signing_set_value(capriole_signing* signing, const uint8_t* value, size_t size);
 /* The RFC 3161 request to send to a time-stamping authority (none — size 0 — without "timestamp"). */
 capriole_status capriole_signing_timestamp_request(capriole_signing* signing, uint8_t** data, size_t* size);
 /*

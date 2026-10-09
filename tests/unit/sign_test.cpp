@@ -11,10 +11,13 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "capriole/core/byte_source.hpp"
+#include "capriole/crypto/cms.hpp"
 #include "capriole/crypto/der.hpp"
 #include "capriole/crypto/pkcs12.hpp"
 #include "capriole/document/document.hpp"
@@ -225,6 +228,71 @@ TEST(Sign, TakesOnlyItsOwnTimeStamp) {
   ASSERT_EQ(list.size(), 1U);
   EXPECT_EQ(list[0].integrity, Integrity::kValid) << list[0].problem;
   EXPECT_EQ(list[0].level, "B-B");
+}
+
+// An ECDSA value as PKCS#11 gives it: r and s, each as wide as the curve's order.
+std::vector<std::byte> raw_of(const std::vector<std::byte>& der, std::size_t width) {
+  crypto::der::Reader outer(der);
+  auto sequence = outer.next();
+  auto inner = crypto::der::Reader::into(*sequence);
+  std::vector<std::byte> out;
+  for (int i = 0; i < 2; ++i) {
+    auto n = inner->expect(crypto::der::kInteger);
+    std::span<const std::byte> m = n->content;
+    while (m.size() > width && m[0] == std::byte{0}) {
+      m = m.subspan(1);
+    }
+    out.insert(out.end(), width - m.size(), std::byte{0});
+    out.insert(out.end(), m.begin(), m.end());
+  }
+  return out;
+}
+
+TEST(Sign, AValueMadeOutsideGivesTheSameFile) {
+  SignRequest stamped = request(graphics::Rect{150, 120, 290, 180});
+  stamped.timestamp = true;
+  for (const char* key : {"rsa.p12", "ec.p12"}) {
+    const auto c = credentials(key);
+    Document inside = open(plain_pdf());
+    auto expected = prepare_signature(inside, c, stamped);
+    ASSERT_TRUE(expected.has_value()) << expected.error().message;
+
+    // The key elsewhere: only its certificates go to the engine; the value is made here, by the key.
+    Document outside = open(plain_pdf());
+    const SignerCertificates certificates{.certificate = {c.certificate().begin(), c.certificate().end()}, .others = c.chain()};
+    auto prepared = prepare_signature(outside, certificates, stamped);
+    ASSERT_TRUE(prepared.has_value()) << prepared.error().message;
+    EXPECT_TRUE(prepared->cms.signature.empty());
+    EXPECT_TRUE(prepared->timestamp_request.empty());
+    EXPECT_EQ(finish_signature(*prepared).error().code, ErrorCode::kUnsupported) << key;  // no value yet
+    EXPECT_EQ(crypto::to_be_signed(prepared->cms), crypto::to_be_signed(expected->cms)) << key;
+    auto made = prepared->cms;
+    ASSERT_TRUE(crypto::sign_with(made, c).has_value());
+    // ECDSA as r‖s, as a smart card gives it.
+    const auto value = std::string_view(key) == "ec.p12" ? raw_of(made.signature, 32) : made.signature;
+    ASSERT_TRUE(set_signature_value(*prepared, value).has_value()) << key;
+    EXPECT_EQ(prepared->timestamp_request, expected->timestamp_request) << key;
+    EXPECT_EQ(finish_signature(*prepared).value(), finish_signature(*expected).value()) << key;
+  }
+}
+
+TEST(Sign, AValueOfAnotherKeyIsRefused) {
+  const auto rsa = credentials("rsa.p12");
+  const auto ec = credentials("ec.p12");
+  Document document = open(plain_pdf());
+  const SignerCertificates certificates{.certificate = {rsa.certificate().begin(), rsa.certificate().end()}, .others = {}};
+  auto prepared = prepare_signature(document, certificates, request());
+  ASSERT_TRUE(prepared.has_value()) << prepared.error().message;
+  auto other = prepared->cms;
+  ASSERT_TRUE(crypto::sign_with(other, ec).has_value());
+  for (const auto& value : {other.signature, std::vector<std::byte>(256, std::byte{1}), std::vector<std::byte>()}) {
+    auto refused = set_signature_value(*prepared, value);
+    ASSERT_FALSE(refused.has_value());
+    EXPECT_EQ(refused.error().code, ErrorCode::kCorruptData);
+  }
+  // A certificate that is not one.
+  const SignerCertificates broken{.certificate = bytes("not a certificate"), .others = {}};
+  EXPECT_FALSE(prepare_signature(document, broken, request()).has_value());
 }
 
 TEST(Signatures, ReportsWhatCannotBeRead) {
