@@ -41,6 +41,18 @@ function open(): Promise<IDBDatabase | null> {
   return database;
 }
 
+/**
+ * A write done: its transaction committed (a request's success comes before, and a page closed or reloaded
+ * in between loses the write).
+ */
+function committed(s: IDBObjectStore): Promise<void> {
+  return new Promise((resolve, reject) => {
+    s.transaction.oncomplete = () => resolve();
+    s.transaction.onerror = () => reject(s.transaction.error ?? new Error('IndexedDB'));
+    s.transaction.onabort = () => reject(s.transaction.error ?? new Error('IndexedDB'));
+  });
+}
+
 async function store(mode: IDBTransactionMode): Promise<IDBObjectStore | null> {
   const db = await open();
   return db ? db.transaction(kStore, mode).objectStore(kStore) : null;
@@ -61,7 +73,9 @@ export async function rememberFont(font: StoredFont): Promise<boolean> {
   try {
     const s = await store('readwrite');
     if (!s) return false;
+    const done = committed(s);
     await request(s.put(font));
+    await done;
     return true;
   } catch {
     return false;
@@ -72,7 +86,11 @@ export async function rememberFont(font: StoredFont): Promise<boolean> {
 export async function forgetFont(id: string): Promise<void> {
   try {
     const s = await store('readwrite');
-    if (s) await request(s.delete(id));
+    if (s) {
+      const done = committed(s);
+      await request(s.delete(id));
+      await done;
+    }
   } catch {
     // nothing kept to forget
   }

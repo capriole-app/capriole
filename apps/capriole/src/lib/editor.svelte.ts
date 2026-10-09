@@ -246,9 +246,10 @@ export class Editor {
   /** Forgets a font given: the engine is given the others again. */
   async removeFont(id: string): Promise<void> {
     await this.#fontsReady;
+    // Forgotten first: the list says it is gone once it is (a reload right after does not bring it back).
+    await forgetFont(id);
     this.fonts = this.fonts.filter((f) => f.id !== id);
     this.fontError = null;
-    await forgetFont(id);
     await this.engine.fontsClear();
     for (const font of this.fonts) await this.engine.fontAdd(font.data.slice(0)).catch(() => {});
   }
