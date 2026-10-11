@@ -7,6 +7,7 @@
   import PageView from '$lib/components/PageView.svelte';
   import PasswordDialog from '$lib/components/PasswordDialog.svelte';
   import LicensesDialog from '$lib/components/LicensesDialog.svelte';
+  import SettingsDialog from '$lib/components/SettingsDialog.svelte';
   import PdfaDialog from '$lib/components/PdfaDialog.svelte';
   import SignaturesPanel from '$lib/components/SignaturesPanel.svelte';
   import SignDialog from '$lib/components/SignDialog.svelte';
@@ -37,7 +38,8 @@
       editor.typing ||
       editor.signRequest ||
       editor.pdfaDialog !== null ||
-      editor.licensesOpen
+      editor.licensesOpen ||
+      editor.settingsOpen
     )
       return;
     const command = e.ctrlKey || e.metaKey;
@@ -91,6 +93,7 @@
 <SignDialog />
 <PdfaDialog />
 <LicensesDialog />
+<SettingsDialog />
 
 {#if !editor.name}
   <OpenCard />

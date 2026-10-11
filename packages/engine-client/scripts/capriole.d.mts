@@ -50,6 +50,17 @@ export interface CaprioleModule {
     outNumber: number,
     outGeneration: number,
   ): number;
+  _capriole_document_stamp_add(
+    document: number,
+    pageIndex: number,
+    spec: number,
+    rgba: number,
+    rgbaSize: number,
+    width: number,
+    height: number,
+    number: number,
+    generation: number,
+  ): number;
   _capriole_document_annotation_update(
     document: number,
     pageIndex: number,

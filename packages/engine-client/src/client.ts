@@ -3,6 +3,8 @@ import type {
   AnnotationChange,
   AnnotationInfo,
   AnnotationSpec,
+  StampPicture,
+  StampSpec,
   AttachmentInfo,
   AttachmentSpec,
   FacturxInfo,
@@ -172,6 +174,11 @@ export class EngineClient {
   /** Adds an annotation to page `index` (its appearance made by the engine); resolves to its reference. */
   annotationAdd(index: number, spec: AnnotationSpec): Promise<[number, number]> {
     return this.#call({ kind: 'annotationAdd', index, spec });
+  }
+
+  /** Adds a stamp — a picture filling spec.rect, upright — to page `index`; resolves to its reference. */
+  stampAdd(index: number, spec: StampSpec, picture: StampPicture): Promise<[number, number]> {
+    return this.#call({ kind: 'stampAdd', index, spec, picture });
   }
 
   annotationUpdate(index: number, ref: [number, number], change: AnnotationChange): Promise<void> {

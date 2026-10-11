@@ -18,6 +18,7 @@
   import X from '@lucide/svelte/icons/x';
   import BrandMark from './BrandMark.svelte';
   import LanguageMenu from './LanguageMenu.svelte';
+  import SettingsButton from './SettingsButton.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
   import ZoomControl from './ZoomControl.svelte';
   import { gridRange } from '$lib/zoom';
@@ -221,6 +222,7 @@
     {/if}
   </div>
   <ZoomControl percent={editor.gridZoom} range={gridRange} onzoom={(percent) => editor.zoomGrid(percent)} />
+  <SettingsButton />
   <LanguageMenu />
   <ThemeMenu />
   <button

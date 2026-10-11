@@ -16,12 +16,15 @@
   import { getEditor, type Rgb } from '$lib/editor.svelte';
   import { lineAt, paragraphAt } from '$lib/textedit';
   import { objectAt, objectName } from '$lib/objects';
+  import { graphicSignatures } from '$lib/graphic-signatures.svelte';
+  import { graphicSignatureWords } from '$lib/i18n/graphicSignatures';
   import { tr } from '$lib/i18n/index.svelte';
   import { pageViewWords } from '$lib/i18n/pageView';
   import { pageRange, pixelsPerPoint, zoomIn, zoomOut } from '$lib/zoom';
 
   const editor = getEditor();
   const t = $derived(tr(pageViewWords));
+  const g = $derived(tr(graphicSignatureWords));
   const index = $derived(editor.viewing ?? 0);
 
   // The text gives the page's size as shown, the words that text markup goes on and the lines edittext
@@ -123,7 +126,7 @@
   type Drag =
     | { kind: 'move'; ref: [number, number]; start: Point; current: Point }
     | { kind: 'object'; start: Point; current: Point }
-    | { kind: 'resize'; corner: Corner; start: Point; current: Point }
+    | { kind: 'resize'; corner: Corner; start: Point; current: Point; stamp?: [number, number] }
     | { kind: 'markup'; from: number; to: number }
     | { kind: 'ink'; points: Point[] }
     | { kind: 'shape'; start: Point; current: Point };
@@ -189,16 +192,18 @@
       }
     }
     if (tool === 'select') {
-      // A corner of the object selected: resized; else an annotation (over the page), else an object.
+      // A corner of the object, or of the stamp, selected: resized; else an annotation (over the page), else
+      // an object.
       const object = editor.object;
-      const corner = object ? cornerAt(object.box, p) : null;
+      const stamp = selectedStamp;
+      const corner = object ? cornerAt(object.box, p) : stamp ? cornerAt(stamp.rect, p) : null;
       const hit =
         corner === null
           ? [...editor.annotations].reverse().find((a) => a.editable && a.ref && inside(p, a.rect, 3))
           : undefined;
-      editor.selectedAnnotation = hit?.ref ?? null;
+      if (corner === null || object) editor.selectedAnnotation = hit?.ref ?? null;
       if (corner !== null) {
-        drag = { kind: 'resize', corner, start: p, current: p };
+        drag = { kind: 'resize', corner, start: p, current: p, stamp: object ? undefined : stamp?.ref };
       } else if (hit?.ref) {
         editor.selectedObject = null;
         drag = { kind: 'move', ref: hit.ref, start: p, current: p };
@@ -215,6 +220,10 @@
       drag = word !== null ? { kind: 'markup', from: word, to: word } : { kind: 'shape', start: p, current: p };
     } else if (tool === 'ink') {
       drag = { kind: 'ink', points: [p] };
+    } else if (tool === 'stamp' && !graphicSignatures.chosen) {
+      // No graphic signature kept yet: where they are added.
+      editor.settingsOpen = 'signatures';
+      return;
     } else if (tool === 'note') {
       editor.annotate({ kind: 'note', rect: [p[0], p[1], p[0] + 20, p[1] + 20], color: editor.color, contents: '' });
       return;
@@ -239,6 +248,41 @@
   /** How far from a corner of an object selected it can be taken to resize it (points as shown). */
   const kHandle = 5;
 
+  /** The stamp selected (a graphic signature the editor made, or any stamp it can change): resizable. */
+  const selectedStamp = $derived(
+    editor.tool === 'select' && editor.annotation?.subtype === 'Stamp' && editor.annotation.ref
+      ? (editor.annotation as AnnotationInfo & { ref: [number, number] })
+      : null,
+  );
+
+  /**
+   * Where the graphic signature chosen goes: in the box drawn, as large as it fits with its proportions,
+   * centred; for a click, 150 points wide (at most 40% of the page) centred on it — within the page.
+   */
+  function stampRect(
+    page: PageText,
+    at: Point,
+    drawn: [number, number, number, number],
+  ): [number, number, number, number] | null {
+    const signature = graphicSignatures.chosen;
+    if (!signature) return null;
+    const aspect = signature.width / signature.height;
+    const [x0, y0, x1, y1] = drawn;
+    let width: number;
+    let centre: Point;
+    if (x1 - x0 > 10 && y1 - y0 > 10) {
+      width = Math.min(x1 - x0, (y1 - y0) * aspect);
+      centre = [(x0 + x1) / 2, (y0 + y1) / 2];
+    } else {
+      width = Math.min(150, page.width * 0.4, page.height * 0.4 * aspect);
+      centre = at;
+    }
+    const height = width / aspect;
+    const left = Math.min(Math.max(centre[0] - width / 2, 0), Math.max(page.width - width, 0));
+    const top = Math.min(Math.max(centre[1] - height / 2, 0), Math.max(page.height - height, 0));
+    return [left, top, left + width, top + height];
+  }
+
   /** An object's box while dragged: moved, or with a corner where the pointer is (the opposite one kept). */
   function draggedBox(b: readonly number[], d: Drag): [number, number, number, number] {
     const [x0, y0, x1, y1] = b as [number, number, number, number];
@@ -248,6 +292,17 @@
       return [x0 + dx, y0 + dy, x1 + dx, y1 + dy];
     }
     if (d.kind !== 'resize') return [x0, y0, x1, y1];
+    if (d.stamp) {
+      // A stamp keeps its proportions: from the opposite corner, the corner dragged follows the pointer
+      // along the box's diagonal (the pointer projected on it), at least 8 points wide.
+      const [ax, ay] = [d.corner === 1 || d.corner === 2 ? x0 : x1, d.corner >= 2 ? y0 : y1];
+      const sx = d.corner === 1 || d.corner === 2 ? 1 : -1;
+      const sy = d.corner >= 2 ? 1 : -1;
+      const [w, h] = [x1 - x0, Math.max(y1 - y0, 0.01)];
+      const along = ((d.current[0] - ax) * sx * w + (d.current[1] - ay) * sy * h) / (w * w + h * h);
+      const scale = Math.max(along, 8 / w);
+      return box([ax, ay], [ax + sx * w * scale, ay + sy * h * scale]);
+    }
     const [cx, cy] = d.current;
     const moving: [number, number, number, number] =
       d.corner === 0
@@ -301,6 +356,10 @@
       const dx = done.current[0] - done.start[0];
       const dy = done.current[1] - done.start[1];
       if (Math.hypot(dx, dy) > 0.5) editor.moveObject(dx, dy);
+    } else if (done.kind === 'resize' && done.stamp) {
+      const stamp = selectedStamp;
+      if (!stamp || Math.hypot(done.current[0] - done.start[0], done.current[1] - done.start[1]) <= 0.5) return;
+      editor.changeAnnotation(done.stamp, { rect: draggedBox(stamp.rect, done) });
     } else if (done.kind === 'resize') {
       const object = editor.object;
       if (!object) return;
@@ -326,6 +385,9 @@
           editor.annotate({ kind: 'line', from: done.start, to: done.current, color, width: 2 });
       } else if (tool === 'sign') {
         if (x1 - x0 > 10 && y1 - y0 > 10) editor.requestSignature(index, [x0, y0, x1, y1]);
+      } else if (tool === 'stamp') {
+        const rect = stampRect(page, done.start, [x0, y0, x1, y1]);
+        if (rect) editor.addStamp(rect);
       } else if (tool === 'redact') {
         if (x1 - x0 > 3 && y1 - y0 > 3)
           editor.annotate({ kind: 'redact', rect: [x0, y0, x1, y1], color: kMark, fill: [0, 0, 0] });
@@ -559,6 +621,37 @@
               />
             {/each}
           {/if}
+          {#if selectedStamp}
+            {@const r =
+              drag?.kind === 'resize' && drag.stamp ? draggedBox(selectedStamp.rect, drag) : selectedStamp.rect}
+            {#if drag?.kind === 'resize' && drag.stamp}
+              <rect
+                x={r[0]}
+                y={r[1]}
+                width={r[2] - r[0]}
+                height={r[3] - r[1]}
+                fill="transparent"
+                class="stroke-primary"
+                stroke-width="1"
+                stroke-dasharray="3 2"
+                vector-effect="non-scaling-stroke"
+                pointer-events="none"
+              />
+            {/if}
+            {#each [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]] as const as [cx, cy], i (i)}
+              <rect
+                x={cx - 2.5}
+                y={cy - 2.5}
+                width="5"
+                height="5"
+                class="fill-background stroke-primary"
+                stroke-width="1"
+                vector-effect="non-scaling-stroke"
+                style:cursor={i % 2 === 0 ? 'nwse-resize' : 'nesw-resize'}
+                data-testid="stamp-handle"
+              />
+            {/each}
+          {/if}
           {#if drag?.kind === 'markup'}
             {#each quadsOf(page, drag.from, drag.to) as q, i (i)}
               <rect
@@ -670,23 +763,26 @@
                 {@attach () => written}></textarea>
             </label>
           {/key}
-          <div class="flex items-center gap-1" role="radiogroup" aria-label={t.annotationColor}>
-            {#each colors as { name, rgb } (name)}
-              <button
-                type="button"
-                role="radio"
-                aria-checked={sameColor(a.color, rgb)}
-                aria-label={name}
-                title={name}
-                class={[
-                  'size-6 rounded-full border-2',
-                  sameColor(a.color, rgb) ? 'border-foreground' : 'border-transparent',
-                ]}
-                style:background-color={css(rgb)}
-                onclick={() => editor.changeAnnotation(ref, { color: [...rgb] as Rgb })}
-              ></button>
-            {/each}
-          </div>
+          <!-- A stamp's colours are its picture's. -->
+          {#if a.subtype !== 'Stamp'}
+            <div class="flex items-center gap-1" role="radiogroup" aria-label={t.annotationColor}>
+              {#each colors as { name, rgb } (name)}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={sameColor(a.color, rgb)}
+                  aria-label={name}
+                  title={name}
+                  class={[
+                    'size-6 rounded-full border-2',
+                    sameColor(a.color, rgb) ? 'border-foreground' : 'border-transparent',
+                  ]}
+                  style:background-color={css(rgb)}
+                  onclick={() => editor.changeAnnotation(ref, { color: [...rgb] as Rgb })}
+                ></button>
+              {/each}
+            </div>
+          {/if}
           <button
             type="button"
             class="flex items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-danger hover:bg-danger-background"
@@ -702,13 +798,15 @@
             : t.helpLine
           : editor.tool === 'sign'
             ? t.helpSign
-            : editor.tool === 'redact'
-              ? t.helpRedact
-              : editor.tool === 'form'
-                ? t.helpForm
-                : editor.tool === 'select'
-                  ? t.helpSelect
-                  : t.helpDraw}
+            : editor.tool === 'stamp'
+              ? `${g.place} ${g.about}`
+              : editor.tool === 'redact'
+                ? t.helpRedact
+                : editor.tool === 'form'
+                  ? t.helpForm
+                  : editor.tool === 'select'
+                    ? t.helpSelect
+                    : t.helpDraw}
       </p>
       {#if editor.tool === 'edittext'}
         <div class="flex rounded-md border p-0.5" role="radiogroup" aria-label={t.editWhat}>

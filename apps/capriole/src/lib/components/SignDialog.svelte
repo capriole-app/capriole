@@ -7,7 +7,9 @@
   import FileKey from '@lucide/svelte/icons/file-key';
   import Signature from '@lucide/svelte/icons/signature';
   import { EngineError, Status, type CertificateInfo } from '@capriole/engine-client';
+  import { untrack } from 'svelte';
   import { getEditor } from '$lib/editor.svelte';
+  import { settings } from '$lib/settings.svelte';
   import { commonName } from '$lib/certificates';
   import { localDateTime } from '$lib/files';
   import { cardShell, type CardSigner as Card } from '$lib/smartcard';
@@ -40,7 +42,12 @@
 
   // A modal dialog while a signature is being made (showModal: focus trapped, Escape cancels).
   function modal(dialog: HTMLDialogElement) {
-    if (request && !dialog.open) dialog.showModal();
+    if (request && !dialog.open) {
+      // The reason and location of the settings, to change or leave.
+      reason = untrack(() => settings.values.signReason);
+      location = untrack(() => settings.values.signLocation);
+      dialog.showModal();
+    }
     if (!request && dialog.open) dialog.close();
   }
 

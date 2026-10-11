@@ -2,6 +2,7 @@
   // The first screen: a card to drop or choose a PDF. Nothing leaves the browser.
   import FolderOpen from '@lucide/svelte/icons/folder-open';
   import LanguageMenu from './LanguageMenu.svelte';
+  import SettingsButton from './SettingsButton.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor } from '$lib/editor.svelte';
   import { choosesWhere, isDesktop } from '$lib/platform';
@@ -38,7 +39,7 @@
       take(e.dataTransfer?.files);
     }}
   >
-    <div class="absolute end-3 top-3 flex gap-2"><LanguageMenu /><ThemeMenu /></div>
+    <div class="absolute end-3 top-3 flex gap-2"><SettingsButton /><LanguageMenu /><ThemeMenu /></div>
     <header class="mt-10 mb-8 flex flex-col items-center gap-3 text-center">
       <img src="/logo-light.svg" alt="Capriole" class="h-14 dark:hidden" />
       <img src="/logo-dark.svg" alt="Capriole" class="hidden h-14 dark:block" />

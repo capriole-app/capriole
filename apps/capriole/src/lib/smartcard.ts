@@ -6,6 +6,7 @@
 // digest (to the time-stamping authority) and the certificates' serial numbers (to the responders).
 import type { EngineClient, SignSpec, ToSign, ValidationData } from '@capriole/engine-client';
 import { isDesktop } from './platform';
+import { settings } from './settings.svelte';
 import { tr } from './i18n/index.svelte';
 import { signingWords } from './i18n/signing';
 
@@ -70,29 +71,11 @@ export const knownModules = [
   '/usr/lib/softhsm/libsofthsm2.so',
 ];
 
-const moduleKey = 'capriole.pkcs11Module';
-const tsaKey = 'capriole.tsaUrl';
-
-function remembered(key: string): string {
-  try {
-    return localStorage.getItem(key) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function remember(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // a convenience only
-  }
-}
-
-export const rememberedModule = () => remembered(moduleKey);
-export const rememberModule = (value: string) => remember(moduleKey, value);
-export const rememberedTsa = () => remembered(tsaKey);
-export const rememberTsa = (value: string) => remember(tsaKey, value);
+// The module and the authority last used are kept in the settings (settings.svelte.ts).
+export const rememberedModule = () => settings.values.pkcs11Module;
+export const rememberModule = (value: string) => settings.update({ pkcs11Module: value });
+export const rememberedTsa = () => settings.values.tsaUrl;
+export const rememberTsa = (value: string) => settings.update({ tsaUrl: value });
 
 /** What the shell or the card said, in the language of the interface. */
 export function cardProblem(error: unknown): string {

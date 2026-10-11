@@ -33,6 +33,7 @@ set(_capriole_exports
   _capriole_document_pages_import
   _capriole_document_page_annotations_json
   _capriole_document_annotation_add
+  _capriole_document_stamp_add
   _capriole_document_annotation_update
   _capriole_document_annotation_remove
   _capriole_document_form_fields_json

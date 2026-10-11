@@ -392,6 +392,21 @@ export interface AnnotationSpec {
   date?: string;
 }
 
+/** A stamp's picture: a canvas's ImageData (RGBA, row by row from the top). */
+export interface StampPicture {
+  width: number;
+  height: number;
+  rgba: ArrayBuffer;
+}
+
+/** What capriole_document_stamp_add takes besides the picture. */
+export interface StampSpec {
+  rect: [number, number, number, number];
+  contents?: string;
+  author?: string;
+  date?: string;
+}
+
 export interface AnnotationChange {
   moveBy?: [number, number];
   /** A new rectangle (the page as shown): free text, square, circle. */
@@ -526,6 +541,7 @@ export type Request =
   | { kind: 'saveCompact'; modificationDate: string | null }
   | { kind: 'annotations'; index: number }
   | { kind: 'annotationAdd'; index: number; spec: AnnotationSpec }
+  | { kind: 'stampAdd'; index: number; spec: StampSpec; picture: StampPicture }
   | { kind: 'annotationUpdate'; index: number; ref: [number, number]; change: AnnotationChange }
   | { kind: 'annotationRemove'; index: number; ref: [number, number] }
   | { kind: 'formFields' }

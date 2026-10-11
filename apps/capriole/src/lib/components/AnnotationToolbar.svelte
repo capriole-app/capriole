@@ -14,6 +14,7 @@
   import PenLine from '@lucide/svelte/icons/pen-line';
   import Signature from '@lucide/svelte/icons/signature';
   import Square from '@lucide/svelte/icons/square';
+  import Stamp from '@lucide/svelte/icons/stamp';
   import StickyNote from '@lucide/svelte/icons/sticky-note';
   import Strikethrough from '@lucide/svelte/icons/strikethrough';
   import TextCursorInput from '@lucide/svelte/icons/text-cursor-input';
@@ -22,9 +23,13 @@
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import BrandMark from './BrandMark.svelte';
   import LanguageMenu from './LanguageMenu.svelte';
+  import SettingsButton from './SettingsButton.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
   import ZoomControl from './ZoomControl.svelte';
   import { pageRange } from '$lib/zoom';
+  import { fontSizes } from '$lib/settings.svelte';
+  import { graphicSignatures, showPicture } from '$lib/graphic-signatures.svelte';
+  import { graphicSignatureWords } from '$lib/i18n/graphicSignatures';
   import { getEditor, type Rgb, type Tool } from '$lib/editor.svelte';
   import { colors, css, sameColor } from '$lib/colors';
   import { tr } from '$lib/i18n/index.svelte';
@@ -32,6 +37,7 @@
 
   const editor = getEditor();
   const t = $derived(tr(annotationToolbarWords));
+  const g = $derived(tr(graphicSignatureWords));
   const page = $derived(editor.viewing ?? 0);
 
   // Filling the form comes first when the document has one.
@@ -51,10 +57,10 @@
     { tool: 'freetext', icon: Type },
     { tool: 'redact', icon: Eraser },
     { tool: 'sign', icon: Signature },
+    { tool: 'stamp', icon: Stamp },
   ];
   const tools = $derived(hasForm ? all : all.filter((t) => t.tool !== 'form'));
   // The size of the next free text, or of the free text selected.
-  const sizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72];
   const selectedText = $derived(editor.annotation?.subtype === 'FreeText' ? editor.annotation : null);
   const button =
     'flex items-center justify-center rounded-md border hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
@@ -105,6 +111,34 @@
     {/each}
   </div>
 
+  {#if editor.tool === 'stamp'}
+    <!-- The graphic signature to put: one of those kept (settings), or a way to add one. -->
+    <div class="flex items-center gap-1" role="radiogroup" aria-label={g.choose} data-testid="stamp-choice">
+      {#each graphicSignatures.list as s (s.id)}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={graphicSignatures.chosen?.id === s.id}
+          aria-label={s.name}
+          title={s.name}
+          class={[
+            'flex h-8 w-16 items-center justify-center rounded-md border-2 bg-white px-1',
+            graphicSignatures.chosen?.id === s.id ? 'border-primary' : 'border-transparent',
+          ]}
+          onclick={() => graphicSignatures.choose(s.id)}
+        >
+          <img {@attach showPicture(s.png)} alt="" class="max-h-6 max-w-full" />
+        </button>
+      {/each}
+      <button
+        type="button"
+        class={[button, 'gap-1.5 px-2.5 py-1.5 text-sm']}
+        onclick={() => (editor.settingsOpen = 'signatures')}
+        >{graphicSignatures.list.length === 0 ? g.add : g.manage}</button
+      >
+    </div>
+  {/if}
+
   <div class="flex items-center gap-1" role="radiogroup" aria-label={t.color}>
     {#each colors as { name, rgb } (name)}
       <button
@@ -135,7 +169,7 @@
         if (selectedText?.ref) editor.changeAnnotation(selectedText.ref, { fontSize: size });
       }}
     >
-      {#each sizes as size (size)}
+      {#each fontSizes as size (size)}
         <option value={size}>{size} pt</option>
       {/each}
     </select>
@@ -169,6 +203,7 @@
       disabled={editor.busy}
       onclick={() => editor.save()}><FileDown class="size-4" /> {t.save}</button
     >
+    <SettingsButton />
     <LanguageMenu />
     <ThemeMenu />
   </div>

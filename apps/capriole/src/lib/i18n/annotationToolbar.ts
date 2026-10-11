@@ -22,6 +22,7 @@ export const annotationToolbarWords = translations(
     freetext: 'Testo',
     redact: 'Oscura (redaction)',
     sign: 'Firma (disegna il riquadro)',
+    stamp: 'Firma grafica',
     color: 'Colore',
     textSize: 'Dimensione del testo',
     redactConfirm: (n: number, signed: boolean) =>
@@ -55,6 +56,7 @@ export const annotationToolbarWords = translations(
       freetext: 'Text',
       redact: 'Black out (redaction)',
       sign: 'Sign (draw its box)',
+      stamp: 'Graphic signature',
       color: 'Colour',
       textSize: 'Text size',
       redactConfirm: (n: number, signed: boolean) =>
@@ -87,6 +89,7 @@ export const annotationToolbarWords = translations(
       freetext: 'Texte',
       redact: 'Caviarder (redaction)',
       sign: 'Signer (tracez le cadre)',
+      stamp: 'Signature graphique',
       color: 'Couleur',
       textSize: 'Taille du texte',
       redactConfirm: (n: number, signed: boolean) =>
@@ -119,6 +122,7 @@ export const annotationToolbarWords = translations(
       freetext: 'Text',
       redact: 'Schwärzen (Redaction)',
       sign: 'Signieren (Rahmen zeichnen)',
+      stamp: 'Grafische Unterschrift',
       color: 'Farbe',
       textSize: 'Textgröße',
       redactConfirm: (n: number, signed: boolean) =>
@@ -151,6 +155,7 @@ export const annotationToolbarWords = translations(
       freetext: 'Texto',
       redact: 'Censurar (redaction)',
       sign: 'Firmar (dibuja el recuadro)',
+      stamp: 'Firma gráfica',
       color: 'Color',
       textSize: 'Tamaño del texto',
       redactConfirm: (n: number, signed: boolean) =>

@@ -1567,6 +1567,31 @@ Chieste provando l'app, prima della distribuzione.
   - lo zoom della griglia e della pagina (`zoom.test.ts`);
   - il marchio nella barra (`licenses.test.ts`).
 
+## Impostazioni, colori predefiniti, firma grafica (2026-10-11) — ✅
+
+Chiesti provando l'app.
+
+- **Colori predefiniti.** I colori sono due: l'evidenziatore, giallo, per evidenziazioni e note; quello per scrivere e disegnare, nero, per testo, penna, forme, linee, sottolineato e barrato. Il selettore nella barra cambia il colore del gruppo dello strumento attivo.
+- **Impostazioni** (`settings.svelte.ts`, `SettingsDialog`).
+  - Un solo oggetto versionato in `localStorage`. Il desktop usa lo stesso, perché la WebView lo conserva nei dati dell'app.
+  - Ogni valore viene controllato in lettura; uno sbagliato torna al suo predefinito.
+  - Comprendono: zoom delle miniature e della pagina all'apertura, autore (`/T`), i due colori, dimensione del testo, motivo e luogo della firma digitale. Solo desktop: modulo PKCS#11, TSA, validazione a lungo termine.
+  - Lingua e tema restano nelle loro chiavi; le chiavi sparse di prima vengono migrate una volta.
+- **Firma grafica.**
+  - Fino a 4 immagini (PNG, JPEG, WebP) conservate in IndexedDB. Quando si aggiunge un'immagine viene preparata: al massimo 1200 px, sfondo bianco reso trasparente (a richiesta), margini vuoti tagliati, salvata come PNG.
+  - Lo strumento «Firma grafica» la posa con un clic o in un riquadro; poi la si sposta e la si ridimensiona dagli angoli a proporzioni fisse.
+  - Nel PDF è un'annotazione `/Stamp` con l'immagine (motore: `AnnotationKind::kStamp`, `capriole_document_stamp_add`, `cpdf annot stamp`). La maschera morbida c'è solo se l'immagine non è opaca; il ridimensionamento rifà l'aspetto attorno alla stessa immagine, senza copiarla.
+  - L'app dice che non è una firma digitale.
+- **Criterio raggiunto.**
+  - Lo stamp è disegnato in modo identico da Capriole, Poppler e MuPDF, anche su pagine ruotate.
+  - Test unitari di motore e API C.
+  - `fuzz_annotations` aggiunge stamp, sia fissi sia ricavati dall'input.
+  - Gli e2e (`settings.test.ts`) coprono:
+    - i colori predefiniti;
+    - le impostazioni ricordate e usate (zoom, autore nel file, motivo della firma) e il ripristino;
+    - le firme grafiche: al massimo 4, eliminazione, rifiuto di un file che non è un'immagine;
+    - lo stamp: posato, selezionato, ridimensionato a proporzioni fisse, salvato con la maschera, conservato dopo il ricaricamento.
+
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 
 Tutto ciò che serve a rendere pubblico il repository, senza renderlo pubblico (lo decide il titolare:

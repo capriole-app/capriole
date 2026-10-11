@@ -35,6 +35,25 @@ publishing.
 the window, or 25–400% of its size on paper): − and +, the percentage written by hand, «Adatta» (fit) for
 the page; Ctrl/Cmd + wheel and Ctrl/Cmd + + / − / 0 too.
 
+**Settings** (the gear beside the language and theme menus; `src/lib/settings.svelte.ts`): one
+versioned record in localStorage — in the desktop app too, whose web view keeps it in the app's data —,
+each value checked when read (a wrong or missing one takes its default), each change kept at once:
+thumbnail zoom, page zoom when opened, the author written in annotations, the highlighter's colour
+(yellow: highlights, notes) and the one that writes and draws (black: text, pen, shapes, lines,
+underline, strike out), text size, a digital signature's reason and location, and on the desktop the
+smart card's module, the time-stamping authority and long-term validation. Language and theme keep
+their own keys (the theme is read before the first paint). The keys kept before (`capriole.gridZoom`,
+`capriole.pkcs11Module`, `capriole.tsaUrl`) are read into the record once, then removed.
+
+**Graphic signatures** (`src/lib/graphic-signatures.svelte.ts`): pictures of a handwritten signature
+(PNG, JPEG, WebP), at most four, kept in IndexedDB and managed in the settings. A picture is made ready
+when added: within 1200 pixels, its white background made transparent when asked (fading with
+lightness, so the ink's edges stay smooth), its empty margins cut away, kept as PNG. The «Firma grafica»
+tool puts the one chosen on the page — a click: 150 points wide at most (40% of the page), centred on
+it; a box drawn: as large as fits in it — as a `/Stamp` annotation (`capriole_document_stamp_add`: the
+picture with its transparency, upright as the page is shown); then, selected, it moves and resizes from
+its corners keeping its proportions. Not a digital signature, and the app says so.
+
 **About**: Capriole's mark at the start of the bar opens «Informazioni e licenze» — the mark, the app's and
 the engine's versions, the motto, the licences.
 

@@ -27,6 +27,8 @@ import {
 import { baseName, dateTime, pdfDateNow } from './files';
 import { parseInvoice, type Invoice } from './invoice';
 import { clampZoom, gridRange } from './zoom';
+import { settings } from './settings.svelte';
+import { graphicSignatures, pixelsOf } from './graphic-signatures.svelte';
 import { tr } from './i18n/index.svelte';
 import { editorWords } from './i18n/editor';
 import { fontWords } from './i18n/fonts';
@@ -52,7 +54,7 @@ import { cardProblem, cardShell, signWithCard, type CardSigner, type LongTermRep
  * What a pointer does on the page shown large: fill the form, select (and move) annotations, make one, or
  * edit the page's own text (edittext).
  */
-export type Tool = 'form' | 'select' | 'sign' | 'edittext' | AnnotationSpec['kind'];
+export type Tool = 'form' | 'select' | 'sign' | 'stamp' | 'edittext' | AnnotationSpec['kind'];
 
 /** A line of the page's text being written again, and the page's text it was read from. */
 export interface LineEditing {
@@ -104,17 +106,8 @@ export interface Typing {
   color: Rgb;
 }
 
-const gridZoomKey = 'capriole.gridZoom';
-
-function rememberedGridZoom(): number {
-  try {
-    const stored = Number(localStorage.getItem(gridZoomKey));
-    if (stored > 0) return clampZoom(stored, gridRange);
-  } catch {
-    // no storage: the usual size
-  }
-  return 100;
-}
+/** The tools whose colour is the highlighter's (the others write and draw). */
+const highlighting: readonly Tool[] = ['highlight', 'note'];
 
 /** Undo keeps full copies of the document before each edit, within this many bytes (oldest dropped). */
 const kHistoryBytes = 256 * 1024 * 1024;
@@ -145,10 +138,11 @@ export class Editor {
 
   /** The page shown large, to annotate; null: the grid of pages. */
   viewing = $state<number | null>(null);
-  /** The pages grid's zoom (the thumbnails' size), in percent: remembered on the device. */
-  gridZoom = $state(rememberedGridZoom());
-  /** The page shown large: fitted to the window, or a zoom in percent (100: its size on paper). */
-  pageZoom = $state<number | 'fit'>('fit');
+  /** The pages grid's zoom (the thumbnails' size), in percent: remembered on the device (settings). */
+  gridZoom = $state(settings.values.gridZoom);
+  /** The page shown large: fitted to the window, or a zoom in percent (100: its size on paper). Each
+   * document opens at the zoom of the settings. */
+  pageZoom = $state<number | 'fit'>(settings.values.pageZoom);
   /** The page shown large: the zoom it has now, in percent (with fit: what the window gives it). */
   pageZoomShown = $state(100);
   /** Its annotations, as the engine lists them. */
@@ -161,7 +155,10 @@ export class Editor {
   elements = $state.raw<PageElement[]>([]);
   selectedObject = $state<number | null>(null);
   tool = $state<Tool>('select');
-  color = $state.raw<Rgb>([1, 0.82, 0]);
+  /** The colours of the next annotations: the highlighter's, and the one that writes and draws (from the
+   * settings when the app starts; the toolbar changes them for this session). */
+  highlightColor = $state.raw<Rgb>([...settings.values.highlightColor]);
+  drawColor = $state.raw<Rgb>([...settings.values.drawColor]);
   /** The document's attachments, its Factur-X invoice (null: none) and what its XML says. */
   attachments = $state.raw<AttachmentInfo[]>([]);
   facturx = $state.raw<FacturxInfo | null>(null);
@@ -184,8 +181,10 @@ export class Editor {
   pdfaRefusal = $state.raw<string[] | null>(null);
   /** The «Informazioni e licenze» dialog. */
   licensesOpen = $state(false);
+  /** The settings dialog: open, or open at the graphic signatures. */
+  settingsOpen = $state<boolean | 'signatures'>(false);
   /** The size of the next free text (points). */
-  fontSize = $state(12);
+  fontSize = $state(settings.values.fontSize);
   /** The free text being written on the page (null: none). */
   typing = $state.raw<Typing | null>(null);
   /** The line of the page's text being written again (null: none). */
@@ -279,6 +278,15 @@ export class Editor {
     for (const font of this.fonts) await this.engine.fontAdd(font.data.slice(0)).catch(() => {});
   }
 
+  /** The colour of the next annotation, for the tool chosen: the highlighter's, or the one that writes. */
+  get color(): Rgb {
+    return highlighting.includes(this.tool) ? this.highlightColor : this.drawColor;
+  }
+  set color(color: Rgb) {
+    if (highlighting.includes(this.tool)) this.highlightColor = color;
+    else this.drawColor = color;
+  }
+
   /** The selected pages, in page order. */
   get selection(): number[] {
     return [...this.selected].sort((a, b) => a - b);
@@ -309,6 +317,7 @@ export class Editor {
         this.path = source.path;
         this.#handle = source.handle ?? null;
         this.repairs = opened.repairs;
+        this.pageZoom = settings.values.pageZoom;
         this.#history = [];
         this.canUndo = false;
         this.passwordNeeded = false;
@@ -393,11 +402,7 @@ export class Editor {
     if (zoom === this.gridZoom) return;
     this.gridZoom = zoom;
     this.#thumbnails.clear();
-    try {
-      localStorage.setItem(gridZoomKey, String(zoom));
-    } catch {
-      // a convenience only
-    }
+    settings.update({ gridZoom: zoom });
   }
 
   /** Rotates the selected pages by a multiple of 90 degrees, clockwise: those thumbnails are drawn again. */
@@ -923,8 +928,34 @@ export class Editor {
     const page = this.viewing;
     if (page === null) return Promise.resolve();
     return this.#editPage(async () => {
-      this.selectedAnnotation = await this.engine.annotationAdd(page, { ...spec, date: pdfDateNow() });
+      this.selectedAnnotation = await this.engine.annotationAdd(page, {
+        author: this.#author(),
+        ...spec,
+        date: pdfDateNow(),
+      });
     });
+  }
+
+  /** Puts the graphic signature chosen on the page shown, filling rect (as shown); it ends up selected, with
+   * the selection tool, to be moved or resized. */
+  addStamp(rect: [number, number, number, number]): Promise<void> {
+    const page = this.viewing;
+    const signature = graphicSignatures.chosen;
+    if (page === null || !signature) return Promise.resolve();
+    return this.#editPage(async () => {
+      const picture = await pixelsOf(signature);
+      this.selectedAnnotation = await this.engine.stampAdd(
+        page,
+        { rect, author: this.#author(), date: pdfDateNow() },
+        picture,
+      );
+      this.tool = 'select';
+    });
+  }
+
+  /** The author written in what is added (settings); undefined: none. */
+  #author(): string | undefined {
+    return settings.values.author.trim() || undefined;
   }
 
   changeAnnotation(ref: [number, number], change: AnnotationChange): Promise<void> {

@@ -41,6 +41,7 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 11c Smart card e rete nell'app desktop | ✅ | SoftHSM nei test della shell; e2e con la shell simulata: B-LTA valido per pyHanko e pdfsig. Nessuna carta reale provata |
 | Rifiniture prima del rilascio: 5 lingue, zoom, marchio, «Informazioni» | ✅ | traduzioni FR/DE/ES da far rivedere a madrelingua |
 | Segnalazione anonimizzata dei file problematici | ⬜ | CAPRIOLE.md §8 |
+| Impostazioni, colori predefiniti, firma grafica | ✅ | stamp uguale in Capriole, Poppler, MuPDF |
 | Distribuzione 12a: web app su capriole.app (contabo-b) | 🟡 | immagine, Jenkins e runbook pronti (`docs/DEPLOY.md`); e2e verdi contro il container; prima installazione e DNS da fare |
 | Distribuzione 12b–c: Windows, Flathub, self-hosted | ⬜ | CAPRIOLE.md §3 |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |

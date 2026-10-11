@@ -7,6 +7,7 @@
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import type { CertificateInfo } from '@capriole/engine-client';
   import { getEditor } from '$lib/editor.svelte';
+  import { settings } from '$lib/settings.svelte';
   import { commonName } from '$lib/certificates';
   import { localDateTime } from '$lib/files';
   import {
@@ -35,7 +36,7 @@
   let chosen = $state<string | null>(null);
   let pin = $state('');
   let tsa = $state(rememberedTsa());
-  let longTerm = $state(false);
+  let longTerm = $state(settings.values.longTerm);
   let problem = $state('');
   let reading = $state(false);
 
