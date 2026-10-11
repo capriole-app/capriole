@@ -1354,9 +1354,10 @@ capriole_status capriole_document_stamp_add(capriole_document* document, uint32_
       return fail(spec.error());
     }
     capriole::edit::StampImage image{.width = width, .height = height, .rgb = {}, .alpha = {}};
-    image.rgb.reserve(pixels * 3);
-    image.alpha.reserve(pixels);
-    for (std::size_t i = 0; i < pixels; ++i) {
+    const auto count = static_cast<std::size_t>(pixels);  // within kMaxStampPixels: fits wasm32's size_t
+    image.rgb.reserve(count * 3);
+    image.alpha.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
       image.rgb.insert(image.rgb.end(), rgba + (i * 4), rgba + (i * 4) + 3);
       image.alpha.push_back(rgba[(i * 4) + 3]);
     }

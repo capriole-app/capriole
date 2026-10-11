@@ -191,7 +191,7 @@ std::optional<model::Stream> appearance_for(Document& document, const Page& page
   const Rect rect = Rect{r[0], r[1], r[2], r[3]}.normalized();
   Dict resources;
   std::string content;
-  if (subtype == "Stamp") {
+  if (subtype == "Stamp" && image) {
     // The picture fills the rectangle as shown, upright, its first row at the top.
     const Rect shown = page.view(rect);
     content = in_view(page, std::format("q {} 0 0 {} {} {} cm /Im0 Do Q\n", num(shown.width()), num(-shown.height()), num(shown.x0), num(shown.y1)));
