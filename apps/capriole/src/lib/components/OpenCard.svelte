@@ -1,6 +1,7 @@
 <script lang="ts">
   // The first screen: a card to drop or choose a PDF. Nothing leaves the browser.
   import FolderOpen from '@lucide/svelte/icons/folder-open';
+  import CodedInIreland from './CodedInIreland.svelte';
   import LanguageMenu from './LanguageMenu.svelte';
   import SettingsButton from './SettingsButton.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
@@ -83,5 +84,6 @@
         onclick={() => (editor.licensesOpen = true)}>{t.about}</button
       >
     </p>
+    <div class="mt-5 flex justify-center"><CodedInIreland /></div>
   </div>
 </main>

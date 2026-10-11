@@ -55,7 +55,7 @@ picture with its transparency, upright as the page is shown); then, selected, it
 its corners keeping its proportions. Not a digital signature, and the app says so.
 
 **About**: Capriole's mark at the start of the bar opens «Informazioni e licenze» — the mark, the app's and
-the engine's versions, the motto, the licences.
+the engine's versions, the motto, the «coded in Ireland» badge (also at the foot of the first screen), the licences.
 
 **Annotations** (phase 8d): double-click a page (or select it and press "Annota") to show it large.
 Tools: highlight, underline and strike out (drag over the text: one mark per line), note (click; its

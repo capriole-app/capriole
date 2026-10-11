@@ -4,6 +4,7 @@
   // Rust crates of its shell. Read from licenses.json, which the build writes
   // (packages/engine-client/scripts/licenses.mjs).
   import Info from '@lucide/svelte/icons/info';
+  import CodedInIreland from './CodedInIreland.svelte';
   import { base } from '$app/paths';
   import { getEditor } from '$lib/editor.svelte';
   import { isDesktop } from '$lib/platform';
@@ -82,6 +83,7 @@
         </p>
         <!-- The motto (ARTWORKS/MOTTO): in English in every language. -->
         <p class="italic">All the moves. No strings attached.</p>
+        <div class="mt-1"><CodedInIreland class="h-6" /></div>
       </div>
     </header>
     <div class="flex min-h-0 flex-col gap-4 overflow-y-auto pe-1">

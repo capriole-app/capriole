@@ -6,6 +6,7 @@ test('«Informazioni e licenze» lists Capriole’s licence and what it is built
   await page.getByRole('button', { name: 'Informazioni e licenze' }).click();
   const dialog = page.getByTestId('licenses-dialog');
   await expect(dialog).toContainText('0BSD');
+  await expect(dialog.getByTestId('coded-in-ireland')).toBeVisible();
   await expect(dialog.getByTestId('about-versions')).toHaveText(/^versione \d+\.\d+\.\d+ · motore \d+\.\d+\.\d+$/);
 
   // The engine's dependencies, with what their licences ask to say.
