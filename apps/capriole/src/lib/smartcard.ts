@@ -6,6 +6,8 @@
 // digest (to the time-stamping authority) and the certificates' serial numbers (to the responders).
 import type { EngineClient, SignSpec, ToSign, ValidationData } from '@capriole/engine-client';
 import { isDesktop } from './platform';
+import { tr } from './i18n/index.svelte';
+import { signingWords } from './i18n/signing';
 
 export interface Token {
   slot: number;
@@ -92,27 +94,28 @@ export const rememberModule = (value: string) => remember(moduleKey, value);
 export const rememberedTsa = () => remembered(tsaKey);
 export const rememberTsa = (value: string) => remember(tsaKey, value);
 
-/** What the shell or the card said, in Italian. */
+/** What the shell or the card said, in the language of the interface. */
 export function cardProblem(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error);
   const code = /^([a-z-]+):/.exec(text)?.[1];
+  const t = tr(signingWords);
   switch (code) {
     case 'pin-incorrect':
-      return 'PIN errato. Attenzione: dopo alcuni tentativi sbagliati la carta si blocca.';
+      return t.pinIncorrect;
     case 'pin-locked':
-      return 'Il PIN della carta è bloccato: si sblocca con il PUK, con il programma del produttore.';
+      return t.pinLocked;
     case 'module':
-      return `Il modulo PKCS#11 non si carica: controlla il percorso (${text.replace(/^module:\s*/, '')}).`;
+      return t.moduleFailed(text.replace(/^module:\s*/, ''));
     case 'no-token':
-      return 'La carta non è più nel lettore.';
+      return t.noToken;
     case 'no-key':
-      return 'La carta non ha la chiave privata di questo certificato.';
+      return t.noKey;
     case 'no-mechanism':
-      return 'La carta non offre un modo di firmare con questa chiave.';
+      return t.noMechanism;
     case 'network':
-      return `Collegamento non riuscito: ${text.replace(/^network:\s*/, '')}`;
+      return t.network(text.replace(/^network:\s*/, ''));
     case 'url':
-      return 'Indirizzo non valido: sono ammessi solo http e https.';
+      return t.badUrl;
     default:
       return text;
   }
@@ -187,7 +190,7 @@ async function fetchAnswers(
         // the next address
       }
     }
-    if (!answered) unanswered.push(need.subject || 'un certificato');
+    if (!answered) unanswered.push(need.subject || tr(signingWords).aCertificate);
   }
   return { data, unanswered };
 }

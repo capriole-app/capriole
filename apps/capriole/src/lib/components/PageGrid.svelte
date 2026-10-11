@@ -5,8 +5,12 @@
   // keyboard.
   import Thumbnail from './Thumbnail.svelte';
   import { getEditor } from '$lib/editor.svelte';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { pagesWords } from '$lib/i18n/pages';
+  import { gridRange, zoomIn, zoomOut } from '$lib/zoom';
 
   const editor = getEditor();
+  const t = $derived(tr(pagesWords));
   let grid = $state<HTMLDivElement>();
   /** The position the dragged pages would move to (before that page; = pages: at the end). */
   let target = $state<number | null>(null);
@@ -28,6 +32,17 @@
     return best.position;
   }
 
+  /** Ctrl/Cmd + wheel zooms the thumbnails (not the browser's zoom). */
+  function wheelZoom(node: HTMLElement) {
+    const wheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.deltaY === 0) return;
+      e.preventDefault();
+      editor.zoomGrid(e.deltaY < 0 ? zoomIn(editor.gridZoom, gridRange) : zoomOut(editor.gridZoom, gridRange));
+    };
+    node.addEventListener('wheel', wheel, { passive: false });
+    return () => node.removeEventListener('wheel', wheel);
+  }
+
   function dropOf(index: number): 'before' | 'after' | null {
     if (target === null) return null;
     if (target === index) return 'before';
@@ -37,9 +52,11 @@
 
 <div
   bind:this={grid}
-  class="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-4 p-6"
+  class="grid grid-cols-[repeat(auto-fill,minmax(var(--column),1fr))] gap-4 p-6"
+  style:--column="{(10 * editor.gridZoom) / 100}rem"
+  {@attach wheelZoom}
   role="list"
-  aria-label="Pagine del documento"
+  aria-label={t.grid}
   ondragover={(e) => {
     if (!dragging) return; // files dragged in from outside are not pages
     e.preventDefault();

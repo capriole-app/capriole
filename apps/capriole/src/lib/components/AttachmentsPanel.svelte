@@ -10,41 +10,37 @@
   import X from '@lucide/svelte/icons/x';
   import { getEditor } from '$lib/editor.svelte';
   import { formatBytes, readableDate } from '$lib/files';
+  import { i18n, tr } from '$lib/i18n/index.svelte';
+  import { attachmentsWords } from '$lib/i18n/attachments';
 
   const editor = getEditor();
   let files: HTMLInputElement | undefined = $state();
   let xml: HTMLInputElement | undefined = $state();
   let dragging = $state(false);
 
-  const relationships: Record<string, string> = {
-    Source: 'sorgente',
-    Data: 'dati',
-    Alternative: 'versione alternativa',
-    Supplement: 'supplemento',
-    EncryptedPayload: 'contenuto cifrato',
-    FormData: 'dati del modulo',
-    Schema: 'schema',
-  };
-  const kinds: Record<string, string> = {
-    '380': 'Fattura',
-    '381': 'Nota di credito',
-    '384': 'Fattura correttiva',
-    '389': 'Autofattura',
-  };
+  const t = $derived(tr(attachmentsWords));
 
   function amount(value: string, currency: string): string {
     const n = Number(value);
     if (value === '' || Number.isNaN(n)) return value;
     try {
-      return new Intl.NumberFormat('it-IT', { style: 'currency', currency: currency || 'EUR' }).format(n);
+      return new Intl.NumberFormat(i18n.intl, { style: 'currency', currency: currency || 'EUR' }).format(n);
     } catch {
       return `${value} ${currency}`;
     }
   }
 
+  /** An ISO date (YYYY-MM-DD) as the language writes it; else as written. */
   function date(iso: string): string {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-    return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+    if (!m) return iso;
+    const day = new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!));
+    return new Intl.DateTimeFormat(i18n.intl, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(day);
   }
 
   const button =
@@ -56,7 +52,7 @@
     'flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm',
     dragging && 'ring-2 ring-primary ring-inset',
   ]}
-  aria-label="Allegati"
+  aria-label={t.title}
   data-testid="attachments-panel"
   ondragover={(e) => {
     e.preventDefault();
@@ -70,11 +66,11 @@
   }}
 >
   <header class="flex items-center justify-between">
-    <h2 class="flex items-center gap-2 font-semibold"><Paperclip class="size-4" /> Allegati</h2>
+    <h2 class="flex items-center gap-2 font-semibold"><Paperclip class="size-4" /> {t.title}</h2>
     <button
       type="button"
       class="flex size-8 items-center justify-center rounded-md hover:bg-muted"
-      aria-label="Chiudi gli allegati"
+      aria-label={t.close}
       onclick={() => (editor.attachmentsOpen = false)}><X class="size-4" /></button
     >
   </header>
@@ -82,57 +78,53 @@
   {#if editor.facturx}
     <section class="flex flex-col gap-2 rounded-lg border bg-background p-3" data-testid="invoice">
       <h3 class="flex items-center gap-2 font-semibold">
-        <ReceiptText class="size-4" /> Fattura elettronica Factur-X
+        <ReceiptText class="size-4" />
+        {t.invoice}
       </h3>
       <p class="text-muted-foreground">
-        Profilo {editor.facturx.conformanceLevel || 'non indicato'}{editor.facturx.version
-          ? ` · versione ${editor.facturx.version}`
-          : ''}
+        {t.profile(editor.facturx.conformanceLevel, editor.facturx.version)}
       </p>
       {#if editor.invoice}
         {@const i = editor.invoice}
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-          <dt class="text-muted-foreground">{kinds[i.typeCode] ?? 'Documento'}</dt>
-          <dd>{i.number}{i.date ? ` del ${date(i.date)}` : ''}</dd>
-          <dt class="text-muted-foreground">Cedente</dt>
+          <dt class="text-muted-foreground">{t.kinds[i.typeCode] ?? t.document}</dt>
+          <dd>{t.numberAndDate(i.number, i.date ? date(i.date) : '')}</dd>
+          <dt class="text-muted-foreground">{t.seller}</dt>
           <dd>{i.seller}{i.sellerVat ? ` (${i.sellerVat})` : ''}</dd>
-          <dt class="text-muted-foreground">Cessionario</dt>
+          <dt class="text-muted-foreground">{t.buyer}</dt>
           <dd>{i.buyer}</dd>
           {#if i.net}
-            <dt class="text-muted-foreground">Imponibile</dt>
+            <dt class="text-muted-foreground">{t.net}</dt>
             <dd>{amount(i.net, i.currency)}</dd>
           {/if}
           {#if i.tax}
-            <dt class="text-muted-foreground">Imposta</dt>
+            <dt class="text-muted-foreground">{t.tax}</dt>
             <dd>{amount(i.tax, i.currency)}</dd>
           {/if}
-          <dt class="text-muted-foreground">Totale</dt>
+          <dt class="text-muted-foreground">{t.total}</dt>
           <dd class="font-semibold">{amount(i.total, i.currency)}</dd>
           {#if i.due && i.due !== i.total}
-            <dt class="text-muted-foreground">Da pagare</dt>
+            <dt class="text-muted-foreground">{t.due}</dt>
             <dd>{amount(i.due, i.currency)}</dd>
           {/if}
           {#if i.dueDate}
-            <dt class="text-muted-foreground">Scadenza</dt>
+            <dt class="text-muted-foreground">{t.dueDate}</dt>
             <dd>{date(i.dueDate)}</dd>
           {/if}
         </dl>
       {:else}
-        <p class="text-muted-foreground">L'XML della fattura non si legge come un Cross Industry Invoice.</p>
+        <p class="text-muted-foreground">{t.unreadable}</p>
       {/if}
       {#if !editor.facturx.pdfa3}
         <div class="flex flex-col gap-2 rounded-md bg-warning-background px-2 py-1.5 text-warning" role="note">
-          <p>
-            Il PDF non è PDF/A-3: la fattura è incorporata, ma il file diventa un Factur-X conforme solo convertito in
-            PDF/A-3.
-          </p>
+          <p>{t.notPdfa3}</p>
           <button
             type="button"
             class={[button, 'self-start bg-card text-foreground']}
             disabled={editor.busy}
             onclick={() => editor.openPdfa(3)}
           >
-            Converti in PDF/A-3…
+            {t.convert}
           </button>
         </div>
       {/if}
@@ -140,10 +132,11 @@
   {:else}
     <section class="flex flex-col gap-2">
       <p class="text-muted-foreground">
-        Una fattura elettronica Factur-X / ZUGFeRD è un PDF con l'XML della fattura (Cross Industry Invoice) dentro.
+        {t.aboutFacturx}
       </p>
       <button type="button" class={[button, 'self-start']} disabled={editor.busy} onclick={() => xml?.click()}>
-        <FileCode class="size-4" /> Crea Factur-X con un XML…
+        <FileCode class="size-4" />
+        {t.makeFacturx}
       </button>
       <input
         bind:this={xml}
@@ -162,7 +155,7 @@
 
   <section class="flex flex-col gap-2">
     {#if editor.attachments.length === 0}
-      <p class="text-muted-foreground">Nessun file allegato.</p>
+      <p class="text-muted-foreground">{t.none}</p>
     {/if}
     <ul class="flex flex-col gap-2" data-testid="attachment-list">
       {#each editor.attachments as a (`${a.ref[0]} ${a.ref[1]}`)}
@@ -171,8 +164,8 @@
           <span class="text-xs text-muted-foreground">
             {[
               a.size !== null ? formatBytes(a.size) : '',
-              relationships[a.relationship] ?? '',
-              a.page !== null ? `nota a pagina ${a.page + 1}` : '',
+              t.relationships[a.relationship] ?? '',
+              a.page !== null ? t.noteOnPage(a.page + 1) : '',
               readableDate(a.modificationDate),
             ]
               .filter(Boolean)
@@ -183,15 +176,16 @@
           {/if}
           <div class="flex gap-1.5">
             <button type="button" class={button} disabled={editor.busy} onclick={() => editor.saveAttachment(a)}>
-              <Download class="size-4" /> Scarica
+              <Download class="size-4" />
+              {t.download}
             </button>
             {#if a.page === null}
               <button
                 type="button"
                 class={[button, 'text-danger hover:bg-danger-background']}
                 disabled={editor.busy}
-                aria-label="Rimuovi {a.fileName || a.name}"
-                onclick={() => editor.removeAttachment(a.ref)}><Trash2 class="size-4" /> Rimuovi</button
+                aria-label={t.removeNamed(a.fileName || a.name)}
+                onclick={() => editor.removeAttachment(a.ref)}><Trash2 class="size-4" /> {t.remove}</button
               >
             {/if}
           </div>
@@ -199,7 +193,8 @@
       {/each}
     </ul>
     <button type="button" class={[button, 'self-start']} disabled={editor.busy} onclick={() => files?.click()}>
-      <Plus class="size-4" /> Aggiungi file
+      <Plus class="size-4" />
+      {t.add}
     </button>
     <input
       bind:this={files}
@@ -212,6 +207,6 @@
         e.currentTarget.value = '';
       }}
     />
-    <p class="text-xs text-muted-foreground">…oppure trascina qui i file da allegare.</p>
+    <p class="text-xs text-muted-foreground">{t.dropHint}</p>
   </section>
 </aside>

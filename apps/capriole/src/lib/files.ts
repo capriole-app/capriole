@@ -1,4 +1,5 @@
 // Files for the person: sizes, dates, downloads.
+import { i18n } from './i18n/index.svelte';
 
 export function formatBytes(size: number): string {
   if (size < 1024) return `${size} B`;
@@ -23,12 +24,23 @@ export function download(data: ArrayBuffer, name: string, type = 'application/pd
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** A PDF date (D:YYYYMMDDHHmmSS...) as a date and time to read; empty when it is not one. */
+/**
+ * A PDF date (D:YYYYMMDDHHmmSS...) as a date and time to read, as written (no time zone applied), in the
+ * order of the interface's language ("04/10/2026 15:00" in Italian); empty when it is not one.
+ */
 export function readableDate(pdf: string): string {
   const m = /^D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?/.exec(pdf);
   if (!m) return '';
   const [, y, mo = '01', d = '01', h, mi] = m;
-  return h ? `${d}/${mo}/${y} ${h}:${mi ?? '00'}` : `${d}/${mo}/${y}`;
+  if (i18n.locale === 'it') return h ? `${d}/${mo}/${y} ${h}:${mi ?? '00'}` : `${d}/${mo}/${y}`;
+  const date = new Date(Date.UTC(+y!, +mo - 1, +d, h ? +h : 0, mi ? +mi : 0));
+  return new Intl.DateTimeFormat(i18n.intl, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    ...(h ? { hour: '2-digit', minute: '2-digit' } : {}),
+    timeZone: 'UTC',
+  }).format(date);
 }
 
 /**
@@ -45,9 +57,9 @@ export function localDateTime(pdf: string): string {
   return dateTime(new Date(utc));
 }
 
-/** A moment in the reader's time zone, as the app shows it: "04/10/2026, 15:00". */
+/** A moment in the reader's time zone, as the interface's language writes it: "04/10/2026, 15:00" in Italian. */
 export function dateTime(date: Date): string {
-  return new Intl.DateTimeFormat('it-IT', {
+  return new Intl.DateTimeFormat(i18n.intl, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

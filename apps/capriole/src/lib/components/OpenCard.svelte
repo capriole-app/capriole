@@ -1,11 +1,15 @@
 <script lang="ts">
   // The first screen: a card to drop or choose a PDF. Nothing leaves the browser.
   import FolderOpen from '@lucide/svelte/icons/folder-open';
+  import LanguageMenu from './LanguageMenu.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor } from '$lib/editor.svelte';
   import { choosesWhere, isDesktop } from '$lib/platform';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { openCardWords } from '$lib/i18n/openCard';
 
   const editor = getEditor();
+  const t = $derived(tr(openCardWords));
   let dragging = $state(false);
   let input: HTMLInputElement | undefined = $state();
 
@@ -18,7 +22,7 @@
 <main class="flex min-h-dvh items-center justify-center bg-muted px-6 py-10">
   <div
     role="region"
-    aria-label="Apri un PDF"
+    aria-label={t.region}
     class={[
       'relative w-full max-w-md rounded-xl border bg-card p-6 shadow-sm sm:p-8',
       dragging && 'ring-2 ring-primary',
@@ -34,11 +38,11 @@
       take(e.dataTransfer?.files);
     }}
   >
-    <div class="absolute end-3 top-3"><ThemeMenu /></div>
+    <div class="absolute end-3 top-3 flex gap-2"><LanguageMenu /><ThemeMenu /></div>
     <header class="mt-10 mb-8 flex flex-col items-center gap-3 text-center">
       <img src="/logo-light.svg" alt="Capriole" class="h-14 dark:hidden" />
       <img src="/logo-dark.svg" alt="Capriole" class="hidden h-14 dark:block" />
-      <p class="text-sm text-muted-foreground">Le pagine di un PDF: riordina, ruota, elimina, unisci, estrai</p>
+      <p class="text-sm text-muted-foreground">{t.tagline}</p>
     </header>
 
     {#if editor.error}
@@ -52,7 +56,7 @@
       onclick={() => (choosesWhere ? editor.openFromDialog() : input?.click())}
     >
       <FolderOpen class="size-5" />
-      {editor.busy ? 'Apertura…' : 'Scegli un PDF'}
+      {editor.busy ? t.opening : t.choose}
     </button>
     <input
       bind:this={input}
@@ -63,20 +67,19 @@
       onchange={(e) => take(e.currentTarget.files)}
     />
     <p class="mt-4 text-center text-sm text-muted-foreground">
-      …oppure trascinalo qui. {isDesktop
-        ? 'Il file resta sul tuo computer.'
-        : 'Il file resta nel browser: nessun byte va su un server.'}
+      {t.orDrop}
+      {isDesktop ? t.staysDesktop : t.staysBrowser}
     </p>
     {#if editor.engineVersion}
       <p class="mt-6 text-center text-xs text-muted-foreground">
-        motore Capriole {editor.engineVersion} (WebAssembly)
+        {t.engine(editor.engineVersion)}
       </p>
     {/if}
     <p class="mt-2 text-center text-xs">
       <button
         type="button"
         class="text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        onclick={() => (editor.licensesOpen = true)}>Informazioni e licenze</button
+        onclick={() => (editor.licensesOpen = true)}>{t.about}</button
       >
     </p>
   </div>

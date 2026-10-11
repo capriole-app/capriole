@@ -16,8 +16,12 @@
   import { getEditor, type Rgb } from '$lib/editor.svelte';
   import { lineAt, paragraphAt } from '$lib/textedit';
   import { objectAt, objectName } from '$lib/objects';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { pageViewWords } from '$lib/i18n/pageView';
+  import { pageRange, pixelsPerPoint, zoomIn, zoomOut } from '$lib/zoom';
 
   const editor = getEditor();
+  const t = $derived(tr(pageViewWords));
   const index = $derived(editor.viewing ?? 0);
 
   // The text gives the page's size as shown, the words that text markup goes on and the lines edittext
@@ -62,8 +66,37 @@
   /** Under a point: the line, or the paragraph (edittext's mode). */
   const textAt = (page: PageText, p: Point) =>
     editor.editMode === 'paragraph' ? paragraphAt(page, p[0], p[1]) : lineAt(page, p[0], p[1]);
-  // Sharp enough for a page on a screen; drawn again after each edit (the annotations are in it).
-  const dpi = Math.round(Math.min(220, 110 * Math.min(globalThis.devicePixelRatio || 1, 2)));
+  // Sharp enough for a page on a screen, fitted; zoomed in, as sharp as the zoom asks, within a size a
+  // drawing may have (16 million pixels: an A4 page at about 600 dpi). Drawn again after each edit (the
+  // annotations are in it).
+  const density = Math.min(globalThis.devicePixelRatio || 1, 2);
+  const fitDpi = Math.round(Math.min(220, 110 * density));
+  const dpi = $derived.by(() => {
+    if (editor.pageZoom === 'fit' || !page) return fitDpi;
+    const wanted = (96 * editor.pageZoom * density) / 100;
+    const most = Math.sqrt(16_000_000 / ((page.width / 72) * (page.height / 72)));
+    return Math.round(Math.min(Math.max(wanted, fitDpi), most));
+  });
+  /** The page's width on the screen: the whole page in the window (fit), or its size at the zoom. */
+  const pageWidth = $derived(
+    !page
+      ? '100%'
+      : editor.pageZoom === 'fit'
+        ? `min(100%, calc((100dvh - 7.5rem) * ${page.width / page.height}))`
+        : `${(page.width * pixelsPerPoint * editor.pageZoom) / 100}px`,
+  );
+
+  /** Ctrl/Cmd + wheel zooms (not the browser's zoom). */
+  function wheelZoom(node: HTMLElement) {
+    const wheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.deltaY === 0) return;
+      e.preventDefault();
+      const now = editor.pageZoomShown;
+      editor.pageZoom = e.deltaY < 0 ? zoomIn(now, pageRange) : zoomOut(now, pageRange);
+    };
+    node.addEventListener('wheel', wheel, { passive: false });
+    return () => node.removeEventListener('wheel', wheel);
+  }
   const raster = $derived.by(() => {
     void editor.version;
     return editor.engine.pageRender(index, dpi);
@@ -322,23 +355,7 @@
     editor.tool === 'redact' ? kMark : editor.tool === 'sign' ? kSignatureBox : editor.color,
   );
 
-  const names: Record<string, string> = {
-    Redact: 'Da oscurare',
-    Highlight: 'Evidenziazione',
-    Underline: 'Sottolineatura',
-    StrikeOut: 'Barrato',
-    Squiggly: 'Ondulato',
-    Text: 'Nota',
-    Ink: 'Disegno',
-    Square: 'Rettangolo',
-    Circle: 'Ellisse',
-    Line: 'Linea',
-    FreeText: 'Testo',
-    Link: 'Collegamento',
-    Widget: 'Campo modulo',
-    Stamp: 'Timbro',
-  };
-  const nameOf = (a: AnnotationInfo) => names[a.subtype] ?? a.subtype;
+  const nameOf = (a: AnnotationInfo) => t.names[a.subtype] ?? a.subtype;
   // Form widgets belong to their fields (listed apart, filled with the form tool).
   const listed = $derived(editor.annotations.filter((a) => a.subtype !== 'Widget'));
   const pageFields = $derived(editor.fields.filter((f) => f.widgets.some((w) => w.page === index)));
@@ -371,13 +388,13 @@
       case 'text':
         return f.password && f.value[0] ? '••••' : (f.value[0] ?? '');
       case 'checkbox':
-        return f.value[0] && f.value[0] !== 'Off' ? 'sì' : 'no';
+        return f.value[0] && f.value[0] !== 'Off' ? t.yes : t.no;
       case 'radio':
         return f.value[0] && f.value[0] !== 'Off' ? display(f.value[0]) : '';
       case 'signature':
-        return 'campo firma';
+        return t.signatureField;
       case 'pushbutton':
-        return 'pulsante';
+        return t.pushbutton;
       default:
         return f.value.map(display).join(', ');
     }
@@ -418,17 +435,25 @@
 />
 
 <div class="flex min-h-0 flex-1">
-  <main class="min-w-0 flex-1 overflow-auto bg-muted p-6">
+  <main class="min-w-0 flex-1 overflow-auto bg-muted p-6" {@attach wheelZoom}>
     {#if failure}
       <p class="rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">{failure}</p>
     {:else if !page}
-      <p class="text-sm text-muted-foreground">Lettura della pagina…</p>
+      <p class="text-sm text-muted-foreground">{t.reading}</p>
     {:else}
-      <!-- The whole page in the window (fit to page): as wide as the room, or as the height allows. -->
+      <!-- Fitted: the whole page in the window, as wide as the room or as the height allows. Zoomed: its
+           size at the zoom, scrolled when larger than the window. -->
       <div
         class="@container relative mx-auto bg-white shadow-sm"
         style:aspect-ratio="{page.width} / {page.height}"
-        style:width="min(100%, calc((100dvh - 7.5rem) * {page.width / page.height}))"
+        style:width={pageWidth}
+        data-testid="page-sheet"
+        bind:clientWidth={
+          () => 0,
+          (width) => {
+            if (width > 0) editor.pageZoomShown = (width / (page.width * pixelsPerPoint)) * 100;
+          }
+        }
       >
         <canvas {@attach paint} class="absolute inset-0 size-full" aria-hidden="true"></canvas>
         <svg
@@ -436,13 +461,10 @@
           class="absolute inset-0 size-full touch-none select-none"
           style:cursor
           role="application"
-          aria-label="Pagina {index + 1}: {editor.tool === 'select'
-            ? 'seleziona un’annotazione o un oggetto'
-            : editor.tool === 'form'
-              ? 'il modulo'
-              : editor.tool === 'edittext'
-                ? 'doppio clic su una riga per modificarne il testo'
-                : 'disegna'}"
+          aria-label={t.surface(
+            index + 1,
+            editor.tool === 'select' || editor.tool === 'form' || editor.tool === 'edittext' ? editor.tool : 'draw',
+          )}
           data-testid="page-surface"
           onpointerdown={(e) => down(e, page)}
           onpointermove={(e) => move(e, page)}
@@ -615,21 +637,20 @@
 
   <aside
     class="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm"
-    aria-label="Annotazioni"
+    aria-label={t.annotations}
   >
     {#if editor.tool === 'select' && editor.object && !editor.annotation}
       {@const o = editor.object}
       <section class="flex flex-col gap-3" data-testid="object-panel">
         <h2 class="font-semibold">{objectName(o)}</h2>
         <p class="text-muted-foreground">
-          Trascinalo per spostarlo, o da un angolo per cambiarne la misura; Canc per eliminarlo. Si cambia solo
-          l’oggetto: il resto della pagina resta com’è.
+          {t.objectHelp}
         </p>
         <button
           type="button"
           class="flex items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-danger hover:bg-danger-background disabled:opacity-60"
           disabled={editor.busy}
-          onclick={() => editor.deleteObject()}><Trash2 class="size-4" /> Elimina</button
+          onclick={() => editor.deleteObject()}><Trash2 class="size-4" /> {t.delete}</button
         >
       </section>
     {:else if editor.annotation}
@@ -640,7 +661,7 @@
         {#if a.editable}
           {#key `${ref[0]} ${ref[1]}`}
             <label class="flex flex-col gap-1">
-              <span class="text-muted-foreground">{a.subtype === 'FreeText' ? 'Testo' : 'Commento'}</span>
+              <span class="text-muted-foreground">{a.subtype === 'FreeText' ? t.text : t.comment}</span>
               <textarea
                 class="min-h-24 rounded-md border bg-background px-2 py-1.5 text-base"
                 defaultValue={a.contents}
@@ -649,7 +670,7 @@
                 {@attach () => written}></textarea>
             </label>
           {/key}
-          <div class="flex items-center gap-1" role="radiogroup" aria-label="Colore dell'annotazione">
+          <div class="flex items-center gap-1" role="radiogroup" aria-label={t.annotationColor}>
             {#each colors as { name, rgb } (name)}
               <button
                 type="button"
@@ -669,7 +690,7 @@
           <button
             type="button"
             class="flex items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-danger hover:bg-danger-background"
-            onclick={() => editor.removeAnnotation(ref)}><Trash2 class="size-4" /> Elimina</button
+            onclick={() => editor.removeAnnotation(ref)}><Trash2 class="size-4" /> {t.delete}</button
           >
         {/if}
       </section>
@@ -677,21 +698,21 @@
       <p class="text-muted-foreground">
         {editor.tool === 'edittext'
           ? editor.editMode === 'paragraph'
-            ? 'Doppio clic su un paragrafo per riscriverlo: il testo va a capo dentro il paragrafo, con i suoi margini e il suo allineamento; il resto della pagina non si sposta. Gli stili (grassetto, corsivo, colori) restano sulle parole che non cambi; una parola che ne sostituisce un’altra ne prende lo stile, una aggiunta quello della parola prima. Ctrl+Invio per scrivere, Esc per lasciarlo com’era.'
-            : 'Doppio clic su una riga del testo della pagina per modificarla: Invio per scrivere, Esc per lasciarla com’era. Si cambia solo ciò che modifichi; se il font del testo non ha i caratteri nuovi, si usa un font simile.'
+            ? t.helpParagraph
+            : t.helpLine
           : editor.tool === 'sign'
-            ? 'Disegna il riquadro in cui comparirà la firma; poi scegli il certificato. Per una firma invisibile: Pagine › Firme.'
+            ? t.helpSign
             : editor.tool === 'redact'
-              ? 'Segna ciò che va tolto: trascina sul testo, o un rettangolo altrove. Le aree segnate restano leggibili finché non applichi la redaction.'
+              ? t.helpRedact
               : editor.tool === 'form'
-                ? 'Compila i campi del modulo direttamente sulla pagina: il valore si scrive nel file quando lasci il campo.'
+                ? t.helpForm
                 : editor.tool === 'select'
-                  ? 'Clic su un’annotazione per modificarla, o su un’immagine o un disegno della pagina per spostarlo, ridimensionarlo o eliminarlo; trascina per spostare.'
-                  : 'Scegli il punto della pagina: trascina sul testo per evidenziare, sottolineare o barrare; trascina per disegnare; clic per una nota.'}
+                  ? t.helpSelect
+                  : t.helpDraw}
       </p>
       {#if editor.tool === 'edittext'}
-        <div class="flex rounded-md border p-0.5" role="radiogroup" aria-label="Cosa si modifica">
-          {#each [['line', 'Riga'], ['paragraph', 'Paragrafo']] as const as [mode, label] (mode)}
+        <div class="flex rounded-md border p-0.5" role="radiogroup" aria-label={t.editWhat}>
+          {#each ['line', 'paragraph'] as const as mode (mode)}
             <button
               type="button"
               role="radio"
@@ -703,7 +724,7 @@
               onclick={() => {
                 editor.editMode = mode;
                 hovered = null;
-              }}>{label}</button
+              }}>{t[mode]}</button
             >
           {/each}
         </div>
@@ -714,27 +735,24 @@
           class="flex flex-col gap-2 rounded-md bg-warning-background px-3 py-2 text-warning"
           data-testid="no-room"
         >
-          <p>
-            Il testo nuovo non ci sta: servono {room.needed} righe e sotto il paragrafo ce ne stanno {room.fit}, senza
-            spostare il resto della pagina.
-          </p>
+          <p>{t.noRoom(room.needed, room.fit)}</p>
           <div class="flex flex-wrap gap-2">
             {#if !room.cannotMove}
               <button
                 type="button"
                 class="rounded-md border border-current px-2.5 py-1 font-medium disabled:opacity-60"
                 disabled={editor.busy}
-                onclick={() => editor.moveFollowing()}>Sposta in basso ciò che segue</button
+                onclick={() => editor.moveFollowing()}>{t.moveFollowing}</button
               >
             {/if}
             <button
               type="button"
               class="rounded-md border border-current px-2.5 py-1 font-medium disabled:opacity-60"
               disabled={editor.busy}
-              onclick={() => editor.shrinkParagraph()}>Riduci il testo per farlo stare</button
+              onclick={() => editor.shrinkParagraph()}>{t.shrink}</button
             >
             <button type="button" class="rounded-md px-2.5 py-1 underline" onclick={() => editor.backToParagraph()}
-              >Torna al testo</button
+              >{t.backToText}</button
             >
           </div>
         </section>
@@ -750,7 +768,7 @@
     {/if}
     {#if pageFields.length > 0}
       <section class="flex flex-col gap-1">
-        <h2 class="font-semibold">Campi del modulo</h2>
+        <h2 class="font-semibold">{t.formFields}</h2>
         <ul class="flex flex-col gap-1" data-testid="field-list">
           {#each pageFields as f (`${f.ref[0]} ${f.ref[1]}`)}
             <li>
@@ -761,7 +779,7 @@
                 onclick={() => focusField(f)}
               >
                 <span class="truncate"
-                  >{f.label || f.name || 'Campo'}{f.required ? ' *' : ''}{f.readOnly ? ' (sola lettura)' : ''}</span
+                  >{f.label || f.name || t.field}{f.required ? ' *' : ''}{f.readOnly ? t.readOnly : ''}</span
                 >
                 <span class="truncate text-muted-foreground">{shown(f) || '—'}</span>
               </button>
@@ -771,9 +789,9 @@
       </section>
     {/if}
     <section class="flex flex-col gap-1">
-      <h2 class="font-semibold">Annotazioni della pagina</h2>
+      <h2 class="font-semibold">{t.pageAnnotations}</h2>
       {#if listed.length === 0}
-        <p class="text-muted-foreground">Nessuna.</p>
+        <p class="text-muted-foreground">{t.none}</p>
       {/if}
       <ul class="flex flex-col gap-1" data-testid="annotation-list">
         {#each listed as a, i (a.ref ? `${a.ref[0]} ${a.ref[1]}` : `d${i}`)}

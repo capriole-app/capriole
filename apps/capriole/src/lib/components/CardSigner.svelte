@@ -21,9 +21,12 @@
     type CardSigner,
     type Token,
   } from '$lib/smartcard';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { signingWords } from '$lib/i18n/signing';
 
   const editor = getEditor();
   const shell = cardShell();
+  const t = $derived(tr(signingWords));
 
   let module = $state(rememberedModule() || knownModules[0]!);
   let tokens = $state.raw<Token[] | null>(null);
@@ -72,7 +75,7 @@
       tokens = await shell.tokens(module.trim());
       rememberModule(module.trim());
       if (tokens.length === 1) await readCard(tokens[0]!.slot);
-      else if (tokens.length === 0) problem = 'Nessuna carta nei lettori: inseriscila e cerca di nuovo.';
+      else if (tokens.length === 0) problem = t.noCards;
     } catch (error) {
       problem = cardProblem(error);
     } finally {
@@ -100,7 +103,7 @@
       certificates = read;
       const own = read.filter((c) => !c.info.ca);
       if (own.length === 1) chosen = own[0]!.card.id;
-      if (own.length === 0) problem = 'La carta non ha certificati di firma.';
+      if (own.length === 0) problem = t.noSigningCertificates;
     } catch (error) {
       problem = cardProblem(error);
     } finally {
@@ -113,7 +116,7 @@
 
 <div class="flex flex-col gap-3" data-testid="card-signer">
   <label class="flex flex-col gap-1">
-    <span class="font-medium">Modulo PKCS#11 della carta</span>
+    <span class="font-medium">{t.module}</span>
     <span class="flex gap-2">
       <input class="{field} min-w-0 flex-1" list="pkcs11-modules" bind:value={module} spellcheck="false" />
       <button
@@ -122,7 +125,8 @@
         disabled={reading || !module.trim()}
         onclick={findCards}
       >
-        <RefreshCw class="size-4" /> Cerca
+        <RefreshCw class="size-4" />
+        {t.find}
       </button>
     </span>
     <datalist id="pkcs11-modules">
@@ -130,14 +134,14 @@
         <option value={known}></option>
       {/each}
     </datalist>
-    <span class="text-xs text-muted-foreground">La libreria del produttore della carta (OpenSC, CNS, CIE).</span>
+    <span class="text-xs text-muted-foreground">{t.moduleHint}</span>
   </label>
 
   {#if tokens && tokens.length > 1}
     <label class="flex flex-col gap-1">
-      <span class="font-medium">Carta</span>
+      <span class="font-medium">{t.card}</span>
       <select class={field} onchange={(e) => readCard(Number(e.currentTarget.value))}>
-        <option value="" selected={slot === null} disabled>Scegli la carta…</option>
+        <option value="" selected={slot === null} disabled>{t.chooseCard}</option>
         {#each tokens as token (token.slot)}
           <option value={token.slot} selected={slot === token.slot}
             >{token.label} · {token.manufacturer} {token.model}</option
@@ -148,14 +152,14 @@
   {/if}
 
   {#if reading}
-    <p class="text-muted-foreground" aria-live="polite">Lettura della carta…</p>
+    <p class="text-muted-foreground" aria-live="polite">{t.readingCard}</p>
   {:else if problem}
     <p class="rounded-md bg-danger-background px-3 py-2 text-danger" role="alert">{problem}</p>
   {/if}
 
   {#if signing.length > 1}
     <fieldset class="flex flex-col gap-1">
-      <legend class="mb-1 font-medium">Certificato</legend>
+      <legend class="mb-1 font-medium">{t.certificate}</legend>
       {#each signing as c (c.card.id)}
         <label class="flex items-center gap-2">
           <input type="radio" name="card-certificate" value={c.card.id} bind:group={chosen} />
@@ -167,19 +171,22 @@
   {#if certificate}
     <div class="flex flex-col gap-0.5 rounded-md bg-muted px-3 py-2" data-testid="sign-certificate">
       <span class="flex items-center gap-1.5"
-        ><CreditCard class="size-4" /> Firmerai come <strong>{certificate.info.name}</strong></span
+        ><CreditCard class="size-4" /> {t.signAs} <strong>{certificate.info.name}</strong></span
       >
       <span class="text-xs text-muted-foreground">
-        Emesso da {commonName(certificate.info.issuer)} · valido dal {localDateTime(certificate.info.notBefore)} al {localDateTime(
-          certificate.info.notAfter,
-        )} · {certificate.info.key}
+        {t.issued(
+          commonName(certificate.info.issuer),
+          localDateTime(certificate.info.notBefore),
+          localDateTime(certificate.info.notAfter),
+          certificate.info.key,
+        )}
       </span>
     </div>
     <input
       type="password"
       class={field}
-      aria-label="PIN della carta"
-      placeholder="PIN della carta"
+      aria-label={t.pin}
+      placeholder={t.pin}
       autocomplete="off"
       inputmode="numeric"
       bind:value={pin}
@@ -187,27 +194,29 @@
   {/if}
 
   <label class="flex flex-col gap-1">
-    <span class="font-medium">Marca temporale</span>
+    <span class="font-medium">{t.timestamp}</span>
     <input
       class={field}
       bind:value={tsa}
-      placeholder="https://… (facoltativa)"
+      placeholder={t.tsaPlaceholder}
       spellcheck="false"
-      aria-label="Indirizzo dell'autorità di marca temporale"
+      aria-label={t.tsaAddress}
       onchange={() => rememberTsa(tsa.trim())}
     />
   </label>
   <label class="flex items-center gap-2">
     <input type="checkbox" bind:checked={longTerm} />
-    Validazione a lungo termine (aggiunge al file le verifiche di revoca dei certificati)
+    {t.longTerm}
   </label>
   {#if network}
     <p class="rounded-md bg-muted px-3 py-2 text-xs" role="note" data-testid="sign-network">
-      Capriole si collegherà a
-      {#if tsa.trim()}<strong>{tsa.trim()}</strong> per la marca temporale (esce solo l'impronta del documento, non il documento){/if}{#if tsa.trim() && longTerm}
-        e
-      {/if}{#if longTerm}ai servizi di verifica (OCSP, CRL) indicati nei certificati, a cui va solo il numero di serie
-        di ciascun certificato{/if}.
+      {#if tsa.trim()}
+        {t.networkTo} <strong>{tsa.trim()}</strong>
+        {t.networkTsa}{#if longTerm}
+          {t.networkAnd} {t.networkChecks}{/if}.
+      {:else}
+        {t.networkChecksOnly}.
+      {/if}
     </p>
   {/if}
 </div>

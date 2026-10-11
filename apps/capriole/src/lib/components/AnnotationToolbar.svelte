@@ -20,31 +20,37 @@
   import Type from '@lucide/svelte/icons/type';
   import Underline from '@lucide/svelte/icons/underline';
   import Undo2 from '@lucide/svelte/icons/undo-2';
-  import Info from '@lucide/svelte/icons/info';
+  import BrandMark from './BrandMark.svelte';
+  import LanguageMenu from './LanguageMenu.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
+  import ZoomControl from './ZoomControl.svelte';
+  import { pageRange } from '$lib/zoom';
   import { getEditor, type Rgb, type Tool } from '$lib/editor.svelte';
   import { colors, css, sameColor } from '$lib/colors';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { annotationToolbarWords } from '$lib/i18n/annotationToolbar';
 
   const editor = getEditor();
+  const t = $derived(tr(annotationToolbarWords));
   const page = $derived(editor.viewing ?? 0);
 
   // Filling the form comes first when the document has one.
   const hasForm = $derived(editor.fields.some((f) => f.fillable));
-  const all: { tool: Tool; label: string; icon: typeof Highlighter }[] = [
-    { tool: 'form', label: 'Compila il modulo', icon: FormInput },
-    { tool: 'select', label: 'Seleziona e sposta', icon: MousePointer2 },
-    { tool: 'edittext', label: 'Modifica testo', icon: TextCursorInput },
-    { tool: 'highlight', label: 'Evidenzia', icon: Highlighter },
-    { tool: 'underline', label: 'Sottolinea', icon: Underline },
-    { tool: 'strikeout', label: 'Barra', icon: Strikethrough },
-    { tool: 'note', label: 'Nota', icon: StickyNote },
-    { tool: 'ink', label: 'Penna', icon: PenLine },
-    { tool: 'square', label: 'Rettangolo', icon: Square },
-    { tool: 'circle', label: 'Ellisse', icon: Circle },
-    { tool: 'line', label: 'Linea', icon: Minus },
-    { tool: 'freetext', label: 'Testo', icon: Type },
-    { tool: 'redact', label: 'Oscura (redaction)', icon: Eraser },
-    { tool: 'sign', label: 'Firma (disegna il riquadro)', icon: Signature },
+  const all: { tool: Extract<Tool, keyof typeof t>; icon: typeof Highlighter }[] = [
+    { tool: 'form', icon: FormInput },
+    { tool: 'select', icon: MousePointer2 },
+    { tool: 'edittext', icon: TextCursorInput },
+    { tool: 'highlight', icon: Highlighter },
+    { tool: 'underline', icon: Underline },
+    { tool: 'strikeout', icon: Strikethrough },
+    { tool: 'note', icon: StickyNote },
+    { tool: 'ink', icon: PenLine },
+    { tool: 'square', icon: Square },
+    { tool: 'circle', icon: Circle },
+    { tool: 'line', icon: Minus },
+    { tool: 'freetext', icon: Type },
+    { tool: 'redact', icon: Eraser },
+    { tool: 'sign', icon: Signature },
   ];
   const tools = $derived(hasForm ? all : all.filter((t) => t.tool !== 'form'));
   // The size of the next free text, or of the free text selected.
@@ -55,42 +61,51 @@
 </script>
 
 <header class="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2">
+  <BrandMark label={t.about} />
   <button type="button" class={[button, 'gap-1.5 px-2.5 py-1.5 text-sm']} onclick={() => editor.closeView()}>
-    <LayoutGrid class="size-4" /> Pagine
+    <LayoutGrid class="size-4" />
+    {t.pages}
   </button>
   <div class="flex items-center gap-1">
     <button
       type="button"
       class={[button, 'size-8']}
-      aria-label="Pagina precedente"
+      aria-label={t.previous}
       disabled={page === 0 || editor.busy}
       onclick={() => editor.view(page - 1)}><ChevronLeft class="size-4" /></button
     >
-    <span class="min-w-24 text-center text-sm tabular-nums" aria-live="polite">Pagina {page + 1} di {editor.pages}</span
-    >
+    <span class="min-w-24 text-center text-sm tabular-nums" aria-live="polite">{t.pageOf(page + 1, editor.pages)}</span>
     <button
       type="button"
       class={[button, 'size-8']}
-      aria-label="Pagina successiva"
+      aria-label={t.next}
       disabled={page >= editor.pages - 1 || editor.busy}
       onclick={() => editor.view(page + 1)}><ChevronRight class="size-4" /></button
     >
   </div>
 
-  <div class="flex flex-wrap items-center gap-1" role="toolbar" aria-label="Strumenti">
-    {#each tools as { tool, label, icon: Icon } (tool)}
+  <ZoomControl
+    percent={editor.pageZoomShown}
+    range={pageRange}
+    onzoom={(percent) => (editor.pageZoom = percent)}
+    fitted={editor.pageZoom === 'fit'}
+    onfit={() => (editor.pageZoom = 'fit')}
+  />
+
+  <div class="flex flex-wrap items-center gap-1" role="toolbar" aria-label={t.tools}>
+    {#each tools as { tool, icon: Icon } (tool)}
       <button
         type="button"
         class={[button, 'size-9', editor.tool === tool && 'border-primary bg-accent']}
-        aria-label={label}
-        title={label}
+        aria-label={t[tool]}
+        title={t[tool]}
         aria-pressed={editor.tool === tool}
         onclick={() => (editor.tool = tool)}><Icon class="size-4" /></button
       >
     {/each}
   </div>
 
-  <div class="flex items-center gap-1" role="radiogroup" aria-label="Colore">
+  <div class="flex items-center gap-1" role="radiogroup" aria-label={t.color}>
     {#each colors as { name, rgb } (name)}
       <button
         type="button"
@@ -108,11 +123,11 @@
     {/each}
   </div>
 
-  <label class="flex items-center gap-1.5 text-sm" title="Dimensione del testo">
+  <label class="flex items-center gap-1.5 text-sm" title={t.textSize}>
     <Type class="size-4 text-muted-foreground" aria-hidden="true" />
     <select
       class="rounded-md border bg-background px-1.5 py-1"
-      aria-label="Dimensione del testo"
+      aria-label={t.textSize}
       value={selectedText?.fontSize ? Math.round(selectedText.fontSize) : editor.fontSize}
       onchange={(e) => {
         const size = Number(e.currentTarget.value);
@@ -133,18 +148,11 @@
       disabled={editor.busy}
       onclick={() => {
         const n = editor.redactionMarks.length;
-        if (
-          confirm(
-            `Togliere dal file ciò che sta ${n === 1 ? 'nell’area segnata' : `nelle ${n} aree segnate`} di questa pagina?\n\n` +
-              'Testo, immagini e disegni lì sotto vengono eliminati dal PDF, non coperti: salvato il file, non si recuperano. ' +
-              'Il file verrà salvato per intero, senza la versione precedente.' +
-              (editor.signed ? ' Le firme del documento non saranno più valide.' : ''),
-          )
-        )
-          editor.applyRedactions();
+        if (confirm(t.redactConfirm(n, editor.signed))) editor.applyRedactions();
       }}
     >
-      <Eraser class="size-4" /> Applica la redaction ({editor.redactionMarks.length})
+      <Eraser class="size-4" />
+      {t.applyRedaction(editor.redactionMarks.length)}
     </button>
   {/if}
 
@@ -153,21 +161,15 @@
       type="button"
       class={[button, 'gap-1.5 px-2.5 py-1.5 text-sm']}
       disabled={!editor.canUndo || editor.busy}
-      onclick={() => editor.undo()}><Undo2 class="size-4" /> Annulla</button
+      onclick={() => editor.undo()}><Undo2 class="size-4" /> {t.undo}</button
     >
     <button
       type="button"
       class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
       disabled={editor.busy}
-      onclick={() => editor.save()}><FileDown class="size-4" /> Salva</button
+      onclick={() => editor.save()}><FileDown class="size-4" /> {t.save}</button
     >
-    <button
-      type="button"
-      class="flex size-9 items-center justify-center rounded-md border hover:bg-muted"
-      aria-label="Informazioni e licenze"
-      title="Informazioni e licenze"
-      onclick={() => (editor.licensesOpen = true)}><Info class="size-4" /></button
-    >
+    <LanguageMenu />
     <ThemeMenu />
   </div>
 </header>

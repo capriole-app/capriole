@@ -2,24 +2,23 @@
 // shadings of the page's model (the engine's, phase 10a) — not its text, nor its background — and how
 // to say what they are and why an edit of one was refused.
 import type { PageElement } from '@capriole/engine-client';
+import { tr } from './i18n/index.svelte';
+import { objectWords } from './i18n/objects';
 
 /** Whether an element of the page's model is an object the person can move, resize and delete. */
 export function editable(e: PageElement): boolean {
   return (e.kind === 'image' || e.kind === 'drawing' || e.kind === 'shading') && e.role !== 'background';
 }
 
-const roles: Record<string, string> = {
-  rule: 'Filetto',
-  box: 'Riquadro',
-  table: 'Tabella',
-  figure: 'Disegno',
-};
+const roles = ['rule', 'box', 'table', 'figure'] as const;
+const isRole = (role: string): role is (typeof roles)[number] => (roles as readonly string[]).includes(role);
 
 /** What an object is, in a word. */
 export function objectName(e: PageElement): string {
-  if (e.kind === 'image') return 'Immagine';
-  if (e.kind === 'shading') return 'Sfumatura';
-  return roles[e.role] ?? 'Disegno';
+  const t = tr(objectWords);
+  if (e.kind === 'image') return t.image;
+  if (e.kind === 'shading') return t.shading;
+  return isRole(e.role) ? t[e.role] : t.figure;
 }
 
 /**
@@ -56,21 +55,21 @@ export function nearest(elements: PageElement[], kind: PageElement['kind'], box:
   return best;
 }
 
-const refusals: [RegExp, string][] = [
-  [/leave the page/, 'Così l’oggetto uscirebbe dalla pagina.'],
-  [
-    /leave what clips it/,
-    'Così l’oggetto uscirebbe dal riquadro che lo contiene (una cornice, un gruppo): si vedrebbe tagliato.',
-  ],
-  [/also clips/, 'Questo tracciato ritaglia anche ciò che viene dopo: si può solo eliminare.'],
-  [/soft mask/, 'L’oggetto è disegnato attraverso una maschera di trasparenza che non si sposta con lui.'],
-  [/it is text/, 'È testo: si modifica con «Modifica testo».'],
-  [/annotation/, 'È un’annotazione: si sposta come le annotazioni.'],
-  [/size must be/, 'La dimensione nuova non è valida.'],
-  [/cannot edit the object/, 'Questo oggetto non si può modificare qui.'],
+type Words = (typeof objectWords)['it'];
+
+const refusals: [RegExp, keyof Words][] = [
+  [/leave the page/, 'leavePage'],
+  [/leave what clips it/, 'leaveClip'],
+  [/also clips/, 'alsoClips'],
+  [/soft mask/, 'softMask'],
+  [/it is text/, 'isText'],
+  [/annotation/, 'isAnnotation'],
+  [/size must be/, 'badSize'],
+  [/cannot edit the object/, 'cannotEdit'],
 ];
 
-/** The engine's refusal of an object's edit, in Italian (what is not recognised, as it is). */
+/** The engine's refusal of an object's edit, in the interface's language (what is not recognised, as it is). */
 export function objectRefusal(message: string): string {
-  return refusals.find(([pattern]) => pattern.test(message))?.[1] ?? message;
+  const key = refusals.find(([pattern]) => pattern.test(message))?.[1];
+  return key ? tr(objectWords)[key] : message;
 }

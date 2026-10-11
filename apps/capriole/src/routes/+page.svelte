@@ -12,12 +12,17 @@
   import SignDialog from '$lib/components/SignDialog.svelte';
   import Toolbar from '$lib/components/Toolbar.svelte';
   import { Editor, setEditor } from '$lib/editor.svelte';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { pagesWords } from '$lib/i18n/pages';
+  import { gridRange, pageRange, zoomIn, zoomOut } from '$lib/zoom';
 
   const editor = setEditor(new Editor());
+  const t = $derived(tr(pagesWords));
 
   /**
    * Keyboard shortcuts — not while typing. On the pages: Delete, Ctrl/Cmd+Z, Ctrl/Cmd+A. On a page shown
-   * large: Delete removes the selected annotation, Escape lets it go, then goes back to the pages.
+   * large: Delete removes the selected annotation, Escape lets it go, then goes back to the pages. On both:
+   * Ctrl/Cmd + / − / 0 zoom.
    */
   function shortcut(e: KeyboardEvent) {
     const typing =
@@ -36,6 +41,18 @@
     )
       return;
     const command = e.ctrlKey || e.metaKey;
+    // Zoom: Ctrl/Cmd and + or −; 0 fits the page (on the grid: the usual size). Not the browser's zoom.
+    if (command && ['+', '=', '-', '0'].includes(e.key)) {
+      e.preventDefault();
+      if (editor.viewing !== null) {
+        const now = editor.pageZoomShown;
+        editor.pageZoom = e.key === '0' ? 'fit' : e.key === '-' ? zoomOut(now, pageRange) : zoomIn(now, pageRange);
+      } else {
+        const now = editor.gridZoom;
+        editor.zoomGrid(e.key === '0' ? 100 : e.key === '-' ? zoomOut(now, gridRange) : zoomIn(now, gridRange));
+      }
+      return;
+    }
     if (editor.viewing !== null) {
       const selected = editor.selectedAnnotation;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
@@ -90,8 +107,8 @@
     {#if editor.repairs.length > 0}
       <details class="bg-warning-background px-4 py-2 text-sm text-warning">
         <summary class="flex cursor-pointer items-center gap-2">
-          <TriangleAlert class="size-4" /> Il file era danneggiato: il motore lo ha riparato ({editor.repairs.length}
-          {editor.repairs.length === 1 ? 'riparazione' : 'riparazioni'}). Salvando, si salva la versione riparata.
+          <TriangleAlert class="size-4" />
+          {t.repaired(editor.repairs.length)}
         </summary>
         <ul class="mt-2 list-disc ps-6 text-xs">
           {#each editor.repairs as repair, i (i)}

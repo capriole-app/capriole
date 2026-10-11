@@ -39,8 +39,9 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 11a Firma con una chiave fuori dal motore | ✅ | 100/100 file firmati con le chiavi su un token PKCS#11 (SoftHSM); RSA identica byte per byte al `.p12` |
 | 11b Revoca OCSP/CRL e firme B-LT, B-LTA nel motore | ✅ | 100/100 file B-LTA: pyHanko, Capriole dai soli dati del file, pdfsig; il revocato revocato per tutti |
 | 11c Smart card e rete nell'app desktop | ✅ | SoftHSM nei test della shell; e2e con la shell simulata: B-LTA valido per pyHanko e pdfsig. Nessuna carta reale provata |
+| Rifiniture prima del rilascio: 5 lingue, zoom, marchio, «Informazioni» | ✅ | traduzioni FR/DE/ES da far rivedere a madrelingua |
 | Segnalazione anonimizzata dei file problematici | ⬜ | CAPRIOLE.md §8 |
-| Distribuzione: Flathub, hosting web, self-hosted | ⬜ | CAPRIOLE.md §3 |
+| Distribuzione: Linux, Windows, web, self-hosted, Flathub | 🔜 | CAPRIOLE.md §3; piano da confermare |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |
 | Pubblicazione: repo pubblico, OSS-Fuzz | ⏸ | la decide il titolare; prima: il contatto (`<<CONTACT-TBD>>`) |
 | Togliere lo skip del passo Binaryen `constraint-analysis` | ⬜ | al prossimo aggiornamento di emsdk |

@@ -26,6 +26,10 @@ import {
 } from '@capriole/engine-client';
 import { baseName, dateTime, pdfDateNow } from './files';
 import { parseInvoice, type Invoice } from './invoice';
+import { clampZoom, gridRange } from './zoom';
+import { tr } from './i18n/index.svelte';
+import { editorWords } from './i18n/editor';
+import { fontWords } from './i18n/fonts';
 import {
   cannotMove,
   lineText,
@@ -100,6 +104,18 @@ export interface Typing {
   color: Rgb;
 }
 
+const gridZoomKey = 'capriole.gridZoom';
+
+function rememberedGridZoom(): number {
+  try {
+    const stored = Number(localStorage.getItem(gridZoomKey));
+    if (stored > 0) return clampZoom(stored, gridRange);
+  } catch {
+    // no storage: the usual size
+  }
+  return 100;
+}
+
 /** Undo keeps full copies of the document before each edit, within this many bytes (oldest dropped). */
 const kHistoryBytes = 256 * 1024 * 1024;
 
@@ -129,6 +145,12 @@ export class Editor {
 
   /** The page shown large, to annotate; null: the grid of pages. */
   viewing = $state<number | null>(null);
+  /** The pages grid's zoom (the thumbnails' size), in percent: remembered on the device. */
+  gridZoom = $state(rememberedGridZoom());
+  /** The page shown large: fitted to the window, or a zoom in percent (100: its size on paper). */
+  pageZoom = $state<number | 'fit'>('fit');
+  /** The page shown large: the zoom it has now, in percent (with fit: what the window gives it). */
+  pageZoomShown = $state(100);
   /** Its annotations, as the engine lists them. */
   annotations = $state.raw<AnnotationInfo[]>([]);
   /** The fields of the document's form, as the engine lists them (widgets on every page). */
@@ -222,7 +244,7 @@ export class Editor {
   /**
    * Gives the engine font files (chosen or dropped) and remembers them on the device: an edit of text then
    * adds to a document's embedded subset of the same font the glyphs it lacks. A file the engine refuses
-   * is said, in Italian, in fontError.
+   * is said, in the interface's language, in fontError.
    */
   async addFonts(files: File[]): Promise<void> {
     await this.#fontsReady;
@@ -242,8 +264,7 @@ export class Editor {
         );
       }
     }
-    if (unkept)
-      refused.push('Il browser non lascia ricordare i font su questo dispositivo: restano finché la pagina è aperta.');
+    if (unkept) refused.push(tr(fontWords).notKept);
     this.fontError = refused.length > 0 ? refused.join(' ') : null;
   }
 
@@ -366,6 +387,19 @@ export class Editor {
     return drawing;
   }
 
+  /** Zooms the pages grid: the thumbnails are drawn again at the new size (those at the old one go). */
+  zoomGrid(percent: number): void {
+    const zoom = clampZoom(Math.round(percent), gridRange);
+    if (zoom === this.gridZoom) return;
+    this.gridZoom = zoom;
+    this.#thumbnails.clear();
+    try {
+      localStorage.setItem(gridZoomKey, String(zoom));
+    } catch {
+      // a convenience only
+    }
+  }
+
   /** Rotates the selected pages by a multiple of 90 degrees, clockwise: those thumbnails are drawn again. */
   rotate(degrees: number): Promise<void> {
     const pages = this.selection;
@@ -447,7 +481,7 @@ export class Editor {
     if (pages.length === 0 || !this.name) return;
     const name = this.name;
     await this.#run(async () => {
-      await savePdf(() => this.engine.extract(pages), `${baseName(name)}-pagine.pdf`, null);
+      await savePdf(() => this.engine.extract(pages), `${baseName(name)}${tr(editorWords).pagesSuffix}.pdf`, null);
     });
   }
 
@@ -625,9 +659,10 @@ export class Editor {
     const request = this.signRequest;
     if (!request || !this.name) return false;
     const pending = this.#queue;
-    const lines = ['Firmato digitalmente da {signer}', `Data: ${dateTime(new Date())}`];
-    if (details.reason) lines.push(`Motivo: ${details.reason}`);
-    if (details.location) lines.push(`Luogo: ${details.location}`);
+    const t = tr(editorWords);
+    const lines = [t.signedBy, t.date(dateTime(new Date()))];
+    if (details.reason) lines.push(t.reason(details.reason));
+    if (details.location) lines.push(t.location(details.location));
     let signedAt: Summary | null = null;
     let done = false;
     await this.#run(async () => {
@@ -655,7 +690,7 @@ export class Editor {
           signedAt = await this.engine.summary();
           return data;
         },
-        `${baseName(this.name!)}-firmato.pdf`,
+        `${baseName(this.name!)}${t.signedSuffix}.pdf`,
         null,
       );
       if (!saved) return; // cancelled: nothing signed
@@ -1004,7 +1039,7 @@ export class Editor {
   /**
    * Ends writing the line: text replaces what changed in it (one step of undo; nothing changed: none);
    * null leaves it as it was. How it was written, when it took a similar font, goes to textNotice; a
-   * refusal, in Italian, to error.
+   * refusal, in the interface's language, to error.
    */
   async finishEditingLine(text: string | null): Promise<void> {
     const editing = this.editingLine;
@@ -1247,10 +1282,10 @@ export class Editor {
 
 function describe(error: unknown): string {
   if (error instanceof EngineError) {
-    if (error.status === Status.passwordRequired) return 'Il file è protetto da password.';
+    if (error.status === Status.passwordRequired) return tr(editorWords).passwordProtected;
     return error.message;
   }
-  // The shell's errors (a smart card, the network) come with a code: said in Italian.
+  // The shell's errors (a smart card, the network) come with a code: said in the interface's language.
   return cardProblem(error);
 }
 

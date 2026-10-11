@@ -6,10 +6,13 @@
   // Leaving it (a click elsewhere, Esc) makes the text the annotation, its box measured as shown.
   import { untrack } from 'svelte';
   import { css } from '$lib/colors';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { textEditorsWords } from '$lib/i18n/textEditors';
   import { getEditor, type Typing } from '$lib/editor.svelte';
 
   let { typing, width, height }: { typing: Typing; width: number; height: number } = $props();
   const editor = getEditor();
+  const t = $derived(tr(textEditorsWords));
 
   // Points of the page in units of its width on screen (the page is a size container).
   const cqw = (points: number) => `${(points / width) * 100}cqw`;
@@ -68,7 +71,7 @@
   role="textbox"
   tabindex="0"
   aria-multiline="true"
-  aria-label="Testo sulla pagina"
+  aria-label={t.textBox}
   data-testid="text-box"
   {@attach start}
   onblur={(e) => finish(e.currentTarget)}

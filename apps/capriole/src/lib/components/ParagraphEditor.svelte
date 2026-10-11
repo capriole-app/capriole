@@ -4,10 +4,13 @@
   // starts a new line; Ctrl+Enter (or leaving the box) writes it — the engine lays it out anew inside the
   // paragraph —, Esc leaves it as it was.
   import { untrack } from 'svelte';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { textEditorsWords } from '$lib/i18n/textEditors';
   import { getEditor, type ParagraphEditing } from '$lib/editor.svelte';
 
   let { editing, width, height }: { editing: ParagraphEditing; width: number; height: number } = $props();
   const editor = getEditor();
+  const t = $derived(tr(textEditorsWords));
 
   // Points of the page in units of its width on screen (the page is a size container).
   const cqw = (points: number) => `${(points / width) * 100}cqw`;
@@ -40,7 +43,7 @@
   style:font-family="Helvetica, Arial, 'Liberation Sans', sans-serif"
   style:font-size={cqw(editing.paragraph.size)}
   style:line-height="1.2"
-  aria-label="Testo del paragrafo (Ctrl+Invio per scrivere, Esc per lasciarlo com’era)"
+  aria-label={t.paragraph}
   data-testid="paragraph-editor"
   {@attach start}
   onblur={(e) => finish(e.currentTarget.value)}

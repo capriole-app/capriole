@@ -3,6 +3,8 @@
 // to an embedded subset the glyphs of the letters it lacks (PLAN.md phase 9c). Where there is no IndexedDB
 // (a private window may refuse it) they last until the page is closed.
 import type { FontFace } from '@capriole/engine-client';
+import { tr } from './i18n/index.svelte';
+import { fontWords } from './i18n/fonts';
 
 /** A font file given: its name, its bytes, and the faces the engine read in it. */
 export interface StoredFont {
@@ -101,13 +103,11 @@ export function fontId(name: string, size: number): string {
   return `${name}:${size}`;
 }
 
-/** The engine's refusal of a font file, in Italian (what is not recognised, as it is). */
+/** The engine's refusal of a font file, in the interface's language (what is not recognised, as it is). */
 export function fontRefusal(name: string, message: string): string {
-  if (/PostScript \(CFF\)/.test(message))
-    return `${name}: ha contorni PostScript (CFF); servono font con contorni TrueType (.ttf).`;
-  if (/variable font/.test(message))
-    return `${name}: è un font variabile; serve il file di uno stile (per esempio …-Regular.ttf).`;
-  if (/not a TrueType font|without a PostScript name/.test(message))
-    return `${name}: non è un font TrueType (.ttf, .ttc, .otf con contorni TrueType).`;
+  const t = tr(fontWords);
+  if (/PostScript \(CFF\)/.test(message)) return t.cff(name);
+  if (/variable font/.test(message)) return t.variable(name);
+  if (/not a TrueType font|without a PostScript name/.test(message)) return t.notTrueType(name);
   return `${name}: ${message}`;
 }

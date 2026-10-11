@@ -3,6 +3,8 @@
   // edit). A button: a click selects it (Ctrl/Cmd adds, Shift extends); it can be dragged to reorder.
   import type { PageRaster } from '@capriole/engine-client';
   import { getEditor } from '$lib/editor.svelte';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { pagesWords } from '$lib/i18n/pages';
 
   let {
     index,
@@ -18,10 +20,13 @@
   } = $props();
 
   const editor = getEditor();
+  const t = $derived(tr(pagesWords));
   let visible = $state(false);
 
-  // Small, sharp on high-density screens: an A4 page is about 160 px wide on screen.
-  const dpi = Math.round(20 * Math.min(globalThis.devicePixelRatio || 1, 2));
+  // Small, sharp on high-density screens: an A4 page is about 160 px wide on screen at 100%, and grows
+  // with the grid's zoom.
+  const zoom = $derived(editor.gridZoom / 100);
+  const dpi = $derived(Math.round(20 * zoom * Math.min(globalThis.devicePixelRatio || 1, 2)));
   // Asked again after each edit (the page at this place may be another); the editor answers from its
   // cache when that page object was drawn already.
   const raster = $derived.by(() => {
@@ -64,11 +69,11 @@
     selected && 'bg-accent ring-2 ring-primary',
   ]}
   aria-pressed={selected}
-  aria-label="Pagina {index + 1}"
+  aria-label={t.page(index + 1)}
   data-testid="page"
   onclick={(e) => editor.select(index, { range: e.shiftKey, toggle: e.ctrlKey || e.metaKey })}
   ondblclick={() => editor.view(index)}
-  title="Doppio clic per annotare"
+  title={t.doubleClick}
   {ondragstart}
   {ondragend}
 >
@@ -78,29 +83,34 @@
       aria-hidden="true"
     ></span>
   {/if}
-  <span class="flex h-48 w-36 items-center justify-center">
+  <span
+    class="flex h-(--box-h) w-(--box-w) items-center justify-center"
+    style:--box-w="{9 * zoom}rem"
+    style:--box-h="{12 * zoom}rem"
+  >
     {#if raster && !(raster instanceof Promise)}
       <canvas
         {@attach (node) => paint(node, raster)}
-        class="max-h-48 max-w-36 bg-white shadow-sm ring-1 ring-border"
+        class="max-h-(--box-h) max-w-(--box-w) bg-white shadow-sm ring-1 ring-border"
         style:aspect-ratio="{raster.width} / {raster.height}"
       ></canvas>
     {:else if raster}
       {#await raster}
-        <span class="h-44 w-32 animate-pulse rounded bg-muted"></span>
+        <span class="h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] animate-pulse rounded bg-muted"></span>
       {:then image}
         <canvas
           {@attach (node) => paint(node, image)}
-          class="max-h-48 max-w-36 bg-white shadow-sm ring-1 ring-border"
+          class="max-h-(--box-h) max-w-(--box-w) bg-white shadow-sm ring-1 ring-border"
           style:aspect-ratio="{image.width} / {image.height}"
         ></canvas>
       {:catch}
-        <span class="flex h-44 w-32 items-center justify-center rounded bg-danger-background text-xs text-danger"
-          >non disegnata</span
+        <span
+          class="flex h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] items-center justify-center rounded bg-danger-background text-xs text-danger"
+          >{t.notDrawn}</span
         >
       {/await}
     {:else}
-      <span class="h-44 w-32 rounded bg-muted"></span>
+      <span class="h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] rounded bg-muted"></span>
     {/if}
   </span>
   <span class="text-xs text-muted-foreground tabular-nums">{index + 1}</span>

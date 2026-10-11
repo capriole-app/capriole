@@ -1547,6 +1547,26 @@ nell'ordine atteso, il file B-LTA — pyHanko `INTACT:TRUSTED` con modifiche acc
 pannello che dice B-LTA e la revoca verificata nel file. Limite dichiarato: nessuna carta reale provata (non
 disponibile); la shell desktop stessa non gira nei test end-to-end.
 
+## Rifiniture prima del rilascio (2026-10-11) — ✅
+
+Chieste provando l'app, prima della distribuzione.
+
+- **Lingue.** L'interfaccia è in italiano, inglese, francese, tedesco e spagnolo.
+  - Si usa la lingua del sistema; se non è fra queste, l'inglese. Il menu accanto al tema la cambia e la scelta resta salvata sul dispositivo.
+  - Nessuna dipendenza nuova: le frasi stanno in `apps/capriole/src/lib/i18n/`, un file per area con tutte le lingue affiancate. L'italiano è la fonte; una chiave mancante o in più in un'altra lingua fa fallire il controllo dei tipi, quindi il gate.
+  - Date e numeri seguono la lingua; i suffissi dei file salvati sono tradotti (`-firmato`/`-signed`…).
+  - I messaggi del motore restano in inglese.
+  - Le traduzioni francese, tedesca e spagnola sono state scritte e riviste senza madrelingua: **vanno riviste prima della pubblicazione**. Punti segnalati: tedesco «Anmerkung» o «Kommentar»; spagnolo «Censurar» per la redaction.
+- **Zoom.**
+  - Griglia: dimensione delle miniature 50–300%, ricordata.
+  - Pagina singola: «Adatta» alla finestra, oppure 25–400% della dimensione su carta. Il disegno viene rifatto alla risoluzione dello zoom, fino a 16 milioni di pixel.
+  - Comandi: − e +, percentuale scritta a mano, Ctrl+rotella, Ctrl +/−/0.
+- **Marchio e «Informazioni».** All'inizio della barra c'è il marchio, che apre «Informazioni e licenze»: marchio, versione dell'app e del motore, motto, licenze verificate.
+- **Criterio raggiunto.** I 16 file e2e esistenti sono invariati in italiano. I nuovi test coprono:
+  - le cinque lingue, il ripiego sull'inglese (`pt-BR`), la scelta dal menu ricordata e «Informazioni» (`i18n.test.ts`);
+  - lo zoom della griglia e della pagina (`zoom.test.ts`);
+  - il marchio nella barra (`licenses.test.ts`).
+
 ## Preparazione alla pubblicazione (2026-10-06) — pronta, pubblicazione non avvenuta
 
 Tutto ciò che serve a rendere pubblico il repository, senza renderlo pubblico (lo decide il titolare:

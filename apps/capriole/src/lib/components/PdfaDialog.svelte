@@ -7,8 +7,11 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import { getEditor } from '$lib/editor.svelte';
   import { pdfaChange, pdfaReason } from '$lib/pdfa';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { pdfaWords } from '$lib/i18n/pdfa';
 
   const editor = getEditor();
+  const t = $derived(tr(pdfaWords));
   const open = $derived(editor.pdfaDialog !== null);
   const invoice = $derived(editor.pdfaDialog === 3);
   const reasons = $derived([...new Set((editor.pdfaRefusal ?? []).map(pdfaReason))]);
@@ -33,7 +36,7 @@
   <div class="flex flex-col gap-4 text-sm">
     <h2 id="pdfa-title" class="flex items-center gap-2 text-base font-semibold">
       <Archive class="size-4" />
-      {invoice ? 'Converti in PDF/A-3' : 'Converti in PDF/A'}
+      {t.title(invoice)}
     </h2>
 
     {#if editor.pdfaReport}
@@ -42,11 +45,12 @@
         class="flex items-center gap-2 rounded-md bg-success-background px-3 py-2 font-medium text-success"
         role="status"
       >
-        <CircleCheck class="size-4 shrink-0" /> Il documento ora è PDF/A-{report.part}b.
+        <CircleCheck class="size-4 shrink-0" />
+        {t.done(report.part)}
       </p>
       {#if report.changes.length > 0}
         <div class="flex flex-col gap-1">
-          <span class="font-medium">Cosa è stato sistemato</span>
+          <span class="font-medium">{t.changed}</span>
           <ul class="list-disc ps-5 text-muted-foreground" data-testid="pdfa-changes">
             {#each report.changes as change, i (i)}
               <li>{pdfaChange(change)}</li>
@@ -55,31 +59,25 @@
         </div>
       {/if}
       <p class="text-xs text-muted-foreground">
-        Salvalo come nuovo file. Le modifiche successive si aggiungono senza riscriverlo; firmalo, se serve, dopo la
-        conversione.
+        {t.saveHint}
       </p>
     {:else if editor.pdfaRefusal}
       <div class="flex flex-col gap-2 rounded-md bg-danger-background px-3 py-2 text-danger" role="alert">
-        <span class="flex items-center gap-2 font-medium"
-          ><TriangleAlert class="size-4 shrink-0" /> Il documento non può diventare PDF/A:</span
-        >
+        <span class="flex items-center gap-2 font-medium"><TriangleAlert class="size-4 shrink-0" /> {t.refused}</span>
         <ul class="list-disc ps-5" data-testid="pdfa-reasons">
           {#each reasons as reason (reason)}
             <li>{reason}</li>
           {/each}
         </ul>
       </div>
-      <p class="text-xs text-muted-foreground">Il documento non è stato cambiato.</p>
+      <p class="text-xs text-muted-foreground">{t.unchanged}</p>
     {:else}
       <p class="text-muted-foreground">
-        PDF/A è il formato d'archivio: il documento resta leggibile e uguale nel tempo, con i font incorporati, un
-        profilo colore e i metadati. {invoice
-          ? 'Una fattura Factur-X è conforme quando il PDF è PDF/A-3.'
-          : 'Diventa PDF/A-2b, o PDF/A-3b se ha allegati.'}
+        {t.about}
+        {invoice ? t.aboutInvoice : t.aboutParts}
       </p>
       <p class="text-xs text-muted-foreground">
-        La conversione corregge ciò che può (font standard, annotazioni, azioni, metadati) e, se qualcosa lo impedisce,
-        spiega cosa, senza toccare il documento.
+        {t.howItWorks}
       </p>
     {/if}
 
@@ -92,7 +90,7 @@
         type="button"
         class="rounded-md border px-3 py-1.5 hover:bg-muted"
         disabled={editor.busy}
-        onclick={() => editor.closePdfa()}>{editor.pdfaReport ? 'Chiudi' : 'Annulla'}</button
+        onclick={() => editor.closePdfa()}>{editor.pdfaReport ? t.close : t.cancel}</button
       >
       {#if editor.pdfaReport}
         <button
@@ -101,7 +99,8 @@
           disabled={editor.busy}
           onclick={() => editor.savePdfa()}
         >
-          <FileDown class="size-4" /> Salva il PDF/A
+          <FileDown class="size-4" />
+          {t.save}
         </button>
       {:else if !editor.pdfaRefusal}
         <button
@@ -110,7 +109,8 @@
           disabled={editor.busy}
           onclick={() => editor.convertToPdfa()}
         >
-          <Archive class="size-4" /> Converti
+          <Archive class="size-4" />
+          {t.convert}
         </button>
       {/if}
     </div>

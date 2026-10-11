@@ -16,12 +16,18 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import X from '@lucide/svelte/icons/x';
-  import Info from '@lucide/svelte/icons/info';
+  import BrandMark from './BrandMark.svelte';
+  import LanguageMenu from './LanguageMenu.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
+  import ZoomControl from './ZoomControl.svelte';
+  import { gridRange } from '$lib/zoom';
   import { getEditor } from '$lib/editor.svelte';
   import { choosesWhere, fromBrowser } from '$lib/platform';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { toolbarWords } from '$lib/i18n/toolbar';
 
   const editor = getEditor();
+  const t = $derived(tr(toolbarWords));
   let input: HTMLInputElement | undefined = $state();
 
   const some = $derived(editor.selected.size > 0);
@@ -31,46 +37,44 @@
 </script>
 
 <header class="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2">
-  <img src="/logo-light.svg" alt="Capriole" class="h-7 dark:hidden" />
-  <img src="/logo-dark.svg" alt="Capriole" class="hidden h-7 dark:block" />
+  <BrandMark label={t.about} />
   <div class="me-2 min-w-0 flex-1">
     <p class="truncate text-sm font-medium" title={editor.name ?? ''}>
       {editor.name}{editor.modified ? ' •' : ''}
     </p>
     <!-- One line, truncated: the bar keeps its height whatever the selection says (a drag must not move the grid). -->
     <p class="truncate text-xs text-muted-foreground" aria-live="polite">
-      {editor.pages}
-      {editor.pages === 1 ? 'pagina' : 'pagine'}{some ? ` · ${editor.selected.size} selezionate` : ''}
-      {#if editor.busy}· al lavoro…{/if}
+      {t.status(editor.pages, editor.selected.size)}
+      {#if editor.busy}{t.working}{/if}
     </p>
   </div>
 
-  <div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Pagine selezionate">
+  <div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t.selectedPages}>
     <button
       type="button"
       class={button}
       disabled={!some || editor.busy}
       onclick={() => editor.rotate(-90)}
-      title="Ruota a sinistra"
+      title={t.rotateLeft}
     >
-      <RotateCcw class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Ruota a sinistra</span>
+      <RotateCcw class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.rotateLeft}</span>
     </button>
     <button
       type="button"
       class={button}
       disabled={!some || editor.busy}
       onclick={() => editor.rotate(90)}
-      title="Ruota a destra"
+      title={t.rotateRight}
     >
-      <RotateCw class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Ruota a destra</span>
+      <RotateCw class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.rotateRight}</span>
     </button>
     <button
       type="button"
       class={button}
       disabled={!some || editor.busy}
       onclick={() => editor.shift(-1)}
-      aria-label="Sposta prima"
-      title="Sposta prima"
+      aria-label={t.moveBefore}
+      title={t.moveBefore}
     >
       <ArrowLeft class="size-4" />
     </button>
@@ -79,8 +83,8 @@
       class={button}
       disabled={!some || editor.busy}
       onclick={() => editor.shift(1)}
-      aria-label="Sposta dopo"
-      title="Sposta dopo"
+      aria-label={t.moveAfter}
+      title={t.moveAfter}
     >
       <ArrowRight class="size-4" />
     </button>
@@ -89,45 +93,45 @@
       class={button}
       disabled={!some || editor.busy}
       onclick={() => editor.duplicate()}
-      title="Duplica"
+      title={t.duplicate}
     >
-      <Copy class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Duplica</span>
+      <Copy class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.duplicate}</span>
     </button>
     <button
       type="button"
       class={button}
       disabled={!some || all || editor.busy}
-      title={all ? 'Un documento conserva almeno una pagina' : undefined}
+      title={all ? t.keepOne : undefined}
       onclick={() => editor.remove()}
     >
-      <Trash2 class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Elimina</span>
+      <Trash2 class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.delete}</span>
     </button>
     <button
       type="button"
       class={button}
       disabled={editor.selected.size !== 1 || editor.busy}
-      title="Mostra la pagina grande per annotarla (anche: doppio clic)"
+      title={t.annotateTitle}
       onclick={() => editor.view(editor.selection[0]!)}
     >
-      <Highlighter class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Annota</span>
+      <Highlighter class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.annotate}</span>
     </button>
     <button
       type="button"
       class={button}
       disabled={!some || editor.busy}
       onclick={() => editor.extract()}
-      title="Estrai"
+      title={t.extract}
     >
-      <FileOutput class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Estrai</span>
+      <FileOutput class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.extract}</span>
     </button>
     <button
       type="button"
       class={button}
       disabled={editor.busy}
       onclick={() => (choosesWhere ? editor.insertFromDialog() : input?.click())}
-      title="Inserisci PDF"
+      title={t.insert}
     >
-      <FilePlus class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Inserisci PDF</span>
+      <FilePlus class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.insert}</span>
     </button>
     <input
       bind:this={input}
@@ -145,7 +149,7 @@
       type="button"
       class={[button, editor.attachmentsOpen && 'border-primary bg-accent']}
       aria-pressed={editor.attachmentsOpen}
-      title={editor.facturx ? 'Fattura elettronica Factur-X e allegati' : 'Allegati del documento'}
+      title={editor.facturx ? t.invoiceTitle : t.attachmentsTitle}
       onclick={() => {
         editor.attachmentsOpen = !editor.attachmentsOpen;
         if (editor.attachmentsOpen) editor.signaturesOpen = false;
@@ -157,7 +161,7 @@
         <Paperclip class="size-4" />
       {/if}
       <span class="sr-only min-[1900px]:not-sr-only"
-        >Allegati{editor.attachments.length > 0 ? ` (${editor.attachments.length})` : ''}</span
+        >{t.attachments}{editor.attachments.length > 0 ? ` (${editor.attachments.length})` : ''}</span
       >
       {#if editor.attachments.length > 0}<span class="min-[1900px]:hidden" aria-hidden="true"
           >{editor.attachments.length}</span
@@ -167,7 +171,7 @@
       type="button"
       class={button}
       disabled={editor.busy}
-      title={editor.pdfa ? `Il documento è PDF/A-${editor.pdfa}` : 'Converti in PDF/A (formato d’archivio)'}
+      title={editor.pdfa ? t.isPdfa(editor.pdfa) : t.toPdfa}
       onclick={() => editor.openPdfa()}
     >
       <Archive class="size-4" />
@@ -177,7 +181,7 @@
       type="button"
       class={[button, editor.signaturesOpen && 'border-primary bg-accent']}
       aria-pressed={editor.signaturesOpen}
-      title="Firme del documento, e firma"
+      title={t.signaturesTitle}
       onclick={() => {
         editor.signaturesOpen = !editor.signaturesOpen;
         if (editor.signaturesOpen) editor.attachmentsOpen = false;
@@ -185,7 +189,7 @@
     >
       <Signature class="size-4" />
       <span class="sr-only min-[1900px]:not-sr-only"
-        >Firme{editor.signatures.length > 0 ? ` (${editor.signatures.length})` : ''}</span
+        >{t.signatures}{editor.signatures.length > 0 ? ` (${editor.signatures.length})` : ''}</span
       >
       {#if editor.signatures.length > 0}<span class="min-[1900px]:hidden" aria-hidden="true"
           >{editor.signatures.length}</span
@@ -196,49 +200,35 @@
       class={button}
       disabled={!editor.canUndo || editor.busy}
       onclick={() => editor.undo()}
-      title="Annulla"
+      title={t.undo}
     >
-      <Undo2 class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Annulla</span>
+      <Undo2 class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.undo}</span>
     </button>
     <button
       type="button"
       class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
       disabled={editor.busy}
       onclick={() => editor.save()}
-      title={editor.signed
-        ? 'Salva aggiungendo le modifiche dopo le firme (le firme restano valide)'
-        : editor.path
-          ? `Sovrascrive ${editor.path}`
-          : undefined}
+      title={editor.signed ? t.saveSigned : editor.path ? t.overwrites(editor.path) : undefined}
     >
-      <FileDown class="size-4" /> Salva
+      <FileDown class="size-4" />
+      {t.save}
     </button>
     {#if choosesWhere}
-      <button
-        type="button"
-        class={button}
-        disabled={editor.busy}
-        onclick={() => editor.save(true)}
-        title="Salva con nome"
-      >
-        <FileDown class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">Salva con nome</span>
+      <button type="button" class={button} disabled={editor.busy} onclick={() => editor.save(true)} title={t.saveAs}>
+        <FileDown class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.saveAs}</span>
       </button>
     {/if}
   </div>
-  <button
-    type="button"
-    class="flex size-9 items-center justify-center rounded-md border hover:bg-muted"
-    aria-label="Informazioni e licenze"
-    title="Informazioni e licenze"
-    onclick={() => (editor.licensesOpen = true)}><Info class="size-4" /></button
-  >
+  <ZoomControl percent={editor.gridZoom} range={gridRange} onzoom={(percent) => editor.zoomGrid(percent)} />
+  <LanguageMenu />
   <ThemeMenu />
   <button
     type="button"
     class="flex size-9 items-center justify-center rounded-md border hover:bg-muted"
-    aria-label="Chiudi il documento"
+    aria-label={t.close}
     onclick={() => {
-      if (!editor.modified || confirm('Chiudere senza salvare le modifiche?')) editor.close();
+      if (!editor.modified || confirm(t.closeUnsaved)) editor.close();
     }}
   >
     <X class="size-4" />

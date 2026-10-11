@@ -10,14 +10,17 @@
   import { getEditor } from '$lib/editor.svelte';
   import { commonName } from '$lib/certificates';
   import { localDateTime } from '$lib/files';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { signaturesWords } from '$lib/i18n/signatures';
 
   const editor = getEditor();
+  const t = $derived(tr(signaturesWords));
 
   function status(s: SignatureInfo): { text: string; tone: 'success' | 'warning' | 'danger' | 'muted' } {
-    if (s.integrity === 'invalid') return { text: 'Firma non valida', tone: 'danger' };
-    if (s.integrity === 'unsupported') return { text: 'Firma non verificabile', tone: 'muted' };
-    if (!s.coversWholeFile) return { text: 'Firma valida · documento modificato dopo la firma', tone: 'warning' };
-    return { text: s.documentTimestamp ? 'Marca temporale valida' : 'Firma valida', tone: 'success' };
+    if (s.integrity === 'invalid') return { text: t.invalid, tone: 'danger' };
+    if (s.integrity === 'unsupported') return { text: t.unsupported, tone: 'muted' };
+    if (!s.coversWholeFile) return { text: t.changedAfter, tone: 'warning' };
+    return { text: s.documentTimestamp ? t.timestampValid : t.valid, tone: 'success' };
   }
 
   const tones = {
@@ -32,21 +35,21 @@
 
 <aside
   class="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm"
-  aria-label="Firme"
+  aria-label={t.title}
   data-testid="signatures-panel"
 >
   <header class="flex items-center justify-between">
-    <h2 class="flex items-center gap-2 font-semibold"><Signature class="size-4" /> Firme</h2>
+    <h2 class="flex items-center gap-2 font-semibold"><Signature class="size-4" /> {t.title}</h2>
     <button
       type="button"
       class="flex size-8 items-center justify-center rounded-md hover:bg-muted"
-      aria-label="Chiudi le firme"
+      aria-label={t.close}
       onclick={() => (editor.signaturesOpen = false)}><X class="size-4" /></button
     >
   </header>
 
   {#if editor.signatures.length === 0}
-    <p class="text-muted-foreground">Il documento non è firmato.</p>
+    <p class="text-muted-foreground">{t.unsigned}</p>
   {/if}
   <ul class="flex flex-col gap-2" data-testid="signature-list">
     {#each editor.signatures as s (`${s.field[0]} ${s.field[1]}`)}
@@ -67,39 +70,31 @@
         {/if}
         <span class="font-medium">{s.signer?.name || s.name || s.fieldName}</span>
         {#if s.signer}
-          <span class="text-xs text-muted-foreground">Certificato emesso da {commonName(s.signer.issuer)}</span>
+          <span class="text-xs text-muted-foreground">{t.issuedBy(commonName(s.signer.issuer))}</span>
         {/if}
         {#if s.signingTime}
           <span class="text-xs">
-            {s.documentTimestamp ? 'Del' : 'Firmato il'}
+            {s.documentTimestamp ? t.dated : t.signedOn}
             {localDateTime(s.signingTime)}
-            <span class="text-muted-foreground"
-              >({s.timestamp ? 'marca temporale' : 'ora dichiarata dal firmatario'})</span
-            >
+            <span class="text-muted-foreground">({s.timestamp ? t.byTimestamp : t.bySigner})</span>
           </span>
         {/if}
         {#if s.timestampInvalid}
-          <span class="text-xs text-warning">La marca temporale non è valida.</span>
+          <span class="text-xs text-warning">{t.timestampInvalid}</span>
         {/if}
         {#if s.revocation === 'revoked'}
-          <span class="text-xs text-danger"
-            >Certificato revocato{s.revokedAt ? ` dal ${localDateTime(s.revokedAt)}` : ''}.</span
-          >
+          <span class="text-xs text-danger">{t.revoked(s.revokedAt ? localDateTime(s.revokedAt) : null)}</span>
         {:else if s.revocation === 'good'}
-          <span class="text-xs">
-            Certificato non revocato{s.revocationInFile ? ' (verifica conservata nel file)' : ''}.
-          </span>
+          <span class="text-xs">{t.notRevoked(s.revocationInFile)}</span>
         {:else if s.revocation === 'unknown'}
-          <span class="text-xs text-warning">Non si sa se il certificato sia stato revocato.</span>
+          <span class="text-xs text-warning">{t.revocationUnknown}</span>
         {/if}
         {#if s.signer && s.signingTime && !s.certificateValidAtSigning}
-          <span class="text-xs text-warning">Il certificato non era valido al momento della firma.</span>
+          <span class="text-xs text-warning">{t.notValidAtSigning}</span>
         {/if}
         {#if s.reason || s.location}
           <span class="text-xs"
-            >{[s.reason && `Motivo: ${s.reason}`, s.location && `Luogo: ${s.location}`]
-              .filter(Boolean)
-              .join(' · ')}</span
+            >{[s.reason && t.reason(s.reason), s.location && t.location(s.location)].filter(Boolean).join(' · ')}</span
           >
         {/if}
         <span class="text-xs text-muted-foreground">
@@ -107,7 +102,7 @@
         </span>
         {#if s.page !== null}
           <button type="button" class={[button, 'self-start']} onclick={() => editor.view(s.page!)}>
-            Vai alla pagina {s.page + 1}
+            {t.goToPage(s.page + 1)}
           </button>
         {/if}
       </li>
@@ -115,8 +110,7 @@
   </ul>
   {#if editor.signatures.some((s) => s.signer)}
     <p class="text-xs text-muted-foreground">
-      Identità dei firmatari non verificata: l'integrità di ogni firma è controllata, ma nessun elenco di certificati
-      radice fidati è configurato.
+      {t.noTrustList}
     </p>
   {/if}
 
@@ -126,9 +120,10 @@
     disabled={editor.busy}
     onclick={() => editor.requestSignature(editor.viewing ?? 0, null)}
   >
-    <Signature class="size-4" /> Firma il documento…
+    <Signature class="size-4" />
+    {t.sign}
   </button>
   <p class="text-xs text-muted-foreground">
-    Firma invisibile; per una firma visibile apri una pagina e disegna il riquadro con lo strumento «Firma».
+    {t.invisibleHint}
   </p>
 </aside>

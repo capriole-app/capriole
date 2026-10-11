@@ -3,10 +3,13 @@
   // at least as wide, with the line's text in it and the cursor at its end. Enter (or leaving the box)
   // writes it — only what changed is given to the engine —, Esc leaves the line as it was.
   import { untrack } from 'svelte';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { textEditorsWords } from '$lib/i18n/textEditors';
   import { getEditor, type LineEditing } from '$lib/editor.svelte';
 
   let { editing, width, height }: { editing: LineEditing; width: number; height: number } = $props();
   const editor = getEditor();
+  const t = $derived(tr(textEditorsWords));
 
   // Points of the page in units of its width on screen (the page is a size container).
   const cqw = (points: number) => `${(points / width) * 100}cqw`;
@@ -37,7 +40,7 @@
   style:height="{((box[3] - box[1] + 2 * kMargin) / height) * 100}%"
   style:font-family="Helvetica, Arial, 'Liberation Sans', sans-serif"
   style:font-size={cqw(editing.line.size)}
-  aria-label="Testo della riga"
+  aria-label={t.line}
   data-testid="line-editor"
   {@attach start}
   onblur={(e) => finish(e.currentTarget.value)}

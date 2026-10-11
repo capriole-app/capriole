@@ -7,7 +7,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
-  use: { baseURL: 'http://localhost:4174', trace: 'retain-on-failure' },
+  // Italian, the interface's source language (the tests read its words); e2e/i18n.test.ts sets others.
+  use: { baseURL: 'http://localhost:4174', trace: 'retain-on-failure', locale: 'it-IT' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: 'npx vite preview --port 4174 --strictPort',

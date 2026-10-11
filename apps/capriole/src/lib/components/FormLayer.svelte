@@ -6,6 +6,8 @@
   // must not lose the focus): the editor queues the edits.
   import type { FieldInfo, FieldWidget } from '@capriole/engine-client';
   import { getEditor } from '$lib/editor.svelte';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { formLayerWords } from '$lib/i18n/formLayer';
 
   let { width, height }: { width: number; height: number } = $props();
   const editor = getEditor();
@@ -29,7 +31,8 @@
     return `${(points / width) * 100}cqw`;
   }
 
-  const label = (f: FieldInfo) => f.label || f.name || 'Campo';
+  const t = $derived(tr(formLayerWords));
+  const label = (f: FieldInfo) => f.label || f.name || t.field;
   const key = (f: FieldInfo, w: FieldWidget) => `${w.ref[0]} ${w.ref[1]} ${f.value.join('\u0000')}`;
 
   function commit(field: FieldInfo, value: string | string[] | null) {

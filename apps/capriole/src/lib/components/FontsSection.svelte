@@ -6,10 +6,13 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import Type from '@lucide/svelte/icons/type';
   import { getEditor } from '$lib/editor.svelte';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { fontsSectionWords } from '$lib/i18n/fontsSection';
   import { formatBytes } from '$lib/files';
   import { missingFontsHint } from '$lib/textedit';
 
   const editor = getEditor();
+  const t = $derived(tr(fontsSectionWords));
   let input: HTMLInputElement | undefined = $state();
   let dragging = $state(false);
   let adding = $state(false);
@@ -41,7 +44,7 @@
         type="button"
         class="rounded-md border border-current px-2.5 py-1 font-medium disabled:opacity-60"
         disabled={adding}
-        onclick={() => input?.click()}>Aggiungi font…</button
+        onclick={() => input?.click()}>{t.add}</button
       >
     </div>
   </section>
@@ -49,7 +52,7 @@
 
 <section
   class={['flex flex-col gap-2 rounded-md', dragging && 'ring-2 ring-primary']}
-  aria-label="Font forniti"
+  aria-label={t.title}
   data-testid="fonts-section"
   ondragover={(e) => {
     if (!e.dataTransfer?.types.includes('Files')) return;
@@ -63,10 +66,9 @@
     add(e.dataTransfer?.files);
   }}
 >
-  <h2 class="flex items-center gap-1.5 font-semibold"><Type class="size-4" /> Font forniti</h2>
+  <h2 class="flex items-center gap-1.5 font-semibold"><Type class="size-4" /> {t.title}</h2>
   <p class="text-xs text-muted-foreground">
-    Se il font incorporato nel documento non ha una lettera, la si prende dallo stesso font fornito qui (la stessa
-    versione), se la sua licenza lo consente. I font restano su questo dispositivo.
+    {t.explain}
   </p>
   {#if editor.fonts.length > 0}
     <ul class="flex flex-col gap-1" data-testid="font-list">
@@ -78,7 +80,7 @@
               <span class={['truncate text-xs', face.embeddable ? 'text-muted-foreground' : 'text-warning']}
                 >{face.family ? `${face.family} ${face.style}` : face.postscriptName}{face.embeddable
                   ? ''
-                  : ' — la licenza non consente di aggiungerne lettere'}</span
+                  : t.notEmbeddable}</span
               >
             {/each}
             <span class="text-xs text-muted-foreground">{formatBytes(font.data.byteLength)}</span>
@@ -86,7 +88,7 @@
           <button
             type="button"
             class="rounded-md p-1 hover:bg-background"
-            aria-label={`Rimuovi ${font.name}`}
+            aria-label={t.remove(font.name)}
             onclick={() => editor.removeFont(font.id)}><Trash2 class="size-4" /></button
           >
         </li>
@@ -98,7 +100,8 @@
   {/if}
   <div>
     <button type="button" class={button} disabled={adding} onclick={() => input?.click()}>
-      <Plus class="size-4" /> Aggiungi font…
+      <Plus class="size-4" />
+      {t.add}
     </button>
   </div>
   <input

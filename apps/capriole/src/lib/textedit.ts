@@ -1,8 +1,10 @@
 // Editing a line of the page's text (the engine's capriole_document_page_replace_text, edit/text_edit.hpp):
 // the line as the person reads it, what of it changed — only the characters that differ are given to the
 // engine, so the rest of the line keeps its bytes and, nearly always, its font — and what the engine
-// says, in Italian.
+// says, in the interface's language.
 import type { PageText, ParagraphEditReport, TextEditReport } from '@capriole/engine-client';
+import { formatNumber, tr } from './i18n/index.svelte';
+import { textEditWords } from './i18n/textedit';
 
 type Box = [number, number, number, number];
 
@@ -120,22 +122,16 @@ export function replacementFor(page: PageText, line: number, text: string): Repl
   };
 }
 
-/** "al 70%", "all’85%": the article elided before a number read with a vowel (80–89, 11). */
+/** "al 70%", "to 70%": a scale as a percentage, as the language says it. */
 export function toPercent(scale: number): string {
-  const n = Math.round(scale * 100);
-  return /^(8\d|11)$/.test(String(n)) ? `all’${n}%` : `al ${n}%`;
-}
-
-/** "1 lettera", "3 lettere". */
-function letters(n: number): string {
-  return n === 1 ? '1 lettera' : `${n} lettere`;
+  return tr(textEditWords).toPercent(Math.round(scale * 100));
 }
 
 /** Glyphs added to the embedded font from a font given, when there are. */
 function addedNotice(added: number, font: string | null): string | null {
   if (added === 0) return null;
-  const to = font ? `al font incorporato (${font})` : 'ai font incorporati';
-  return `${added === 1 ? 'Aggiunta' : 'Aggiunte'} ${letters(added)} ${to} dal font che hai fornito.`;
+  const t = tr(textEditWords);
+  return t.added(added, t.letters(added), font);
 }
 
 /**
@@ -144,17 +140,17 @@ function addedNotice(added: number, font: string | null): string | null {
  */
 export function textEditNotice(report: TextEditReport): string | null {
   if (report.method === 'sameFont') return addedNotice(report.addedGlyphs, report.font);
-  const narrowed = report.scale < 0.995 ? `, ristretto ${toPercent(report.scale)}` : '';
-  return `Il font del testo non ha tutti i caratteri nuovi: scritto con un font simile (${report.font})${narrowed}.`;
+  const t = tr(textEditWords);
+  const narrowed = report.scale < 0.995 ? t.narrowed(toPercent(report.scale)) : '';
+  return t.similarFont(report.font, narrowed);
 }
 
 /** What to give to write in the document's own fonts the letters that went to a similar one (null: none). */
 export function missingFontsHint(fonts: string[]): string | null {
   if (fonts.length === 0) return null;
   const names = fonts.join(', ');
-  return fonts.length === 1
-    ? `Per scriverli nel font del documento, aggiungi il font ${names} (il suo file .ttf) e rifai la modifica.`
-    : `Per scriverli nei font del documento, aggiungi i font ${names} (i loro file .ttf) e rifai la modifica.`;
+  const t = tr(textEditWords);
+  return fonts.length === 1 ? t.missingFont(names) : t.missingFonts(names);
 }
 
 // ── Paragraphs ───────────────────────────────────────────────────────────────────────────────
@@ -205,14 +201,13 @@ export function paragraphArea(paragraph: ParagraphText): Box {
  * a font given (null: none of these).
  */
 export function paragraphNotice(report: ParagraphEditReport): string | null {
+  const t = tr(textEditWords);
   const parts: string[] = [];
   if (report.method === 'similarFont')
     parts.push(
-      report.styles > 1 || report.sameFontStyles === 0
-        ? 'i caratteri che i font del paragrafo non hanno sono scritti con un font simile'
-        : `il font del paragrafo non ha tutti i caratteri nuovi: scritto con un font simile (${report.font})`,
+      report.styles > 1 || report.sameFontStyles === 0 ? t.paragraphSimilarFonts : t.paragraphSimilarFont(report.font),
     );
-  if (report.scale < 0.995) parts.push(`ridotto ${toPercent(report.scale)} per farlo stare`);
+  if (report.scale < 0.995) parts.push(t.reduced(toPercent(report.scale)));
   if (report.moved > 0) parts.push(movedNotice(report));
   const added = addedNotice(report.addedGlyphs, report.styles === 1 ? report.font : null);
   if (parts.length === 0) return added;
@@ -222,13 +217,12 @@ export function paragraphNotice(report: ParagraphEditReport): string | null {
 
 /** What follows the paragraph moved down: how far, and how much of it. */
 function movedNotice(report: ParagraphEditReport): string {
-  const what = [count(report.movedItems, 'elemento', 'elementi')];
-  if (report.movedAnnotations > 0) what.push(count(report.movedAnnotations, 'annotazione', 'annotazioni'));
-  const points = Math.round(report.moved).toLocaleString('it-IT');
-  return `ciò che segue è sceso di ${points} pt per fargli spazio (${what.join(' e ')})`;
+  const t = tr(textEditWords);
+  const what = [t.items(formatNumber(report.movedItems), report.movedItems === 1)];
+  if (report.movedAnnotations > 0)
+    what.push(t.annotations(formatNumber(report.movedAnnotations), report.movedAnnotations === 1));
+  return t.moved(formatNumber(Math.round(report.moved)), what.join(t.and));
 }
-
-const count = (n: number, one: string, many: string) => `${n.toLocaleString('it-IT')} ${n === 1 ? one : many}`;
 
 /** Whether the engine refused to move down what follows a paragraph. */
 export function cannotMove(message: string): boolean {
@@ -241,57 +235,43 @@ export function noRoom(message: string): { needed: number; fit: number } | null 
   return m ? { needed: Number(m[1]), fit: Number(m[2]) } : null;
 }
 
-const notMoved = 'Ciò che segue non si può spostare in basso:';
+type Words = (typeof textEditWords)['it'];
 
-const refusals: [RegExp, string | ((m: RegExpExecArray) => string)][] = [
+const refusals: [RegExp, (t: Words, m: RegExpExecArray) => string][] = [
   [
     /cannot move what follows: it would (reach the footer|go past the bottom of the page) \(it needs (\d+) pt, (\d+) are free\)/,
-    (m) =>
-      `${notMoved} ${m[1] === 'reach the footer' ? 'arriverebbe al piè di pagina' : 'andrebbe oltre il fondo della pagina'} ` +
-      `(servono ${m[2]} pt, ce ne sono ${m[3]} liberi). Puoi ridurre il testo per farlo stare.`,
+    (t, m) =>
+      `${t.notMoved} ${m[1] === 'reach the footer' ? t.wouldReachFooter : t.wouldPassBottom} ` +
+      t.needsPoints(m[2]!, m[3]!),
   ],
   [
     /cannot move what follows: the paragraph is inside a box|cannot move what follows: it would go past the bottom of what contains/,
-    `${notMoved} il paragrafo è dentro un riquadro (una cornice, una cella) che non si allunga con lui.`,
+    (t) => `${t.notMoved} ${t.insideBox}`,
   ],
-  [/cannot move what follows: it would run into/, `${notMoved} urterebbe ciò che gli sta accanto.`],
-  [
-    /cannot move what follows: an image lies across/,
-    `${notMoved} sotto il paragrafo passa un’immagine (una pagina scansionata, lo sfondo di un modulo).`,
-  ],
-  [
-    /cannot move what follows: something is drawn across/,
-    `${notMoved} il fondo del paragrafo è attraversato da un disegno (un riquadro, una tabella, una riga).`,
-  ],
-  [
-    /cannot move what follows: an annotation lies across/,
-    `${notMoved} il fondo del paragrafo è attraversato da un’annotazione.`,
-  ],
-  [/cannot move what follows: nothing to move/, 'Sotto il paragrafo non c’è niente da spostare.'],
-  [/cannot move what follows/, `${notMoved} qui la pagina è disegnata in un modo che non si sa spostare.`],
-  [/several lines|one line at a time: the area/, 'Si modifica una riga alla volta.'],
-  [/one paragraph at a time/, 'Si modifica un paragrafo alla volta: qui le righe sono di più paragrafi.'],
-  [
-    /superscripts or subscripts/,
-    'Il paragrafo ha apici o pedici, che il testo semplice non sa dire: modificalo riga per riga.',
-  ],
-  [/only horizontal/, 'Si reimpaginano solo i paragrafi orizzontali: modificalo riga per riga.'],
-  [/line break/, 'Il testo nuovo deve stare su una riga.'],
-  [/invisible/, 'Il testo qui è invisibile (lo strato di testo di una scansione): non si modifica.'],
-  [/annotation's/, 'Questo testo appartiene a un’annotazione o a un campo del modulo: si modifica lì.'],
-  [
-    /standard fonts cannot write/,
-    'Alcuni caratteri non si possono scrivere né con il font del testo né con uno simile.',
-  ],
-  [/no text in the area/, 'Qui non c’è testo da modificare.'],
-  [/no room/, 'Il testo nuovo non ci sta nel paragrafo.'],
+  [/cannot move what follows: it would run into/, (t) => `${t.notMoved} ${t.runInto}`],
+  [/cannot move what follows: an image lies across/, (t) => `${t.notMoved} ${t.imageAcross}`],
+  [/cannot move what follows: something is drawn across/, (t) => `${t.notMoved} ${t.drawingAcross}`],
+  [/cannot move what follows: an annotation lies across/, (t) => `${t.notMoved} ${t.annotationAcross}`],
+  [/cannot move what follows: nothing to move/, (t) => t.nothingToMove],
+  [/cannot move what follows/, (t) => `${t.notMoved} ${t.cannotMove}`],
+  [/several lines|one line at a time: the area/, (t) => t.oneLine],
+  [/one paragraph at a time/, (t) => t.oneParagraph],
+  [/superscripts or subscripts/, (t) => t.superscripts],
+  [/only horizontal/, (t) => t.onlyHorizontal],
+  [/line break/, (t) => t.lineBreak],
+  [/invisible/, (t) => t.invisible],
+  [/annotation's/, (t) => t.annotationText],
+  [/standard fonts cannot write/, (t) => t.standardFonts],
+  [/no text in the area/, (t) => t.noText],
+  [/no room/, (t) => t.noRoom],
 ];
 
-/** The engine's refusal of an edit, in Italian (what is not recognised, as it is). */
+/** The engine's refusal of an edit, in the interface's language (what is not recognised, as it is). */
 export function textEditRefusal(message: string): string {
+  const t = tr(textEditWords);
   for (const [pattern, said] of refusals) {
     const m = pattern.exec(message);
-    if (m) return typeof said === 'string' ? said : said(m);
+    if (m) return said(t, m);
   }
   return message;
 }

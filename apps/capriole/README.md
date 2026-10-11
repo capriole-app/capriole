@@ -23,6 +23,21 @@ npm run lint       # prettier --check
 npx playwright test   # end-to-end in Chromium (port 4174)
 ```
 
+**Languages**: Italian, English, French, German, Spanish. The system's (the browser's languages) when it
+is one of them, else English; the menu beside the theme changes it, remembered on the device. The words
+are in `src/lib/i18n/`, one file per area with every language side by side: Italian is the source, and a
+key missing or left over in another language fails the type check. The engine's messages stay in
+English. The e2e tests run in Italian (`playwright.config.ts`); `e2e/i18n.test.ts` checks the others.
+The French, German and Spanish words were written without a native speaker: to be reviewed before
+publishing.
+
+**Zoom**: the pages grid (the thumbnails' size, 50–300%, remembered) and the page shown large (fitted to
+the window, or 25–400% of its size on paper): − and +, the percentage written by hand, «Adatta» (fit) for
+the page; Ctrl/Cmd + wheel and Ctrl/Cmd + + / − / 0 too.
+
+**About**: Capriole's mark at the start of the bar opens «Informazioni e licenze» — the mark, the app's and
+the engine's versions, the motto, the licences.
+
 **Annotations** (phase 8d): double-click a page (or select it and press "Annota") to show it large.
 Tools: highlight, underline and strike out (drag over the text: one mark per line), note (click; its
 comment in the side panel), pen, rectangle, ellipse, line, free text, and a colour for the next annotation. Free text is written on the page itself, with the

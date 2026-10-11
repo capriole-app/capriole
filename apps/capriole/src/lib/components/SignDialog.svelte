@@ -12,8 +12,11 @@
   import { localDateTime } from '$lib/files';
   import { cardShell, type CardSigner as Card } from '$lib/smartcard';
   import CardSigner from './CardSigner.svelte';
+  import { tr } from '$lib/i18n/index.svelte';
+  import { signingWords } from '$lib/i18n/signing';
 
   const editor = getEditor();
+  const t = $derived(tr(signingWords));
 
   let key = $state.raw<{ name: string; data: ArrayBuffer } | null>(null);
   let password = $state('');
@@ -58,8 +61,8 @@
     } catch (error) {
       problem =
         error instanceof EngineError && error.status === Status.passwordRequired
-          ? 'Password errata.'
-          : `Il file non si legge come certificato con chiave (.p12, .pfx): ${error instanceof Error ? error.message : String(error)}`;
+          ? t.wrongPassword
+          : t.notAKey(error instanceof Error ? error.message : String(error));
     } finally {
       checking = false;
     }
@@ -114,14 +117,11 @@
     }}
   >
     <h2 id="sign-title" class="flex items-center gap-2 text-base font-semibold">
-      <Signature class="size-4" /> Firma digitale
+      <Signature class="size-4" />
+      {t.title}
     </h2>
     <p class="text-muted-foreground">
-      {#if request?.rect}
-        Firma visibile nel riquadro disegnato a pagina {request.page + 1}.
-      {:else}
-        Firma invisibile. Per una firma visibile, apri una pagina e disegna il riquadro con lo strumento «Firma».
-      {/if}
+      {request?.rect ? t.visible(request.page + 1) : t.invisible}
     </p>
 
     {#if incomplete}
@@ -130,23 +130,23 @@
         role="status"
         data-testid="sign-incomplete"
       >
-        <p>Documento firmato e salvato. La validazione a lungo termine è incompleta:</p>
+        <p>{t.incomplete}</p>
         <ul class="list-disc pl-5">
           {#each editor.longTermReport?.unanswered ?? [] as subject (subject)}
-            <li>nessuna risposta sulla revoca per «{subject}»</li>
+            <li>{t.noRevocationAnswer(subject)}</li>
           {/each}
           {#if editor.longTermReport?.documentTimestamp}
-            <li>marca temporale del documento non ottenuta: {editor.longTermReport.documentTimestamp}</li>
+            <li>{t.noDocumentTimestamp(editor.longTermReport.documentTimestamp)}</li>
           {/if}
         </ul>
       </div>
       <div class="flex justify-end">
-        <button type="button" class="rounded-md border px-3 py-1.5 hover:bg-muted" onclick={close}>Chiudi</button>
+        <button type="button" class="rounded-md border px-3 py-1.5 hover:bg-muted" onclick={close}>{t.close}</button>
       </div>
     {:else}
       {#if cards}
-        <div class="flex gap-1 rounded-md border p-1" role="radiogroup" aria-label="Con che cosa firmare">
-          {#each [['file', 'File .p12 / .pfx'], ['card', 'Smart card']] as [value, label] (value)}
+        <div class="flex gap-1 rounded-md border p-1" role="radiogroup" aria-label={t.method}>
+          {#each [['file', t.methodFile], ['card', t.methodCard]] as [value, label] (value)}
             <label
               class={[
                 'flex-1 cursor-pointer rounded px-2 py-1 text-center',
@@ -164,12 +164,12 @@
         <CardSigner bind:this={cardPart} />
       {:else}
         <div class="flex flex-col gap-1.5">
-          <span class="font-medium">Certificato con chiave privata</span>
+          <span class="font-medium">{t.keyFile}</span>
           <label
             class="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 focus-within:ring-2 focus-within:ring-primary hover:bg-muted"
           >
             <FileKey class="size-4 shrink-0" />
-            <span class="truncate">{key ? key.name : 'Scegli il file .p12 o .pfx…'}</span>
+            <span class="truncate">{key ? key.name : t.chooseKey}</span>
             <input
               type="file"
               accept=".p12,.pfx,application/x-pkcs12"
@@ -187,8 +187,8 @@
           <input
             type="password"
             class={field}
-            aria-label="Password del certificato"
-            placeholder="Password del certificato"
+            aria-label={t.keyPassword}
+            placeholder={t.keyPassword}
             autocomplete="off"
             bind:value={password}
             onchange={check}
@@ -200,22 +200,24 @@
             }}
           />
           {#if checking}
-            <p class="text-muted-foreground" aria-live="polite">Lettura del certificato…</p>
+            <p class="text-muted-foreground" aria-live="polite">{t.readingCertificate}</p>
           {:else if problem}
             <p class="rounded-md bg-danger-background px-3 py-2 text-danger" role="alert">{problem}</p>
           {:else if certificate}
             <div class="flex flex-col gap-0.5 rounded-md bg-muted px-3 py-2" data-testid="sign-certificate">
-              <span>Firmerai come <strong>{certificate.name}</strong></span>
+              <span>{t.signAs} <strong>{certificate.name}</strong></span>
               <span class="text-xs text-muted-foreground">
-                Emesso da {commonName(certificate.issuer)} · valido dal {localDateTime(certificate.notBefore)} al {localDateTime(
-                  certificate.notAfter,
-                )} · {certificate.key}
+                {t.issued(
+                  commonName(certificate.issuer),
+                  localDateTime(certificate.notBefore),
+                  localDateTime(certificate.notAfter),
+                  certificate.key,
+                )}
               </span>
             </div>
             {#if expired || early}
               <p class="rounded-md bg-warning-background px-3 py-2 text-warning" role="note">
-                {expired ? 'Il certificato è scaduto' : 'Il certificato non è ancora valido'}: la firma risulterà fatta
-                con un certificato non valido in quel momento.
+                {t.notValidNow(expired)}
               </p>
             {/if}
           {/if}
@@ -224,19 +226,18 @@
 
       <div class="grid grid-cols-2 gap-2">
         <label class="flex flex-col gap-1">
-          <span class="font-medium">Motivo</span>
-          <input class={field} bind:value={reason} placeholder="facoltativo" />
+          <span class="font-medium">{t.reason}</span>
+          <input class={field} bind:value={reason} placeholder={t.optional} />
         </label>
         <label class="flex flex-col gap-1">
-          <span class="font-medium">Luogo</span>
-          <input class={field} bind:value={location} placeholder="facoltativo" />
+          <span class="font-medium">{t.location}</span>
+          <input class={field} bind:value={location} placeholder={t.optional} />
         </label>
       </div>
 
       <p class="text-xs text-muted-foreground">
-        La firma diventa una nuova versione del file, che viene salvato subito (con «-firmato» nel nome). Le modifiche
-        fatte finora ne fanno parte; quelle successive si aggiungono dopo senza invalidarla, ma risulteranno fatte dopo
-        la firma. {method === 'card' ? 'La chiave resta nella carta.' : 'La chiave resta nel browser.'}
+        {t.whatSigningDoes}
+        {method === 'card' ? t.keyStaysOnCard : t.keyStaysInBrowser}
       </p>
 
       {#if editor.error && request}
@@ -248,14 +249,15 @@
           type="button"
           class="rounded-md border px-3 py-1.5 hover:bg-muted"
           disabled={editor.busy}
-          onclick={close}>Annulla</button
+          onclick={close}>{t.cancel}</button
         >
         <button
           type="submit"
           class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60"
           disabled={!ready || editor.busy || checking}
         >
-          <Signature class="size-4" /> Firma e salva
+          <Signature class="size-4" />
+          {t.signAndSave}
         </button>
       </div>
     {/if}
