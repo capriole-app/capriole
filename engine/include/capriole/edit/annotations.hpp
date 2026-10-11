@@ -37,9 +37,20 @@ enum class AnnotationKind : std::uint8_t {
   kLine,      // from → to
   kFreeText,  // text written on the page in rect, wrapped to its width
   kRedact,    // a redaction mark (edit/redact.hpp): rect, or boxes of text (quads); fill: what the area becomes
+  kStamp,     // a picture in rect (/Stamp): a signature drawn by hand, a seal (image); upright as the page is shown
 };
 
 using Rgb = std::array<double, 3>;  // each 0..1
+
+// A stamp's picture: 8-bit RGB samples row by row from the top, and an 8-bit alpha (empty: opaque). At most
+// kMaxStampPixels pixels (kLimitExceeded beyond).
+struct StampImage {
+  std::uint32_t width = 0;
+  std::uint32_t height = 0;
+  std::vector<std::uint8_t> rgb;    // width × height × 3
+  std::vector<std::uint8_t> alpha;  // width × height, or empty
+};
+inline constexpr std::uint64_t kMaxStampPixels = 16'000'000;
 
 struct AnnotationSpec {
   AnnotationKind kind = AnnotationKind::kHighlight;
@@ -49,14 +60,15 @@ struct AnnotationSpec {
   graphics::Rect rect;                                // note (where its icon goes), square, circle, free text
   graphics::Point from;                               // line
   graphics::Point to;
-  Rgb color{1, 0.82, 0};    // the colour (/C; the text's colour for free text)
-  std::optional<Rgb> fill;  // the interior of a square or circle; what a redaction mark's area is filled with (/IC)
-  double width = 1;         // border or pen, in points
-  double opacity = 1;       // /CA
-  double font_size = 12;    // free text
-  std::string contents;     // UTF-8: the note's text, the free text, a comment on the others
-  std::string author;       // UTF-8, /T
-  std::string date;         // a PDF date ("D:20261002120000Z") for /M and /CreationDate; none when empty
+  Rgb color{1, 0.82, 0};            // the colour (/C; the text's colour for free text)
+  std::optional<Rgb> fill;          // the interior of a square or circle; what a redaction mark's area is filled with (/IC)
+  double width = 1;                 // border or pen, in points
+  double opacity = 1;               // /CA
+  double font_size = 12;            // free text
+  std::string contents;             // UTF-8: the note's text, the free text, a comment on the others
+  std::string author;               // UTF-8, /T
+  std::string date;                 // a PDF date ("D:20261002120000Z") for /M and /CreationDate; none when empty
+  std::optional<StampImage> image;  // stamp: its picture, drawn to fill rect
 };
 
 struct AnnotationInfo {
@@ -77,12 +89,13 @@ struct AnnotationInfo {
 
 // Adds an annotation to page page_index; returns its reference. kOutOfRange for a page past the last;
 // kUnsupported for a geometry the kind needs that is missing (no quads for markup, no stroke for ink,
-// an empty rect).
+// an empty rect) or a stamp without a picture, or with samples that do not match its size;
+// kLimitExceeded for a picture larger than kMaxStampPixels.
 [[nodiscard]] Result<model::ObjectRef> add_annotation(Document& document, std::uint32_t page_index, const AnnotationSpec& spec);
 
 struct AnnotationChange {
   std::optional<graphics::Point> move_by;  // in page coordinates as shown
-  std::optional<graphics::Rect> rect;      // a new rectangle as shown: free text, square, circle
+  std::optional<graphics::Rect> rect;      // a new rectangle as shown: free text, square, circle, a stamp of the editor's
   std::optional<std::string> contents;     // UTF-8
   std::optional<Rgb> color;
   std::optional<double> opacity;
@@ -91,9 +104,9 @@ struct AnnotationChange {
 };
 
 // Changes annotation ref of page page_index: moves it (its appearance with it), gives it another rectangle (free
-// text, square, circle; kUnsupported for the others), changes its text, its colour or its text size (free text)
-// — the appearance is generated again for the kinds the editor makes; kUnsupported for another kind's colour.
-// Form widgets are fields' (phase 8e): kUnsupported.
+// text, square, circle, a stamp the editor made — its picture stretched to it; kUnsupported for the others), changes its text, its colour or its text size
+// (free text) — the appearance is generated again for the kinds the editor makes; kUnsupported for another kind's colour. Form widgets are fields' (phase 8e):
+// kUnsupported.
 [[nodiscard]] Result<void> update_annotation(Document& document, std::uint32_t page_index, model::ObjectRef ref, const AnnotationChange& change);
 
 // Removes annotation ref, and its popup, from page page_index.

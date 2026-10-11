@@ -884,7 +884,9 @@ capriole::Result<capriole::edit::Rgb> rgb_in(const capriole::capi::JsonValue* va
   return capriole::edit::Rgb{(*v)[0], (*v)[1], (*v)[2]};
 }
 
-capriole::Result<capriole::edit::AnnotationSpec> spec_of(const capriole::capi::JsonValue& json) {
+// The annotation of a JSON specification; a stamp's (given) takes no "kind".
+capriole::Result<capriole::edit::AnnotationSpec> spec_of(const capriole::capi::JsonValue& json,
+                                                         std::optional<capriole::edit::AnnotationKind> given = std::nullopt) {
   using capriole::ErrorCode;
   using capriole::make_error;
   using capriole::edit::AnnotationKind;
@@ -897,13 +899,13 @@ capriole::Result<capriole::edit::AnnotationSpec> spec_of(const capriole::capi::J
       {"highlight", AnnotationKind::kHighlight}, {"underline", AnnotationKind::kUnderline}, {"strikeout", AnnotationKind::kStrikeOut},
       {"squiggly", AnnotationKind::kSquiggly},   {"note", AnnotationKind::kNote},           {"ink", AnnotationKind::kInk},
       {"square", AnnotationKind::kSquare},       {"circle", AnnotationKind::kCircle},       {"line", AnnotationKind::kLine},
-      {"freetext", AnnotationKind::kFreeText},   {"redact", AnnotationKind::kRedact}};
+      {"freetext", AnnotationKind::kFreeText},   {"redact", AnnotationKind::kRedact},       {"stamp", AnnotationKind::kStamp}};
   const auto found = kind_name != nullptr ? kKinds.find(*kind_name) : kKinds.end();
-  if (found == kKinds.end()) {
+  if (found == kKinds.end() && !given) {
     return make_error(ErrorCode::kSyntax, "unknown or missing \"kind\"");
   }
   capriole::edit::AnnotationSpec spec;
-  spec.kind = found->second;
+  spec.kind = given ? *given : found->second;
   if (const auto* quads = json.get("quads")) {
     if (quads->array() == nullptr) {
       return make_error(ErrorCode::kSyntax, "quads: an array expected");
@@ -1317,6 +1319,48 @@ capriole_status capriole_document_annotation_add(capriole_document* document, ui
     if (!spec) {
       return fail(spec.error());
     }
+    auto ref = capriole::edit::add_annotation(document->document, page_index, *spec);
+    if (!ref) {
+      return fail(ref.error());
+    }
+    *number = ref->number;
+    *generation = ref->generation;
+    return CAPRIOLE_OK;
+  } catch (...) {
+    return fail(CAPRIOLE_ERROR_INTERNAL, "internal error");
+  }
+}
+
+capriole_status capriole_document_stamp_add(capriole_document* document, uint32_t page_index, const char* spec_json, const uint8_t* rgba, size_t rgba_size,
+                                            uint32_t width, uint32_t height, uint32_t* number, uint32_t* generation) {
+  g_last_error.clear();
+  if (document == nullptr || spec_json == nullptr || (rgba == nullptr && rgba_size > 0) || number == nullptr || generation == nullptr) {
+    return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "null pointer argument");
+  }
+  try {
+    const std::uint64_t pixels = std::uint64_t{width} * height;
+    if (pixels > capriole::edit::kMaxStampPixels) {
+      return fail(CAPRIOLE_ERROR_LIMIT_EXCEEDED, "the stamp's picture is too large");
+    }
+    if (pixels == 0 || rgba_size != pixels * 4) {
+      return fail(CAPRIOLE_ERROR_INVALID_ARGUMENT, "the stamp's samples do not match its size (RGBA, 4 bytes a pixel)");
+    }
+    auto json = capriole::capi::parse_json(spec_json);
+    if (!json) {
+      return fail(json.error());
+    }
+    auto spec = spec_of(*json, capriole::edit::AnnotationKind::kStamp);
+    if (!spec) {
+      return fail(spec.error());
+    }
+    capriole::edit::StampImage image{.width = width, .height = height, .rgb = {}, .alpha = {}};
+    image.rgb.reserve(pixels * 3);
+    image.alpha.reserve(pixels);
+    for (std::size_t i = 0; i < pixels; ++i) {
+      image.rgb.insert(image.rgb.end(), rgba + (i * 4), rgba + (i * 4) + 3);
+      image.alpha.push_back(rgba[(i * 4) + 3]);
+    }
+    spec->image = std::move(image);
     auto ref = capriole::edit::add_annotation(document->document, page_index, *spec);
     if (!ref) {
       return fail(ref.error());

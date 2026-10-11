@@ -302,6 +302,31 @@ TEST(CApiDocument, Annotations) {
   capriole_document_close(document);
 }
 
+TEST(CApiDocument, Stamps) {
+  capriole_document* document = open_document(sample_pdf());
+  std::uint32_t number = 0;
+  std::uint32_t generation = 0;
+  // 2 × 1 pixels, RGBA: black opaque, then transparent.
+  const std::array<std::uint8_t, 8> rgba = {0, 0, 0, 255, 255, 255, 255, 0};
+  ASSERT_EQ(capriole_document_stamp_add(document, 0, R"({"rect":[10,10,50,30],"author":"Luca"})", rgba.data(), rgba.size(), 2, 1, &number, &generation),
+            CAPRIOLE_OK)
+      << capriole_last_error_message();
+  char* json = nullptr;
+  ASSERT_EQ(capriole_document_page_annotations_json(document, 0, &json), CAPRIOLE_OK);
+  const std::string listed = take_json(json);
+  EXPECT_NE(listed.find(R"("subtype":"Stamp","rect":[10.00,10.00,50.00,30.00])"), std::string::npos) << listed;
+  EXPECT_EQ(capriole_document_annotation_update(document, 0, number, generation, R"({"rect":[20,10,100,50]})"), CAPRIOLE_OK);
+
+  // Samples that do not match the size, too many pixels, no rectangle: refused.
+  EXPECT_EQ(capriole_document_stamp_add(document, 0, R"({"rect":[0,0,9,9]})", rgba.data(), rgba.size(), 3, 1, &number, &generation),
+            CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  EXPECT_EQ(capriole_document_stamp_add(document, 0, R"({"rect":[0,0,9,9]})", rgba.data(), rgba.size(), 5000, 4000, &number, &generation),
+            CAPRIOLE_ERROR_LIMIT_EXCEEDED);
+  EXPECT_EQ(capriole_document_stamp_add(document, 0, R"({"author":"x"})", rgba.data(), rgba.size(), 2, 1, &number, &generation), CAPRIOLE_ERROR_UNSUPPORTED);
+  EXPECT_EQ(capriole_document_stamp_add(document, 0, R"({"rect":[0,0,9,9]})", nullptr, 8, 2, 1, &number, &generation), CAPRIOLE_ERROR_INVALID_ARGUMENT);
+  capriole_document_close(document);
+}
+
 TEST(CApiDocument, Forms) {
   capriole::test::PdfBuilder b;
   b.add_object(1, "<</Type/Catalog/Pages 2 0 R/AcroForm<</Fields[4 0 R 5 0 R 6 0 R]/DA(/Helv 0 Tf 0 g)>>>>");

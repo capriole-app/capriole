@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "capriole/content/appearance.hpp"
+#include "capriole/filters/flate.hpp"
 #include "capriole/model/text_string.hpp"
 #include "common.hpp"
 
@@ -98,17 +99,106 @@ bool generated_kind(std::string_view subtype) {
   return std::ranges::find(kKinds, subtype) != kKinds.end();
 }
 
-// The normal appearance the editor makes for an annotation of a kind it knows; nullopt otherwise.
-std::optional<model::Stream> appearance_for(Document& document, const Page& page, const Dict& annotation) {
+// The picture of a stamp the editor made: the image its appearance draws as /Im0 (its appearance is made
+// again around it when the stamp moves or takes another rectangle); nullopt for any other annotation.
+std::optional<ObjectRef> stamp_image_of(Document& document, const Dict& annotation) {
+  if (subtype_of(annotation) != "Stamp") {
+    return std::nullopt;
+  }
+  const Object* ap = annotation.find("AP");
+  auto ap_dict = ap != nullptr ? document.resolve(*ap) : Result<Object>(Object());
+  const Object* normal = ap_dict && ap_dict->as_dict() != nullptr ? ap_dict->as_dict()->find("N") : nullptr;
+  auto stream = normal != nullptr ? document.resolve(*normal) : Result<Object>(Object());
+  if (!stream || stream->as_stream() == nullptr) {
+    return std::nullopt;
+  }
+  const Object* resources = stream->as_stream()->dict.find("Resources");
+  auto res = resources != nullptr ? document.resolve(*resources) : Result<Object>(Object());
+  const Object* xobjects = res && res->as_dict() != nullptr ? res->as_dict()->find("XObject") : nullptr;
+  auto x = xobjects != nullptr ? document.resolve(*xobjects) : Result<Object>(Object());
+  const Object* image = x && x->as_dict() != nullptr ? x->as_dict()->find("Im0") : nullptr;
+  if (image == nullptr || !image->as_ref()) {
+    return std::nullopt;
+  }
+  auto loaded = document.resolve(*image);
+  const model::Stream* is = loaded ? loaded->as_stream() : nullptr;
+  const Object* kind = is != nullptr ? is->dict.find("Subtype") : nullptr;
+  if (kind == nullptr || kind->as_name() == nullptr || kind->as_name()->bytes != "Image") {
+    return std::nullopt;
+  }
+  return image->as_ref();
+}
+
+// The image XObject of a stamp's picture (with its alpha as a soft mask), added to the document.
+Result<ObjectRef> add_stamp_image(Document& document, const StampImage& image) {
+  const std::uint64_t pixels = std::uint64_t{image.width} * image.height;
+  if (image.width == 0 || image.height == 0) {
+    return make_error(ErrorCode::kUnsupported, "a stamp needs a picture");
+  }
+  if (pixels > kMaxStampPixels) {
+    return make_error(ErrorCode::kLimitExceeded, std::format("a stamp's picture of {} × {} pixels is too large", image.width, image.height));
+  }
+  if (image.rgb.size() != pixels * 3 || (!image.alpha.empty() && image.alpha.size() != pixels)) {
+    return make_error(ErrorCode::kUnsupported, "a stamp's samples do not match its size");
+  }
+  const auto stream_of = [&](std::span<const std::uint8_t> samples, std::string_view space) -> Result<model::Stream> {
+    auto packed = filters::flate_encode(std::as_bytes(samples));
+    if (!packed) {
+      return std::unexpected(std::move(packed.error()));
+    }
+    model::Stream s;
+    s.dict.set("Type", name("XObject"));
+    s.dict.set("Subtype", name("Image"));
+    s.dict.set("Width", static_cast<std::int64_t>(image.width));
+    s.dict.set("Height", static_cast<std::int64_t>(image.height));
+    s.dict.set("ColorSpace", name(std::string(space)));
+    s.dict.set("BitsPerComponent", std::int64_t{8});
+    s.dict.set("Interpolate", true);
+    s.dict.set("Filter", name("FlateDecode"));
+    s.memory_data = std::make_shared<const std::vector<std::byte>>(std::move(*packed));
+    return s;
+  };
+  auto color = stream_of(image.rgb, "DeviceRGB");
+  if (!color) {
+    return std::unexpected(std::move(color.error()));
+  }
+  // An alpha that is opaque everywhere is no mask.
+  if (std::ranges::any_of(image.alpha, [](std::uint8_t a) { return a != 255; })) {
+    auto mask = stream_of(image.alpha, "DeviceGray");
+    if (!mask) {
+      return std::unexpected(std::move(mask.error()));
+    }
+    auto mask_ref = document.add(Object(std::move(*mask)));
+    if (!mask_ref) {
+      return mask_ref;
+    }
+    color->dict.set("SMask", *mask_ref);
+  }
+  return document.add(Object(std::move(*color)));
+}
+
+// The normal appearance the editor makes for an annotation of a kind it knows; nullopt otherwise. A stamp:
+// around its picture, image (when new), else the one its appearance already draws.
+std::optional<model::Stream> appearance_for(Document& document, const Page& page, const Dict& annotation, std::optional<ObjectRef> image = std::nullopt) {
   const std::string subtype = subtype_of(annotation);
   const std::vector<double> r = content::numbers(document, annotation, "Rect");
-  if (r.size() != 4 || !generated_kind(subtype)) {
+  if (subtype == "Stamp" && !image) {
+    image = stamp_image_of(document, annotation);
+  }
+  if (r.size() != 4 || (!generated_kind(subtype) && !(subtype == "Stamp" && image))) {
     return std::nullopt;
   }
   const Rect rect = Rect{r[0], r[1], r[2], r[3]}.normalized();
   Dict resources;
   std::string content;
-  if (subtype == "Text") {
+  if (subtype == "Stamp") {
+    // The picture fills the rectangle as shown, upright, its first row at the top.
+    const Rect shown = page.view(rect);
+    content = in_view(page, std::format("q {} 0 0 {} {} {} cm /Im0 Do Q\n", num(shown.width()), num(-shown.height()), num(shown.x0), num(shown.y1)));
+    Dict xobjects;
+    xobjects.set("Im0", *image);
+    resources.set("XObject", std::move(xobjects));
+  } else if (subtype == "Text") {
     // Upright in page space (the reader keeps it upright on the screen: NoRotate): drawn y down in the
     // rectangle's own box, whose top left is /Rect's upper-left corner.
     const std::vector<double> c = content::numbers(document, annotation, "C");
@@ -157,8 +247,8 @@ std::optional<model::Stream> appearance_for(Document& document, const Page& page
 }
 
 // Writes the appearance (a new object) into the annotation; false when the editor cannot make one.
-Result<bool> set_appearance(Document& document, const Page& page, Dict& annotation) {
-  auto stream = appearance_for(document, page, annotation);
+Result<bool> set_appearance(Document& document, const Page& page, Dict& annotation, std::optional<ObjectRef> image = std::nullopt) {
+  auto stream = appearance_for(document, page, annotation, image);
   if (!stream) {
     return false;
   }
@@ -209,6 +299,8 @@ std::string_view subtype_name(AnnotationKind kind) {
       return "FreeText";
     case AnnotationKind::kRedact:
       return "Redact";
+    case AnnotationKind::kStamp:
+      return "Stamp";
   }
   return "Text";
 }
@@ -359,7 +451,8 @@ Result<model::ObjectRef> add_annotation(Document& document, std::uint32_t page_i
     case AnnotationKind::kNote:
     case AnnotationKind::kSquare:
     case AnnotationKind::kCircle:
-    case AnnotationKind::kFreeText: {
+    case AnnotationKind::kFreeText:
+    case AnnotationKind::kStamp: {
       if (!valid(spec.rect)) {
         return make_error(ErrorCode::kUnsupported, "this annotation needs a rectangle");
       }
@@ -377,7 +470,20 @@ Result<model::ObjectRef> add_annotation(Document& document, std::uint32_t page_i
     }
   }
   a.set("Rect", rect_array(rect));
-  if (spec.kind == AnnotationKind::kFreeText) {
+  std::optional<ObjectRef> image;
+  if (spec.kind == AnnotationKind::kStamp) {
+    if (!spec.image) {
+      return make_error(ErrorCode::kUnsupported, "a stamp needs a picture");
+    }
+    auto added = add_stamp_image(document, *spec.image);
+    if (!added) {
+      return std::unexpected(std::move(added.error()));
+    }
+    image = *added;
+  }
+  if (spec.kind == AnnotationKind::kStamp) {
+    // Its colours are its picture's: no /C.
+  } else if (spec.kind == AnnotationKind::kFreeText) {
     const double size = std::isfinite(spec.font_size) ? std::clamp(spec.font_size, 1.0, 500.0) : 12;
     a.set("DA", model::String{.bytes = std::format("/Helv {} Tf {} rg", num(size), rgb_operands(clamp(spec.color)))});
   } else {
@@ -412,7 +518,7 @@ Result<model::ObjectRef> add_annotation(Document& document, std::uint32_t page_i
   if (!ref) {
     return ref;
   }
-  if (auto made = set_appearance(document, *page, a); !made) {
+  if (auto made = set_appearance(document, *page, a, image); !made) {
     return std::unexpected(std::move(made.error()));
   }
   if (auto set = document.set(ref->number, Object(std::move(a))); !set) {
@@ -440,6 +546,8 @@ Result<void> update_annotation(Document& document, std::uint32_t page_index, mod
     return make_error(ErrorCode::kUnsupported, "form widgets are changed through their fields");
   }
   Dict a = std::move(*annotation);
+  // A stamp the editor made: its appearance is made again around its picture.
+  const bool stamp = stamp_image_of(document, a).has_value();
   bool regenerate = false;
   if (change.move_by) {
     if (!valid(*change.move_by)) {
@@ -451,11 +559,11 @@ Result<void> update_annotation(Document& document, std::uint32_t page_index, mod
     const double dy = (m.b * change.move_by->x) + (m.d * change.move_by->y);
     detail::shift_annotation(document, a, dx, dy);
     // The appearance follows /Rect; one of the editor's own, drawn in page space, is made again there.
-    regenerate = generated_kind(subtype) && a.contains("AP");
+    regenerate = (generated_kind(subtype) || stamp) && a.contains("AP");
   }
   if (change.rect) {
-    if (subtype != "FreeText" && subtype != "Square" && subtype != "Circle") {
-      return make_error(ErrorCode::kUnsupported, "only free text, squares and circles take a new rectangle, not /" + subtype);
+    if (subtype != "FreeText" && subtype != "Square" && subtype != "Circle" && !stamp) {
+      return make_error(ErrorCode::kUnsupported, "only free text, squares, circles and the editor's stamps take a new rectangle, not /" + subtype);
     }
     if (!valid(*change.rect)) {
       return make_error(ErrorCode::kUnsupported, "a rectangle needs a width and a height");

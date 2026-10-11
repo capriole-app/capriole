@@ -211,7 +211,16 @@ capriole_status capriole_document_page_annotations_json(capriole_document* docum
 capriole_status capriole_document_annotation_add(capriole_document* document, uint32_t page_index, const char* spec_json, uint32_t* number,
                                                  uint32_t* generation);
 
-/* Changes an annotation of page page_index (JSON: moveBy, contents, color, opacity, date). */
+/*
+ * Adds a stamp to page page_index: a picture (a signature drawn by hand, a seal) filling the rectangle of
+ * spec_json ("rect", and optionally "contents", "author", "date", as for capriole_document_annotation_add),
+ * upright as the page is shown. rgba: width × height pixels, 4 bytes each (red, green, blue, alpha), row
+ * by row from the top — a canvas's ImageData. CAPRIOLE_ERROR_LIMIT_EXCEEDED beyond 16 million pixels.
+ */
+capriole_status capriole_document_stamp_add(capriole_document* document, uint32_t page_index, const char* spec_json, const uint8_t* rgba, size_t rgba_size,
+                                            uint32_t width, uint32_t height, uint32_t* number, uint32_t* generation);
+
+/* Changes an annotation of page page_index (JSON: moveBy, rect, contents, color, opacity, date). */
 capriole_status capriole_document_annotation_update(capriole_document* document, uint32_t page_index, uint32_t number, uint32_t generation,
                                                     const char* change_json);
 

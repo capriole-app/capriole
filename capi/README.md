@@ -180,7 +180,7 @@ text's (from `/DA`); `fontSize` is null for the other kinds.
 known key with a value of the wrong shape is an error, as is malformed JSON — nested at most 32 deep):
 
 ```json
-{"kind":"highlight"|"underline"|"strikeout"|"squiggly"|"note"|"ink"|"square"|"circle"|"line"|"freetext"|"redact",
+{"kind":"highlight"|"underline"|"strikeout"|"squiggly"|"note"|"ink"|"square"|"circle"|"line"|"freetext"|"redact"|"stamp",
  "quads":[[x0,y0,x1,y1], …],          // text markup: boxes of horizontal text (e.g. words of the page's text)
  "strokes":[[[x,y], …], …],           // ink
  "rect":[x0,y0,x1,y1],                // note (its icon), square, circle, free text
@@ -196,10 +196,18 @@ free text in Helvetica wrapped to its rectangle, line breaks kept (Latin text: c
 become `?`).
 `capriole_document_annotation_update` takes `{"moveBy":[dx,dy], "rect":[x0,y0,x1,y1], "contents":"…",
 "color":[r,g,b], "opacity":n, "fontSize":n, "date":"…"}` (any of them); a new rectangle (free text,
-square, circle), colour, text or text size (free text) makes the appearance again (for the kinds the
+square, circle, a stamp the engine made), colour, text or text size (free text) makes the appearance again (for the kinds the
 engine makes; another kind's colour, rectangle or size is `CAPRIOLE_ERROR_UNSUPPORTED`). `capriole_document_annotation_remove`
 removes it with its popup. Documents whose structure needed repairs are edited after a full save
 (`CAPRIOLE_ERROR_UNSUPPORTED` until then); listing works on any document.
+
+`capriole_document_stamp_add(document, page, spec_json, rgba, size, width, height, &number, &generation)`
+adds a picture — a signature drawn by hand, a seal — as a `/Stamp` annotation: `{"rect":[…], "contents",
+"author", "date"}` (no `kind`), and the pixels as a canvas's `ImageData` gives them (RGBA, row by row
+from the top, `size` = width × height × 4; at most 16 million pixels, else `CAPRIOLE_ERROR_LIMIT_EXCEEDED`).
+The picture fills the rectangle upright as the page is shown; its alpha becomes a soft mask (none when
+opaque). Moved, or given another `rect`, its appearance is made again around the same picture (not
+copied); its colour is the picture's (`CAPRIOLE_ERROR_UNSUPPORTED`).
 
 ## Redaction
 

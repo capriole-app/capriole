@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -414,6 +415,114 @@ TEST(AnnotationRendering, NoRotateKeepsAnnotationsUprightOnTurnedPages) {
       EXPECT_GT(height, width);
     }
   }
+}
+
+// A 2 × 2 picture: its top-left pixel black, the others transparent (white underneath).
+StampImage corner_picture() {
+  StampImage image{.width = 2, .height = 2, .rgb = {}, .alpha = {}};
+  image.rgb = {0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255};
+  image.alpha = {255, 0, 0, 0};
+  return image;
+}
+
+TEST(AnnotationStamps, APictureFillsItsRectangleUprightWithItsTransparency) {
+  // The rectangle as shown, [20 20 100 60]: the black pixel is its upper-left quarter on the screen,
+  // whatever the page's /Rotate; the transparent ones leave the page white.
+  for (const std::string rotate : {"", "/Rotate 90", "/Rotate 180"}) {
+    SCOPED_TRACE(rotate);
+    Document document = open(page_pdf(rotate));
+    auto ref = add_annotation(document, 0, spec(AnnotationKind::kStamp, [](AnnotationSpec& s) {
+                                s.rect = Rect{20, 20, 100, 60};
+                                s.image = corner_picture();
+                                s.author = "Luca";
+                              }));
+    ASSERT_TRUE(ref.has_value()) << ref.error().message;
+    const Dict& a = dict_of(document, *ref);
+    EXPECT_EQ(a.find("Subtype")->as_name()->bytes, "Stamp");
+    EXPECT_EQ(a.find("C"), nullptr);
+    const auto box = inked_box(document);
+    EXPECT_NEAR(box[0], 20, 1);
+    EXPECT_NEAR(box[1], 20, 1);
+    EXPECT_NEAR(box[2], 59, 1);
+    EXPECT_NEAR(box[3], 39, 1);
+
+    // Saved and read again: a stamp the editor can move.
+    Document again = open(save(document));
+    auto listed = list_annotations(again, 0);
+    ASSERT_TRUE(listed.has_value());
+    ASSERT_EQ(listed->size(), 1U);
+    EXPECT_EQ((*listed)[0].subtype, "Stamp");
+    EXPECT_EQ((*listed)[0].author, "Luca");
+    EXPECT_TRUE((*listed)[0].editable);
+    EXPECT_NEAR((*listed)[0].rect.x0, 20, 0.01);
+    EXPECT_NEAR((*listed)[0].rect.y1, 60, 0.01);
+  }
+}
+
+TEST(AnnotationStamps, AnOpaquePictureHasNoMask) {
+  Document document = open(page_pdf());
+  StampImage image{.width = 1, .height = 1, .rgb = {10, 20, 30}, .alpha = {255}};
+  auto ref = add_annotation(document, 0, spec(AnnotationKind::kStamp, [&](AnnotationSpec& s) {
+                              s.rect = Rect{0, 0, 10, 10};
+                              s.image = image;
+                            }));
+  ASSERT_TRUE(ref.has_value());
+  const std::string saved = save(document);
+  EXPECT_NE(saved.find("/Subtype /Image"), std::string::npos);
+  EXPECT_EQ(saved.find("/SMask"), std::string::npos);
+}
+
+TEST(AnnotationStamps, AStampMovesAndTakesAnotherRectangleKeepingItsPicture) {
+  Document document = open(page_pdf());
+  auto ref = add_annotation(document, 0, spec(AnnotationKind::kStamp, [](AnnotationSpec& s) {
+                              s.rect = Rect{20, 20, 100, 60};
+                              s.image = corner_picture();
+                            }));
+  ASSERT_TRUE(ref.has_value());
+  const auto images = [&] {
+    const std::string saved = save(document);
+    std::size_t count = 0;
+    for (std::size_t at = saved.find("/Subtype /Image"); at != std::string::npos; at = saved.find("/Subtype /Image", at + 1)) {
+      ++count;
+    }
+    return count;
+  };
+  ASSERT_EQ(images(), 2U);  // the picture and its mask
+
+  ASSERT_TRUE(update_annotation(document, 0, *ref, change([](AnnotationChange& c) { c.move_by = Point{10, 5}; })).has_value());
+  auto box = inked_box(document);
+  EXPECT_NEAR(box[0], 30, 1);
+  EXPECT_NEAR(box[1], 25, 1);
+
+  ASSERT_TRUE(update_annotation(document, 0, *ref, change([](AnnotationChange& c) { c.rect = Rect{100, 10, 180, 90}; })).has_value());
+  box = inked_box(document);
+  EXPECT_NEAR(box[0], 100, 1);
+  EXPECT_NEAR(box[1], 10, 1);
+  EXPECT_NEAR(box[2], 139, 1);
+  EXPECT_NEAR(box[3], 49, 1);
+  EXPECT_EQ(images(), 2U);  // the same picture, not a copy
+
+  // Its colours are its picture's.
+  EXPECT_EQ(update_annotation(document, 0, *ref, change([](AnnotationChange& c) { c.color = Rgb{1, 0, 0}; })).error().code, ErrorCode::kUnsupported);
+}
+
+TEST(AnnotationStamps, PicturesThatAreMissingWrongOrTooLargeAreRefused) {
+  Document document = open(page_pdf());
+  const auto add = [&](std::optional<StampImage> image) {
+    return add_annotation(document, 0, spec(AnnotationKind::kStamp, [&](AnnotationSpec& s) {
+                            s.rect = Rect{0, 0, 10, 10};
+                            s.image = std::move(image);
+                          }));
+  };
+  EXPECT_EQ(add(std::nullopt).error().code, ErrorCode::kUnsupported);
+  EXPECT_EQ(add(StampImage{.width = 2, .height = 2, .rgb = {0, 0, 0}, .alpha = {}}).error().code, ErrorCode::kUnsupported);
+  EXPECT_EQ(add(StampImage{.width = 2, .height = 1, .rgb = {0, 0, 0, 0, 0, 0}, .alpha = {1}}).error().code, ErrorCode::kUnsupported);
+  EXPECT_EQ(add(StampImage{.width = 5000, .height = 4000, .rgb = {}, .alpha = {}}).error().code, ErrorCode::kLimitExceeded);
+  EXPECT_EQ(add(StampImage{}).error().code, ErrorCode::kUnsupported);
+  // Nothing was added.
+  auto listed = list_annotations(document, 0);
+  ASSERT_TRUE(listed.has_value());
+  EXPECT_TRUE(listed->empty());
 }
 
 }  // namespace

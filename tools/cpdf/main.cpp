@@ -36,6 +36,7 @@
 #include "capriole/core/source_reader.hpp"
 #include "capriole/core/version.hpp"
 #include "capriole/document/document.hpp"
+#include "capriole/edit/annotations.hpp"
 #include "capriole/edit/pages.hpp"
 #include "capriole/font/resources.hpp"
 #include "capriole/graphics/svg.hpp"
@@ -108,6 +109,8 @@ void print_usage() {
                "                  add an annotation (capi/README.md: {\"kind\":\"highlight\",\"quads\":[[x0,y0,x1,y1]]}, ...;\n"
                "                  coordinates as the page is shown), saved incrementally (fully if it needed repairs)\n"
                "  annot remove <file> <page> <object number> <output>\n"
+               "  annot stamp <file> <page> <json> <picture> <output>\n"
+               "                  a picture ({\"rect\":[x0,y0,x1,y1]}; a PPM, or a PAM with alpha) filling the rectangle\n"
                "  form list <file>               the form's fields, as JSON\n"
                "  attach list <file>             the attachments, as JSON\n"
                "  attach extract <file> <number> <output>\n"
@@ -595,7 +598,52 @@ int save_capi(capriole_document* document, std::string_view output) {
   return kExitOk;
 }
 
-// annot list|add|remove: annotations through the C API, as the apps use them.
+// A picture from a Netpbm file as RGBA: P6 (PPM, opaque) or P7 (PAM) with TUPLTYPE RGB or RGB_ALPHA, 8 bits.
+std::optional<std::tuple<std::uint32_t, std::uint32_t, std::vector<std::uint8_t>>> read_netpbm(std::string_view path) {
+  std::ifstream in{std::string(path), std::ios::binary};
+  std::string magic;
+  in >> magic;
+  std::uint64_t width = 0;
+  std::uint64_t height = 0;
+  std::uint64_t channels = 3;
+  std::uint64_t max = 0;
+  if (magic == "P6") {
+    in >> width >> height >> max;
+    in.get();
+  } else if (magic == "P7") {
+    for (std::string key; in >> key && key != "ENDHDR";) {
+      std::string value;
+      in >> value;
+      if (key == "WIDTH") {
+        width = std::stoull(value);
+      } else if (key == "HEIGHT") {
+        height = std::stoull(value);
+      } else if (key == "DEPTH") {
+        channels = std::stoull(value);
+      } else if (key == "MAXVAL") {
+        max = std::stoull(value);
+      }
+    }
+    in.get();
+  }
+  if (!in || max != 255 || (channels != 3 && channels != 4) || width == 0 || height == 0 || width * height > capriole::edit::kMaxStampPixels) {
+    return std::nullopt;
+  }
+  std::vector<std::uint8_t> samples(width * height * channels);
+  in.read(reinterpret_cast<char*>(samples.data()), static_cast<std::streamsize>(samples.size()));  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+  if (!in) {
+    return std::nullopt;
+  }
+  std::vector<std::uint8_t> rgba;
+  rgba.reserve(width * height * 4);
+  for (std::size_t i = 0; i < width * height; ++i) {
+    rgba.insert(rgba.end(), samples.begin() + static_cast<std::ptrdiff_t>(i * channels), samples.begin() + static_cast<std::ptrdiff_t>((i * channels) + 3));
+    rgba.push_back(channels == 4 ? samples[(i * channels) + 3] : 255);
+  }
+  return std::tuple{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height), std::move(rgba)};
+}
+
+// annot list|add|remove|stamp: annotations through the C API, as the apps use them.
 int cmd_annot(std::span<char* const> args) {
   const std::string_view action = args[0];
   const std::string_view path = args[1];
@@ -632,6 +680,21 @@ int cmd_annot(std::span<char* const> args) {
       return failed("add");
     }
     std::cout << std::format("added {} {} R\n", number, generation);
+  } else if (action == "stamp") {
+    const auto picture = read_netpbm(args[4]);
+    if (!picture) {
+      std::cerr << std::format("cpdf: {}: not a PPM or PAM picture (8 bits, RGB or RGB_ALPHA)\n", args[4]);
+      capriole_document_close(document);
+      return kExitFailure;
+    }
+    const auto& [width, height, rgba] = *picture;
+    std::uint32_t number = 0;
+    std::uint32_t generation = 0;
+    if (capriole_document_stamp_add(document, index, args[3], rgba.data(), rgba.size(), width, height, &number, &generation) != CAPRIOLE_OK) {
+      return failed("stamp");
+    }
+    std::cout << std::format("added {} {} R\n", number, generation);
+    return save_capi(document, args[5]);
   } else {
     const auto number = parse_uint(args[3]);
     if (!number || *number > 0xFFFFFFFFULL || capriole_document_annotation_remove(document, index, static_cast<std::uint32_t>(*number), 0) != CAPRIOLE_OK) {
@@ -1831,7 +1894,7 @@ int run(std::span<char*> args) {
   }
   if (command == "annot" && args.size() >= 5) {
     const std::string_view action = args[2];
-    if ((action == "list" && args.size() == 5) || ((action == "add" || action == "remove") && args.size() == 7)) {
+    if ((action == "list" && args.size() == 5) || ((action == "add" || action == "remove") && args.size() == 7) || (action == "stamp" && args.size() == 8)) {
       return cmd_annot(args.subspan(2));
     }
   }

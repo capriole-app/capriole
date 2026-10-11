@@ -4,12 +4,13 @@
 //   moved, recoloured, reworded and listed, then the document is saved fully and incrementally and read
 //   back; a document that needed repairs is saved fully and read back first, as the apps do;
 // - anything else is a JSON specification: added to a small fixed page, listed, changed with the same
-//   text as a change, removed.
+//   text as a change, removed; then added again as a stamp's, the input's bytes its picture.
 // The seed corpus is fuzz/corpus/annotations/.
 //
 // Invariants beyond "no crash, no UB, no hang": every call returns a status; JSON results parse as what
 // the C API promises (they start as arrays); what is added is listed.
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -71,6 +72,15 @@ void edit_document(capriole_document* document) {
     }
     check(list(document).find(std::to_string(number)) != std::string::npos);
     (void)capriole_document_annotation_update(document, 0, number, generation, R"({"moveBy":[3,-2],"color":[0,0.5,0],"contents":"x","opacity":0.7})");
+  }
+  // A stamp: a 2 × 2 picture with transparency, moved and given another rectangle.
+  constexpr std::array<std::uint8_t, 16> kPicture = {0, 0, 0, 255, 255, 0, 0, 128, 0, 0, 255, 0, 255, 255, 255, 255};
+  std::uint32_t number = 0;
+  std::uint32_t generation = 0;
+  if (capriole_document_stamp_add(document, 0, R"({"rect":[20,20,80,50],"author":"f"})", kPicture.data(), kPicture.size(), 2, 2, &number, &generation) ==
+      CAPRIOLE_OK) {
+    check(list(document).find(std::to_string(number)) != std::string::npos);
+    (void)capriole_document_annotation_update(document, 0, number, generation, R"({"moveBy":[3,-2],"rect":[10,10,90,40]})");
   }
   (void)list(document);
 }
@@ -141,6 +151,13 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     check(capriole_document_annotation_remove(document, 0, number, generation) == CAPRIOLE_OK);
   } else {
     (void)capriole_document_annotation_update(document, 0, 1, 0, json.c_str());
+  }
+  // The same specification as a stamp's, with the input's first bytes as its picture (as many whole
+  // RGBA pixels as there are, in one row).
+  const auto pixels = static_cast<std::uint32_t>(std::min<std::size_t>(size / 4, 256));
+  if (pixels > 0 && capriole_document_stamp_add(document, 0, json.c_str(), data, std::size_t{pixels} * 4, pixels, 1, &number, &generation) == CAPRIOLE_OK) {
+    check(list(document).find(std::to_string(number)) != std::string::npos);
+    (void)capriole_document_annotation_update(document, 0, number, generation, json.c_str());
   }
   capriole_document_close(document);
   return 0;
