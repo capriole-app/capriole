@@ -1,0 +1,40 @@
+# The web app's own server, inside the capriole-web image: static files and their headers. In front of
+# it, on contabo-b, the shared gateway (Caddyfile.capriole.snippet) does TLS, HSTS and the domain.
+# Self-hosted, the image works the same behind any proxy that terminates TLS.
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	# csp.caddy: the Content-Security-Policy with the hashes of this build's inline scripts (csp.mjs).
+	import /etc/caddy/csp.caddy
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		Cross-Origin-Opener-Policy same-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+		-Server
+	}
+
+	# Files whose names carry their hash never change: kept a year. The rest (the page, the resource
+	# pack, the licences) is asked again each time, answered 304 while unchanged.
+	@immutable path /_app/immutable/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	@mutable not path /_app/immutable/*
+	header @mutable Cache-Control "no-cache"
+
+	# The container's health probe.
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle {
+		file_server
+	}
+}

@@ -1,0 +1,39 @@
+# capriole.app on contabo-b, behind the shared Caddy (Caddyfile.capriole.snippet). No port on the host:
+# the gateway reaches the container by name on the external `proxy` network. IMAGE_TAG is written in
+# .env by deploy.sh (the folder's .env exists only on the server: docs/DEPLOY.md).
+
+name: capriole-web
+
+services:
+  web:
+    # Built by Jenkins and pushed to ghcr.io with the commit's sha (Jenkinsfile, «Image (main)»).
+    image: 'ghcr.io/capriole-app/capriole-web:${IMAGE_TAG:?IMAGE_TAG missing: deploy.sh writes it}'
+    container_name: capriole-web
+    restart: unless-stopped
+    expose:
+      - '8080'
+    networks:
+      - proxy
+    # A shared host: a spike restarts this container, not the OOM killer on the others.
+    mem_limit: 256m
+    pids_limit: 128
+    # Read-only, no Linux capability, no privilege regained from a setuid binary. Caddy writes
+    # nothing but its own state, kept in memory.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+      - /config:size=4m,uid=65532,gid=65532
+      - /data:size=4m,uid=65532,gid=65532
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+networks:
+  proxy:
+    external: true
