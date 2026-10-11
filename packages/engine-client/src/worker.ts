@@ -385,7 +385,10 @@ async function handle(request: Request): Promise<{ value: unknown; transfer: Tra
       const ref = withBytes(m, new Uint8Array(rgba), (data, size) =>
         withString(m, JSON.stringify(request.spec), (spec) =>
           withScratch(m, 8, (out) => {
-            check(m, m._capriole_document_stamp_add(document, request.index, spec, data, size, width, height, out, out + 4));
+            check(
+              m,
+              m._capriole_document_stamp_add(document, request.index, spec, data, size, width, height, out, out + 4),
+            );
             return [m.HEAPU32[out >> 2]!, m.HEAPU32[(out >> 2) + 1]!] as [number, number];
           }),
         ),
