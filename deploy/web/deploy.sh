@@ -9,7 +9,7 @@
 #   (no --tag)    deploys again the IMAGE_TAG written in .env
 #
 # Jenkins runs it on the server so:
-#   cd /srv/apps/capriole-web && deploy/web/deploy.sh --tag <sha>
+#   cd /srv/apps/capriole-web && ./deploy.sh --env main --tag <sha>   (the root wrapper)
 #
 # Going back: deploy/web/deploy.sh --tag <previous sha> (printed at each run).
 # The FIRST deploy is by hand, after the `git clone` (docs/DEPLOY.md).

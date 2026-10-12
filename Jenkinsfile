@@ -139,7 +139,7 @@ pipeline {
       }
     }
 
-    // capriole.app: the server pulls that image (deploy/web/deploy.sh) and waits for it to be healthy.
+    // capriole.app: the server pulls that image (./deploy.sh, the shape the server's SSH gate allows) and waits for it to be healthy.
     stage('Deploy (main)') {
       when {
         beforeAgent true
@@ -157,7 +157,7 @@ pipeline {
                 ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
                   -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
                   "$DEPLOY_USER@$DEPLOY_HOST" \
-                  "set -euo pipefail; cd '$DEPLOY_DIR'; deploy/web/deploy.sh --tag '$IMAGE_TAG'"
+                  "set -euo pipefail; cd '$DEPLOY_DIR'; ./deploy.sh --env main --tag '$IMAGE_TAG'"
               '''
             }
           }
