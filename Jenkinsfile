@@ -48,6 +48,10 @@ pipeline {
             timeout(time: 90, unit: 'MINUTES') {
               sh '''#!/usr/bin/env bash
                 set -euo pipefail
+                # The workspace is kept between builds: a file a past build generated where the tree no
+                # longer ignores it (the engine module once lived in apps/inspector) would be checked as
+                # source. Untracked files go; ignored ones (build trees, node_modules) stay as caches.
+                git clean -fd
                 source "$EMSDK/emsdk_env.sh" >/dev/null
                 SKIP_WASM=0 scripts/check.sh
               '''
