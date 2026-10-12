@@ -45,9 +45,13 @@ pipeline {
       stages {
         stage('Gate') {
           steps {
-            timeout(time: 30, unit: 'MINUTES') {
+            timeout(time: 90, unit: 'MINUTES') {
               sh '''#!/usr/bin/env bash
                 set -euo pipefail
+                # The workspace is kept between builds: a file a past build generated where the tree no
+                # longer ignores it (the engine module once lived in apps/inspector) would be checked as
+                # source. Untracked files go; ignored ones (build trees, node_modules) stay as caches.
+                git clean -fd
                 source "$EMSDK/emsdk_env.sh" >/dev/null
                 SKIP_WASM=0 scripts/check.sh
               '''
@@ -70,7 +74,9 @@ pipeline {
 
         stage('Fuzz smoke') {
           steps {
-            timeout(time: 20, unit: 'MINUTES') {
+            // 34 targets: at 60 s each the fuzzing alone outlasted the stage. A smoke run is a short
+            // pass on every target; the long campaigns run outside CI.
+            timeout(time: 45, unit: 'MINUTES') {
               sh '''#!/usr/bin/env bash
                 set -euo pipefail
                 cmake --preset fuzz
@@ -79,7 +85,7 @@ pipeline {
                 for target in build/fuzz/fuzz/fuzz_*; do
                   name=$(basename "$target"); name=${name#fuzz_}
                   mkdir -p "fuzz/corpus-work/$name"
-                  "$target" -max_total_time=60 -artifact_prefix=fuzz/artifacts/ "fuzz/corpus-work/$name" "fuzz/corpus/$name"
+                  "$target" -max_total_time=20 -artifact_prefix=fuzz/artifacts/ "fuzz/corpus-work/$name" "fuzz/corpus/$name"
                 done
               '''
             }

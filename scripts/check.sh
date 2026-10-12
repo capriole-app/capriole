@@ -63,8 +63,11 @@ if [[ "$SKIP_TIDY" != 1 ]]; then
   # it from the config file, so headers went unchecked until 2026-09-26.
   HEADER_FILTER=$(sed -n "s/^HeaderFilterRegex: '\(.*\)'\$/\1/p" .clang-tidy)
   [[ -n "$HEADER_FILTER" ]] || die "HeaderFilterRegex not found in .clang-tidy"
-  # The compile database comes from the GCC build: ignore GCC-only warning flags.
-  "$CLANG_TIDY" -p build/asan --quiet --extra-arg=-Wno-unknown-warning-option --header-filter="$HEADER_FILTER" "${TIDY_SOURCES[@]}"
+  # The compile database comes from the GCC build: ignore GCC-only warning flags. One file per process,
+  # as many processes as the build uses: run one after the other, the files took an hour on Jenkins.
+  printf '%s\0' "${TIDY_SOURCES[@]}" |
+    xargs -0 -n 1 -P "${CMAKE_BUILD_PARALLEL_LEVEL:-2}" "$CLANG_TIDY" -p build/asan --quiet \
+      --extra-arg=-Wno-unknown-warning-option --header-filter="$HEADER_FILTER"
 else
   printf '\033[1;33m(clang-tidy skipped by SKIP_TIDY=1)\033[0m\n'
 fi
