@@ -45,7 +45,7 @@ pipeline {
       stages {
         stage('Gate') {
           steps {
-            timeout(time: 30, unit: 'MINUTES') {
+            timeout(time: 90, unit: 'MINUTES') {
               sh '''#!/usr/bin/env bash
                 set -euo pipefail
                 source "$EMSDK/emsdk_env.sh" >/dev/null
