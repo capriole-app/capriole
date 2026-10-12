@@ -17,6 +17,7 @@ Checks: >
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-pro-bounds-constant-array-index,
   -misc-include-cleaner,
+  -misc-no-recursion,
   -misc-non-private-member-variables-in-classes,
   -modernize-use-trailing-return-type,
   -readability-identifier-length,
@@ -27,6 +28,8 @@ Checks: >
 #  - magic-numbers: PDF is full of spec-mandated constants; naming each one hurts readability.
 #  - pro-bounds-*: a parser indexes buffers; bounds are enforced by ByteSource/span + fuzzing + ASan.
 #  - include-cleaner: noisy with the standard library across libstdc++/libc++/Emscripten.
+#  - no-recursion: PDF objects are trees; copying, comparing, printing and parsing them recurse.
+#    Depth is bounded where it matters, at parse time, by ParseLimits::max_nesting_depth.
 #  - non-private-member-variables: plain structs (Error, PdfHeader) are intended.
 #  - trailing-return-type: not our style.
 #  - identifier-length / cognitive-complexity: judged in review, not by a threshold.

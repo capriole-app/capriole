@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pkcs11-sign"
+description = "Enables the pkcs11_sign command without any pre-configured scope."
+commands.allow = ["pkcs11_sign"]
+
+[[permission]]
+identifier = "deny-pkcs11-sign"
+description = "Denies the pkcs11_sign command without any pre-configured scope."
+commands.deny = ["pkcs11_sign"]

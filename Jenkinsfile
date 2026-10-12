@@ -4,7 +4,8 @@
 // with ASan/UBSan and -Werror, unit tests, clang-tidy, WebAssembly build + tests). Nothing here
 // re-implements a check, so CI cannot drift into passing what the pre-push hook would fail.
 // On top of it, CI adds what is too slow or too specific for every push: a Clang release build and
-// a short libFuzzer run per target.
+// a short libFuzzer run per target. On main, the web app is then deployed to capriole.app (an image on
+// ghcr.io, pulled by contabo-b: docs/DEPLOY.md).
 //
 // Why a dockerfile agent: the toolchain (GCC 13, Clang 20, emsdk) is pinned in ci/Dockerfile, so the
 // Jenkins host needs only docker. The pipeline starts nothing with a fixed name or host port, so it
@@ -23,6 +24,11 @@ pipeline {
     CI = 'true'
     // The Jenkins host is shared with other projects: do not take every core.
     CMAKE_BUILD_PARALLEL_LEVEL = '4'
+    // Where the web app is deployed (docs/DEPLOY.md): contabo-b, behind its shared Caddy.
+    DEPLOY_HOST = '<server>'
+    DEPLOY_PORT = '<port>'
+    DEPLOY_USER = '<deploy-user>'
+    DEPLOY_DIR = '/srv/apps/capriole-web'
   }
 
   stages {
@@ -82,6 +88,71 @@ pipeline {
             failure {
               // The crashing input is the regression test to be: keep it.
               archiveArtifacts artifacts: 'fuzz/artifacts/*', allowEmptyArchive: true
+            }
+          }
+        }
+
+        // On main only (it is reached from development by merge): the web app the gate built, with
+        // its Content-Security-Policy, as the image's context (deploy/web/package.sh needs node).
+        stage('Web package (main)') {
+          when { branch 'main' }
+          steps {
+            sh 'deploy/web/package.sh'
+          }
+        }
+      }
+    }
+
+    // The image of the web app, tagged with the commit's sha (never `latest`), pushed to ghcr.io.
+    stage('Image (main)') {
+      when {
+        beforeAgent true
+        branch 'main'
+      }
+      agent any
+      steps {
+        timeout(time: 15, unit: 'MINUTES') {
+          script {
+            env.IMAGE_TAG = env.GIT_COMMIT.take(7)
+          }
+          withCredentials([usernamePassword(credentialsId: 'ghcr-push', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
+            sh '''#!/usr/bin/env bash
+              set -euo pipefail
+              # A docker configuration of its own: the login does not touch jenkins' shared one.
+              DOCKER_CONFIG="$(mktemp -d)"
+              export DOCKER_CONFIG
+              trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+              printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+              IMAGE="ghcr.io/capriole-app/capriole-web:${IMAGE_TAG}"
+              docker build --pull -t "$IMAGE" deploy/web/context
+              docker push "$IMAGE"
+              docker image rm -f "$IMAGE" >/dev/null 2>&1 || true
+            '''
+          }
+        }
+      }
+    }
+
+    // capriole.app: the server pulls that image (deploy/web/deploy.sh) and waits for it to be healthy.
+    stage('Deploy (main)') {
+      when {
+        beforeAgent true
+        branch 'main'
+      }
+      agent any
+      steps {
+        timeout(time: 10, unit: 'MINUTES') {
+          // contabo-b's host key is pinned: another server is refused.
+          withCredentials([file(credentialsId: 'contabo-b-known-hosts', variable: 'KNOWN_HOSTS')]) {
+            sshagent(credentials: ['jenkins-master-ssh-key']) {
+              sh '''#!/usr/bin/env bash
+                set -euo pipefail
+                [ -n "${IMAGE_TAG:-}" ] || { echo "[ci] ERROR: IMAGE_TAG missing (did Image fail?)"; exit 1; }
+                ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+                  -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+                  "$DEPLOY_USER@$DEPLOY_HOST" \
+                  "set -euo pipefail; cd '$DEPLOY_DIR'; deploy/web/deploy.sh --tag '$IMAGE_TAG'"
+              '''
             }
           }
         }

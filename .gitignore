@@ -24,3 +24,8 @@ slow-unit-*
 # OS
 .DS_Store
 /fuzz/artifacts/
+
+# Python
+__pycache__/
+*.pyc
+/fuzz/campaign/

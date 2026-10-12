@@ -21,6 +21,35 @@ sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld
 - `qpdf`, `mupdf-tools` (`mutool`), `poppler-utils` (`pdftoppm`, `pdfinfo`): **motori di riferimento
   per i test differenziali**, usati come programmi esterni. Non si linkano mai (licenze, spec §7.3).
   PDFium e pdf.js arrivano alla fase 4 (binario precompilato / Node).
+- Facoltativi, per la verifica di Factur-X (`corpus-tools/check_attachments.py`), fuori dal repo:
+  `python3 -m venv ../CORPORA/tools/venv && ../CORPORA/tools/venv/bin/pip install factur-x`
+  (opzione `--facturx-python ../CORPORA/tools/venv/bin/python`), e veraPDF (Java 11+), installato in
+  `../CORPORA/tools/verapdf` dal suo installer (opzione `--verapdf ../CORPORA/tools/verapdf/verapdf`).
+
+## Node, per le app (`apps/inspector`, `apps/capriole`, `apps/desktop`)
+
+Node **22** (fissato in `.nvmrc`, `engines` e `engine-strict`): per esempio con nvm, `nvm install 22`.
+Quello incluso in emsdk è il 24 e non va bene per l'app. Per i test end-to-end, una volta:
+`cd apps/inspector && npx playwright install chromium`. Istruzioni d'uso in `apps/inspector/README.md`.
+
+## Rust e WebKitGTK, per la shell desktop (`apps/desktop`, fase 8c)
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y     # Rust stabile (rustup)
+sudo apt update && sudo apt install libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
+  libayatana-appindicator3-dev librsvg2-dev
+cd apps/desktop && npm ci && npm run dev     # l'app nella shell (avvia anche apps/capriole in sviluppo)
+npm run build                                # pacchetti .deb e AppImage in src-tauri/target/release/bundle/
+```
+
+Nel gate il passo desktop è facoltativo: `SKIP_WASM=0 SKIP_DESKTOP=0 scripts/check.sh` (clippy sul crate,
+avvisi come errori, e i suoi test). Compila con al più 4 job (`CARGO_BUILD_JOBS=4`): la macchina ha poca memoria.
+
+Smart card (fase 11c): per provarla senza una carta, una carta in software e lo strumento che la usa —
+`sudo apt install softhsm2 opensc` (strumenti di test, mai linkati). Con questi il gate fa anche i test
+PKCS#11 della shell (`scripts/test_desktop_pkcs11.sh`: un token creato per il giro, con la chiave di prova).
+Nell'app, il modulo di SoftHSM è `/usr/lib/softhsm/libsofthsm2.so`; quello di una carta vera è la libreria
+del suo produttore (OpenSC, Bit4id per la CNS, quella della CIE).
 
 ## Hook git (obbligatorio, una volta per clone)
 
@@ -47,9 +76,24 @@ La versione è fissata anche in `ci/Dockerfile` (`EMSDK_VERSION`): locale e CI d
 
 ## Corpora di test
 
-I corpora (SafeDocs, UNSAFE-DOCS, file dai bug tracker) **non stanno nel repo**: si indica la cartella
-con `CAPRIOLE_CORPUS_DIR` (default suggerito `~/corpora/capriole`). Vanno trattati come input ostile:
+I corpora (SafeDocs, UNSAFE-DOCS, file dai bug tracker) **non stanno nel repo**: stanno in `CORPORA/`
+nella cartella contenitore (`../CORPORA` dal repo), oppure dove indica `CAPRIOLE_CORPUS_DIR`.
+Si scaricano con `corpus-tools/fetch_corpus.sh` e si analizzano con `corpus-tools/run_corpus.py`
+(vedi `corpus-tools/README.md`). Vanno trattati come input ostile:
 non si aprono con visualizzatori di sistema, si processano solo con i nostri strumenti.
+
+## Fuzzing lungo
+
+```sh
+scripts/fuzz_local.sh start 24     # campagna di 24 h in background, bassa intensità
+scripts/fuzz_local.sh status       # avanzamento e problemi trovati finora
+scripts/fuzz_local.sh stop         # interrompe (il corpus accumulato resta)
+scripts/fuzz_local.sh report       # riepilogo dell'ultima campagna
+```
+
+Gira come unità systemd utente (`capriole-fuzz`) con limiti rigidi: 1 core, 1,5 GB senza swap, nice 19,
+I/O idle, un fuzzer alla volta. Usa una sua copia del repo (`.git/capriole-fuzz-worktree`) ferma al commit
+di avvio. Si ferma al logout, salvo `loginctl enable-linger`.
 
 ## Editor
 

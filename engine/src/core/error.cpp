@@ -16,6 +16,10 @@ std::string_view to_string(ErrorCode code) noexcept {
       return "unsupported";
     case ErrorCode::kLimitExceeded:
       return "limit_exceeded";
+    case ErrorCode::kCorruptData:
+      return "corrupt_data";
+    case ErrorCode::kPasswordRequired:
+      return "password_required";
   }
   return "unknown";
 }

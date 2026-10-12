@@ -3,24 +3,48 @@
 # before it reaches the remote, not minutes later in CI.
 #
 #   - blocks direct pushes to main (main moves by merging development; override: ALLOW_MAIN_PUSH=1);
-#   - runs scripts/check.sh, including the WebAssembly build when ~/emsdk is installed.
+#   - runs scripts/check.sh on the commits being pushed, including the WebAssembly build when
+#     ~/emsdk is installed.
+#
+# The gate runs in a dedicated worktree (.git/capriole-gate-worktree) checked out at the pushed
+# commit, never in the working directory: uncommitted or unrelated work in progress must neither
+# block a good push nor let a bad one through. The worktree keeps its build directories between
+# pushes, so builds are incremental.
 #
 # Installed by: git config core.hooksPath scripts/hooks   (see docs/SETUP.md)
 set -euo pipefail
 
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+zero_sha=0000000000000000000000000000000000000000
+to_check=()
+while read -r _local_ref local_sha remote_ref _remote_sha; do
   if [[ "$remote_ref" == "refs/heads/main" && "${ALLOW_MAIN_PUSH:-0}" != 1 ]]; then
     echo "pre-push: direct push to main is blocked. Merge development instead, or set ALLOW_MAIN_PUSH=1." >&2
     exit 1
   fi
+  [[ "$local_sha" == "$zero_sha" ]] || to_check+=("$local_sha")  # a zero sha is a branch deletion
 done
+[[ ${#to_check[@]} -gt 0 ]] || exit 0
 
-root="$(git rev-parse --show-toplevel)"
 emsdk_env="${EMSDK:-$HOME/emsdk}/emsdk_env.sh"
 if [[ -f "$emsdk_env" ]]; then
   # shellcheck source=/dev/null
   source "$emsdk_env" >/dev/null 2>&1
   export SKIP_WASM=0
+  # The Inspector's browser tests too, when Playwright's Chromium is installed on this machine.
+  [[ -d "$HOME/.cache/ms-playwright" ]] && export SKIP_E2E=0
 fi
 
-exec "$root/scripts/check.sh"
+worktree="$(git rev-parse --path-format=absolute --git-common-dir)/capriole-gate-worktree"
+# Git may export these to hooks; they would point the worktree commands at the wrong checkout.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+if [[ ! -e "$worktree/.git" ]]; then
+  git worktree prune
+  git worktree add --detach --quiet "$worktree" "${to_check[0]}"
+fi
+
+for sha in "${to_check[@]}"; do
+  echo "pre-push: running the gate on $(git log -1 --format='%h %s' "$sha")"
+  git -C "$worktree" checkout --detach --force --quiet "$sha"
+  git -C "$worktree" clean -fdq -e build/  # keep the build trees, drop anything else left behind
+  (cd "$worktree" && scripts/check.sh)
+done

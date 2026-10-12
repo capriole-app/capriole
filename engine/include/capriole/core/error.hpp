@@ -16,12 +16,14 @@
 namespace capriole {
 
 enum class ErrorCode : std::uint8_t {
-  kIo,             // The underlying byte source failed.
-  kOutOfRange,     // An offset or length points outside the source.
-  kUnexpectedEof,  // The input ended before a complete construct was read.
-  kSyntax,         // The input violates the PDF grammar.
-  kUnsupported,    // Valid input using a feature the engine does not implement yet.
-  kLimitExceeded,  // A resource limit (depth, size, count) guarding against hostile input.
+  kIo,                // The underlying byte source failed.
+  kOutOfRange,        // An offset or length points outside the source.
+  kUnexpectedEof,     // The input ended before a complete construct was read.
+  kSyntax,            // The input violates the PDF grammar.
+  kUnsupported,       // Valid input using a feature the engine does not implement yet.
+  kLimitExceeded,     // A resource limit (depth, size, count) guarding against hostile input.
+  kCorruptData,       // Encoded data (e.g. a compressed stream) cannot be decoded.
+  kPasswordRequired,  // The document is encrypted and the password is missing or wrong.
 };
 
 std::string_view to_string(ErrorCode code) noexcept;
@@ -39,7 +41,7 @@ template <typename T>
 using Result = std::expected<T, Error>;
 
 inline std::unexpected<Error> make_error(ErrorCode code, std::string message, std::uint64_t offset = Error::kNoOffset) {
-  return std::unexpected(Error{code, std::move(message), offset});
+  return std::unexpected(Error{.code = code, .message = std::move(message), .offset = offset});
 }
 
 }  // namespace capriole

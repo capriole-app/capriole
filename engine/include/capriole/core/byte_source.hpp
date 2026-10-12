@@ -51,6 +51,19 @@ class MemoryByteSource final : public ByteSource {
   std::vector<std::byte> data_;
 };
 
+// Reads bytes owned by someone else, in place (e.g. a decoded content stream). The bytes must
+// outlive the source.
+class SpanByteSource final : public ByteSource {
+ public:
+  explicit SpanByteSource(std::span<const std::byte> data) noexcept : data_(data) {}
+
+  [[nodiscard]] std::uint64_t size() const noexcept override { return data_.size(); }
+  [[nodiscard]] Result<std::size_t> read(std::uint64_t offset, std::span<std::byte> dest) override;
+
+ private:
+  std::span<const std::byte> data_;
+};
+
 // Reads from a file on disk.
 class FileByteSource final : public ByteSource {
  public:
@@ -64,6 +77,25 @@ class FileByteSource final : public ByteSource {
 
   std::ifstream stream_;
   std::uint64_t size_;
+};
+
+// A view of another source that starts `offset` bytes in: byte 0 of the view is byte `offset` of the
+// base. Used by the repair layer when a file's offsets are relative to a header preceded by junk.
+class OffsetByteSource final : public ByteSource {
+ public:
+  // offset must not exceed base->size().
+  OffsetByteSource(std::unique_ptr<ByteSource> base, std::uint64_t offset) noexcept;
+
+  [[nodiscard]] std::uint64_t size() const noexcept override;
+  [[nodiscard]] Result<std::size_t> read(std::uint64_t offset, std::span<std::byte> dest) override;
+
+  [[nodiscard]] std::uint64_t base_offset() const noexcept { return offset_; }
+  // Gives the base source back (the view is empty afterwards).
+  [[nodiscard]] std::unique_ptr<ByteSource> release_base() noexcept { return std::move(base_); }
+
+ private:
+  std::unique_ptr<ByteSource> base_;
+  std::uint64_t offset_;
 };
 
 }  // namespace capriole

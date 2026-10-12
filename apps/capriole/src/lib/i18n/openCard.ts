@@ -1,0 +1,62 @@
+import { translations } from './index.svelte';
+
+/** The first screen. */
+export const openCardWords = translations(
+  {
+    region: 'Apri un PDF',
+    tagline: 'Le pagine di un PDF: riordina, ruota, elimina, unisci, estrai',
+    opening: 'Apertura…',
+    choose: 'Scegli un PDF',
+    orDrop: '…oppure trascinalo qui.',
+    staysDesktop: 'Il file resta sul tuo computer.',
+    staysBrowser: 'Il file resta nel browser: nessun byte va su un server.',
+    engine: (version: string) => `motore Capriole ${version} (WebAssembly)`,
+    about: 'Informazioni e licenze',
+  },
+  {
+    en: {
+      region: 'Open a PDF',
+      tagline: 'The pages of a PDF: reorder, rotate, delete, merge, extract',
+      opening: 'Opening…',
+      choose: 'Choose a PDF',
+      orDrop: '…or drop it here.',
+      staysDesktop: 'The file stays on your computer.',
+      staysBrowser: 'The file stays in the browser: not a byte goes to a server.',
+      engine: (version: string) => `Capriole engine ${version} (WebAssembly)`,
+      about: 'About and licences',
+    },
+    fr: {
+      region: 'Ouvrir un PDF',
+      tagline: 'Les pages d’un PDF : réorganiser, faire pivoter, supprimer, fusionner, extraire',
+      opening: 'Ouverture…',
+      choose: 'Choisir un PDF',
+      orDrop: '…ou déposez-le ici.',
+      staysDesktop: 'Le fichier reste sur votre ordinateur.',
+      staysBrowser: 'Le fichier reste dans le navigateur : aucun octet n’est envoyé à un serveur.',
+      engine: (version: string) => `moteur Capriole ${version} (WebAssembly)`,
+      about: 'À propos et licences',
+    },
+    de: {
+      region: 'PDF öffnen',
+      tagline: 'Die Seiten eines PDF: neu ordnen, drehen, löschen, zusammenführen, extrahieren',
+      opening: 'Wird geöffnet…',
+      choose: 'PDF auswählen',
+      orDrop: '…oder hierher ziehen.',
+      staysDesktop: 'Die Datei bleibt auf Ihrem Computer.',
+      staysBrowser: 'Die Datei bleibt im Browser: Kein Byte geht an einen Server.',
+      engine: (version: string) => `Capriole-Engine ${version} (WebAssembly)`,
+      about: 'Info und Lizenzen',
+    },
+    es: {
+      region: 'Abrir un PDF',
+      tagline: 'Las páginas de un PDF: reordenar, girar, eliminar, combinar, extraer',
+      opening: 'Abriendo…',
+      choose: 'Elegir un PDF',
+      orDrop: '…o arrástralo aquí.',
+      staysDesktop: 'El archivo se queda en tu ordenador.',
+      staysBrowser: 'El archivo se queda en el navegador: ni un byte va a un servidor.',
+      engine: (version: string) => `motor Capriole ${version} (WebAssembly)`,
+      about: 'Información y licencias',
+    },
+  },
+);

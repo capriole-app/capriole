@@ -14,6 +14,60 @@ set(_capriole_exports
   _capriole_abi_version
   _capriole_last_error_message
   _capriole_probe_header
+  _capriole_document_open
+  _capriole_document_close
+  _capriole_free
+  _capriole_document_summary_json
+  _capriole_document_object_json
+  _capriole_document_page_content_json
+  _capriole_document_page_preview_json
+  _capriole_document_page_render
+  _capriole_document_page_text_json
+  _capriole_document_page_model_json
+  _capriole_document_page_object_edit
+  _capriole_document_stream_data
+  _capriole_document_save
+  _capriole_document_save_compact
+  _capriole_document_pages_rotate
+  _capriole_document_pages_arrange
+  _capriole_document_pages_import
+  _capriole_document_page_annotations_json
+  _capriole_document_annotation_add
+  _capriole_document_stamp_add
+  _capriole_document_annotation_update
+  _capriole_document_annotation_remove
+  _capriole_document_form_fields_json
+  _capriole_document_form_field_fill
+  _capriole_document_attachments_json
+  _capriole_document_attachment_data
+  _capriole_document_attachment_add
+  _capriole_document_attachment_remove
+  _capriole_document_facturx_json
+  _capriole_document_facturx_embed
+  _capriole_document_page_redact
+  _capriole_document_page_apply_redactions
+  _capriole_pkcs12_info
+  _capriole_certificate_info_json
+  _capriole_document_sign_begin
+  _capriole_document_sign_begin_external
+  _capriole_signing_to_sign_json
+  _capriole_signing_set_value
+  _capriole_signing_timestamp_request
+  _capriole_document_sign_finish
+  _capriole_signing_free
+  _capriole_document_signatures_json
+  _capriole_document_signatures_validate_json
+  _capriole_document_validation_needs_json
+  _capriole_document_add_validation_data
+  _capriole_document_timestamp_begin
+  _capriole_document_convert_pdfa
+  _capriole_document_page_replace_text
+  _capriole_document_page_replace_paragraph
+  _capriole_font_add
+  _capriole_fonts_json
+  _capriole_fonts_clear
+  _capriole_resource_add
+  _capriole_last_missing_resources_json
   _malloc
   _free)
 list(JOIN _capriole_exports "," _capriole_exports)
@@ -24,8 +78,9 @@ target_link_options(capriole_wasm PRIVATE
   "-sEXPORT_NAME=createCapriole"
   "-sENVIRONMENT=web,worker,node"
   "-sALLOW_MEMORY_GROWTH=1"
+  "-sMAXIMUM_MEMORY=4GB"
   "-sEXPORTED_FUNCTIONS=${_capriole_exports}"
-  "-sEXPORTED_RUNTIME_METHODS=UTF8ToString,HEAPU8,HEAP32")
+  "-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAP32,HEAPU32")
 
 if(CAPRIOLE_BUILD_TESTS)
   add_test(NAME wasm_module_smoke

@@ -15,6 +15,10 @@ in futuro, le app che lo usano: web (WASM, tutto client-side) e desktop. È un *
 engine/      libreria C++ (capriole::engine) — include/capriole/<area>/, src/<area>/
 capi/        API C stabile: l'UNICO confine verso WASM, FFI desktop, terzi
 bindings/wasm/  modulo Emscripten (ES module) + smoke test Node
+apps/inspector/ app web (Svelte 5, statica): il motore WASM nel browser — demo e strumento di debug
+apps/capriole/  la web app per l'utente (Svelte 5, statica): pagine (riordina, ruota, elimina, unisci, estrai),
+                annotazioni, compilazione dei moduli
+packages/engine-client/  il client del motore (worker WASM + tipi del JSON) condiviso dalle app (ADR 0008)
 tools/cpdf/  CLI di sviluppo: ogni capacità del motore ha prima un sottocomando qui
 tests/unit/  GoogleTest     tests/regression/  un file minimizzato per bug   tests/differential/  vs motori esterni
 fuzz/        target libFuzzer + corpus seme (fuzz/corpus/<target>/)
@@ -22,16 +26,21 @@ cmake/       moduli CMake     scripts/check.sh  IL GATE     scripts/hooks/  pre-
 ci/          immagine della CI (Jenkinsfile alla radice)     docs/  piano, setup, ADR, dipendenze
 ```
 
-Aree previste in `engine/`: `core` (errori, ByteSource), `parser` (lexer, xref, oggetti — rigoroso),
-`repair` (tolleranza, SEPARATO da parser), `model` (modello basso con stato modifiche), `writer`,
-`filters`, `crypto`, `content` (interprete), `render`, `text`, `edit`.
+Aree in `engine/`: `core` (errori, ByteSource, SourceReader, limiti), `parser` (lexer, oggetti, xref,
+object stream, loader — rigoroso), `model` (Object), `document` (Document: modello basso con stato delle
+modifiche), `filters`, `crypto` (primitive, security handler; ASN.1, PKCS#12, CMS sopra Mbed TLS),
+`repair` (tolleranza, SEPARATO da parser), `writer`, `content` (interprete), `render`, `text`, `layout`
+(modello alto della pagina: paragrafi, colonne, disegni, con la provenienza), `edit`,
+`signature` (verifica delle firme).
+Dati di test in `tests/data/` (fixture generate da script versionati), helper in `tests/support/`.
 
 ## Comandi
 
 ```
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
 scripts/check.sh              # il gate: format + ASan/UBSan + test + clang-tidy
-SKIP_WASM=0 scripts/check.sh  # + build/test WebAssembly (serve: source ~/emsdk/emsdk_env.sh)
+SKIP_WASM=0 scripts/check.sh  # + build/test WebAssembly e app Inspector (serve: source ~/emsdk/emsdk_env.sh)
+SKIP_WASM=0 SKIP_E2E=0 scripts/check.sh  # + test end-to-end dell'Inspector (Playwright)
 cmake --preset fuzz && cmake --build --preset fuzz   # richiede clang
 ./build/debug/tools/cpdf/cpdf header file.pdf
 ```
@@ -55,7 +64,7 @@ cmake --preset fuzz && cmake --build --preset fuzz   # richiede clang
    aprire e salvare senza modifiche non cambia il significato del file (spec §5).
 5. **Mai presupporre il file intero in memoria.** Si legge tramite `ByteSource` (limite wasm32 4 GB).
 6. **Determinismo.** Stesso file, stesso risultato: niente dipendenza da ordine di hash, orari, thread.
-7. **Licenze.** Nessuna dipendenza copyleft linkata. Ogni dipendenza nuova va in
+7. **Licenze.** Capriole è 0BSD (`LICENSE`, ADR 0009). Nessuna dipendenza copyleft linkata. Ogni dipendenza nuova va in
    `cmake/Dependencies.cmake` (versione + SHA-256) e in `docs/DEPENDENCIES.md` PRIMA di usarla.
    MuPDF, PDFium, pdf.js, Poppler, qpdf sono solo strumenti di test esterni, mai linkati.
    Non copiare codice da quei progetti.

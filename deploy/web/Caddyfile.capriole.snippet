@@ -1,0 +1,25 @@
+# Reference copy of /srv/gateway/caddy/snippets/capriole.caddy on contabo-b. The gateway's Caddyfile
+# does `import snippets/*.caddy`; the container is on the `proxy` network. After a change, on the
+# server (docs/DEPLOY.md):
+#   docker exec caddy caddy validate --config /etc/caddy/Caddyfile
+#   docker exec caddy caddy reload   --config /etc/caddy/Caddyfile
+#
+# DNS on Cloudflare: A records NOT proxied (grey cloud) for capriole.app and www.capriole.app; Caddy
+# takes the certificates. .app is on the HSTS preload list: HTTPS only, always.
+#
+# The app's own headers (CSP, cache, nosniff…) come from the container (deploy/web/Caddyfile).
+
+capriole.app {
+	header Strict-Transport-Security "max-age=63072000; includeSubDomains"
+	# Not indexed until publication is decided (docs/PUBBLICAZIONE.md): remove the line then.
+	header X-Robots-Tag "noindex, nofollow"
+	# Static files only: nothing is posted.
+	request_body {
+		max_size 1KB
+	}
+	reverse_proxy capriole-web:8080
+}
+
+www.capriole.app {
+	redir https://capriole.app{uri} permanent
+}

@@ -1,0 +1,4 @@
+V	21260915164246Z		09	unknown	/C=IT/O=Capriole/CN=Capriole Test OCSP
+V	21260915164246Z		0A	unknown	/C=IT/O=Capriole/CN=Luca Verdi (test)
+R	21260915164246Z	260101000000Z	0B	unknown	/C=IT/O=Capriole/CN=Rita Neri (test)
+V	21260915164246Z		0C	unknown	/C=IT/O=Capriole/CN=Capriole Test TSA (LTV)
