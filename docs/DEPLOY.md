@@ -31,7 +31,7 @@ La web app è fatta solo di file statici e il motore gira nel browser, quindi i 
 1. esegue il gate, che compila anche la web app;
 2. con «Web package (main)» prepara il contesto;
 3. con «Image (main)» costruisce `ghcr.io/capriole-app/capriole-web:<sha7>` e la pubblica (credenziale `ghcr-push`);
-4. con «Deploy (main)» entra in contabo-b (`jenkins-master-ssh-key`, impronta fissata in `contabo-b-known-hosts`) e lancia `deploy/web/deploy.sh --tag <sha7>`.
+4. con «Deploy (main)» entra in contabo-b (`jenkins-master-ssh-key`, impronta fissata in `contabo-b-known-hosts`) e lancia `./deploy.sh --env main --tag <sha7>`: è l'unica forma che il gate SSH del server lascia passare; `deploy.sh` alla radice controlla `--env` e passa a `deploy/web/deploy.sh`.
 
 **Tornare indietro:** sul server, `cd /srv/apps/capriole-web && deploy/web/deploy.sh --tag <sha-precedente>`. Ogni rilascio stampa la riga pronta.
 
