@@ -11,8 +11,6 @@
 
 capriole.app {
 	header Strict-Transport-Security "max-age=63072000; includeSubDomains"
-	# Not indexed until publication is decided (docs/PUBBLICAZIONE.md): remove the line then.
-	header X-Robots-Tag "noindex, nofollow"
 	# Static files only: nothing is posted.
 	request_body {
 		max_size 1KB

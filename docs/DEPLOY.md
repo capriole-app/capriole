@@ -23,7 +23,7 @@ La web app è fatta solo di file statici e il motore gira nel browser, quindi i 
 | `test.sh` | Prova l'immagine in locale con la stessa blindatura del server: header, poi **l'intera suite e2e contro il container** (`CAPRIOLE_E2E_URL`). |
 | `docker-compose.yml` | Il servizio sul server: file system in sola lettura, nessuna capability, `no-new-privileges`, limiti di memoria e di processi, log a rotazione, nessuna porta sull'host. |
 | `deploy.sh` | Sul server: porta il checkout al commit, scrive `IMAGE_TAG` in `deploy/web/.env`, scarica l'immagine e aspetta che il container sia sano. |
-| `Caddyfile.capriole.snippet` | La copia di riferimento dello snippet del gateway: HSTS, `noindex` finché la pubblicazione non è decisa, redirect da `www`. |
+| `Caddyfile.capriole.snippet` | La copia di riferimento dello snippet del gateway: HSTS, redirect da `www`. |
 
 ## Come si rilascia (a regime)
 
@@ -63,9 +63,9 @@ Il server deve poter scaricare da `ghcr.io/capriole-app/`. Se il pacchetto `capr
 
 **La verifica da fuori:**
 
-    curl -sI https://capriole.app/ | grep -iE 'strict-transport|content-security|x-robots'
+    curl -sI https://capriole.app/ | grep -iE 'strict-transport|content-security'
     curl -sI https://www.capriole.app/ | grep -i location
 
 ## Indicizzazione
 
-Il sito non è indicizzato finché il titolare non decide la pubblicazione (`docs/PUBBLICAZIONE.md`). Quando la decide, si toglie la riga `X-Robots-Tag` dallo snippet e si ricarica il gateway.
+Dal 2026-10-13 il sito è aperto ai motori di ricerca: lo snippet non manda più `X-Robots-Tag: noindex`. Per richiuderlo, si rimette nello snippet `header X-Robots-Tag "noindex, nofollow"` e si ricarica il gateway.

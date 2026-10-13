@@ -1,5 +1,8 @@
 # CI image for Jenkins (agent { dockerfile }). Everything the gate needs, pinned, so the build does not
 # depend on what happens to be installed on the Jenkins host. Keep versions in step with docs/SETUP.md.
+# llvm-20 is there for llvm-symbolizer: without it a sanitizer report (a fuzz crash) has bare addresses
+# instead of function names. The package names it llvm-symbolizer-20; the link puts the plain name on
+# PATH, which is what the Fuzz smoke stage checks before running.
 FROM ubuntu:24.04
 
 ARG EMSDK_VERSION=6.0.10
@@ -8,8 +11,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl git python3 xz-utils \
       cmake ninja-build g++ \
-      clang-20 clang-tidy-20 libclang-rt-20-dev lld-20 clang-format-18 \
+      clang-20 clang-tidy-20 libclang-rt-20-dev lld-20 llvm-20 clang-format-18 \
  && ln -s /usr/bin/clang-format-18 /usr/local/bin/clang-format \
+ && ln -s /usr/lib/llvm-20/bin/llvm-symbolizer /usr/local/bin/llvm-symbolizer \
  && rm -rf /var/lib/apt/lists/*
 
 # Emscripten, world-writable because Jenkins runs the container as its own uid and emcc writes its

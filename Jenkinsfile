@@ -79,6 +79,8 @@ pipeline {
             timeout(time: 45, unit: 'MINUTES') {
               sh '''#!/usr/bin/env bash
                 set -euo pipefail
+                # A crash's stack trace must have function names: without the symbolizer it is addresses only.
+                command -v llvm-symbolizer >/dev/null || { echo "[ci] ERROR: llvm-symbolizer not on PATH (ci/Dockerfile)"; exit 1; }
                 cmake --preset fuzz
                 cmake --build --preset fuzz
                 mkdir -p fuzz/artifacts

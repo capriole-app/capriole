@@ -5,7 +5,7 @@ Riferimento: Ubuntu 24.04. Le versioni minime sono quelle verificate dal gate e 
 ## Pacchetti di sistema
 
 ```sh
-sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld-20 clang-format-18 \
+sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld-20 llvm-20 clang-format-18 \
                  gdb ccache pkg-config \
                  qpdf mupdf-tools poppler-utils
 ```
@@ -15,6 +15,7 @@ sudo apt install cmake ninja-build clang-20 clang-tidy-20 libclang-rt-20-dev lld
   `std::expected` negli header di libstdc++ 13, che lo abilitano solo con `__cpp_concepts >= 202002`,
   dichiarato da Clang solo dalla 19. Vale per `clang-tidy` e per il preset `fuzz`.
 - `clang-20`, `libclang-rt-20-dev`: libFuzzer e sanitizer (preset `fuzz`, che usa `clang-20` per nome).
+- `llvm-20`: `llvm-symbolizer`, che dà i nomi delle funzioni negli stack dei sanitizer (crash del fuzzing); senza, solo indirizzi.
 - `clang-tidy-20`: analisi statica nel gate; `scripts/check.sh` lo trova da solo anche con il suffisso.
 - `clang-format-18`: formattazione (il gate e la CI usano la 18; cambiarla solo in entrambi i posti).
 - Non servono alias senza suffisso (`update-alternatives`): preset e script usano i nomi versionati.
