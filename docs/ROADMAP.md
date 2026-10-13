@@ -42,7 +42,8 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | Rifiniture prima del rilascio: 5 lingue, zoom, marchio, «Informazioni» | ✅ | traduzioni FR/DE/ES da far rivedere a madrelingua |
 | Segnalazione anonimizzata dei file problematici | ⬜ | CAPRIOLE.md §8 |
 | Impostazioni, colori predefiniti, firma grafica | ✅ | stamp uguale in Capriole, Poppler, MuPDF |
-| Distribuzione 12a: web app su capriole.app (contabo-b) | ✅ | online dal 2026-10-13: header verificati da fuori (HSTS, CSP, redirect da `www`); aperto ai motori di ricerca (niente più `noindex`, da ricaricare sul gateway); rilasci automatici da Jenkins (`./deploy.sh`) riusciti; runbook in `docs/DEPLOY.md` |
+| Distribuzione 12a: web app su capriole.app (contabo-b) | ✅ | online dal 2026-10-13: header verificati da fuori (HSTS, CSP, redirect da `www`); aperto ai motori di ricerca (niente più `noindex`, da ricaricare sul gateway; titolo, descrizione, canonical, Open Graph, `robots.txt`, `sitemap.xml`); rilasci automatici da Jenkins (`./deploy.sh`) riusciti; runbook in `docs/DEPLOY.md` |
+| Indicizzazione nelle 5 lingue: un URL per lingua (`/it/`, `/fr/`…) con `hreflang` | ⬜ | oggi una sola pagina statica, i meta in inglese; l'app li traduce solo dopo l'avvio |
 | Distribuzione 12b–c: Windows, Flathub, self-hosted | ⬜ | CAPRIOLE.md §3 |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |
 | Pubblicazione: repo pubblico, OSS-Fuzz | ⏸ | la decide il titolare; prima: il contatto (`<<CONTACT-TBD>>`) |

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://capriole.app/sitemap.xml
