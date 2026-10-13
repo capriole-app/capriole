@@ -56,7 +56,7 @@ export const termsWords = translations(
         heading: 'Privacy',
         body: [
           'Non raccogliamo i tuoi documenti; niente cookie di tracciamento né statistiche di utilizzo. Le preferenze (lingua, tema, impostazioni, l’accettazione di queste condizioni) restano sul tuo dispositivo, nella memoria del browser o dell’app.',
-          'Il server che distribuisce l’app web può registrare dati tecnici delle richieste (indirizzo IP, data e ora, risorsa richiesta), per sicurezza e funzionamento, per un tempo limitato. L’app desktop si collega alla rete solo quando lo chiedi tu, per esempio a un servizio di marca temporale o di verifica della revoca per una firma.',
+          'Non registriamo indirizzi IP: contiamo solo le aperture della pagina, in forma anonima (il giorno e il tipo di browser, per distinguere i robot dei motori di ricerca). L’app desktop si collega alla rete solo quando lo chiedi tu, per esempio a un servizio di marca temporale o di verifica della revoca per una firma.',
         ],
       },
       {
@@ -121,7 +121,7 @@ export const termsWords = translations(
           heading: 'Privacy',
           body: [
             'We do not collect your documents; there are no tracking cookies and no usage statistics. Your preferences (language, theme, settings, the acceptance of these terms) stay on your device, in the browser’s or the app’s storage.',
-            'The server that delivers the web app may log technical data about requests (IP address, date and time, the resource requested), for security and operation, for a limited time. The desktop app connects to the network only when you ask it to, for example to a time-stamping or revocation-checking service for a signature.',
+            'We do not log IP addresses: we only count how often the page is opened, anonymously (the day and the kind of browser, to tell search engines’ robots apart). The desktop app connects to the network only when you ask it to, for example to a time-stamping or revocation-checking service for a signature.',
           ],
         },
         {
@@ -185,7 +185,7 @@ export const termsWords = translations(
           heading: 'Vie privée',
           body: [
             'Nous ne collectons pas vos documents ; ni cookies de suivi ni statistiques d’utilisation. Vos préférences (langue, thème, réglages, l’acceptation de ces conditions) restent sur votre appareil, dans la mémoire du navigateur ou de l’application.',
-            'Le serveur qui distribue l’application web peut enregistrer des données techniques sur les requêtes (adresse IP, date et heure, ressource demandée), pour la sécurité et le fonctionnement, pendant une durée limitée. L’application de bureau ne se connecte au réseau que lorsque vous le demandez, par exemple à un service d’horodatage ou de vérification de révocation pour une signature.',
+            'Nous n’enregistrons pas les adresses IP : nous comptons seulement les ouvertures de la page, de façon anonyme (le jour et le type de navigateur, pour distinguer les robots des moteurs de recherche). L’application de bureau ne se connecte au réseau que lorsque vous le demandez, par exemple à un service d’horodatage ou de vérification de révocation pour une signature.',
           ],
         },
         {
@@ -250,7 +250,7 @@ export const termsWords = translations(
           heading: 'Datenschutz',
           body: [
             'Wir erheben Ihre Dokumente nicht; keine Tracking-Cookies, keine Nutzungsstatistiken. Ihre Einstellungen (Sprache, Design, Einstellungen, die Annahme dieser Bedingungen) bleiben auf Ihrem Gerät, im Speicher des Browsers oder der App.',
-            'Der Server, der die Web-App ausliefert, kann technische Daten der Anfragen (IP-Adresse, Datum und Uhrzeit, angefragte Ressource) für Sicherheit und Betrieb für begrenzte Zeit protokollieren. Die Desktop-App verbindet sich nur dann mit dem Netz, wenn Sie es verlangen, zum Beispiel mit einem Zeitstempel- oder Sperrprüfungsdienst für eine Signatur.',
+            'Wir speichern keine IP-Adressen: Wir zählen nur, wie oft die Seite geöffnet wird, anonym (der Tag und die Art des Browsers, um die Robots der Suchmaschinen zu unterscheiden). Die Desktop-App verbindet sich nur dann mit dem Netz, wenn Sie es verlangen, zum Beispiel mit einem Zeitstempel- oder Sperrprüfungsdienst für eine Signatur.',
           ],
         },
         {
@@ -315,7 +315,7 @@ export const termsWords = translations(
           heading: 'Privacidad',
           body: [
             'No recogemos tus documentos; ni cookies de seguimiento ni estadísticas de uso. Tus preferencias (idioma, tema, ajustes, la aceptación de estas condiciones) se quedan en tu dispositivo, en la memoria del navegador o de la aplicación.',
-            'El servidor que distribuye la aplicación web puede registrar datos técnicos de las peticiones (dirección IP, fecha y hora, recurso solicitado), por seguridad y funcionamiento, durante un tiempo limitado. La aplicación de escritorio solo se conecta a la red cuando tú lo pides, por ejemplo a un servicio de sellado de tiempo o de comprobación de revocación para una firma.',
+            'No registramos direcciones IP: solo contamos cuántas veces se abre la página, de forma anónima (el día y el tipo de navegador, para distinguir los robots de los buscadores). La aplicación de escritorio solo se conecta a la red cuando tú lo pides, por ejemplo a un servicio de sellado de tiempo o de comprobación de revocación para una firma.',
           ],
         },
         {

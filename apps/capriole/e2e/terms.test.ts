@@ -65,5 +65,6 @@ test('the terms in English, the language that prevails', async ({ browser }) => 
   await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('Terms of use');
   await expect(dialog).toContainText('Version of 13 October 2026');
   await expect(dialog).toContainText('governed by the laws of Ireland');
+  await expect(dialog).toContainText('We do not log IP addresses');
   await context.close();
 });

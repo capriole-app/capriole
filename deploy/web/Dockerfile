@@ -8,6 +8,10 @@ FROM caddy:2.11@sha256:f2a1290d0463aad60660d4ec134943f183ee2a5f6c3eb7bf32dd984f2
 # capabilities cannot be executed there. busybox cp does not copy them.
 RUN cp /usr/bin/caddy /usr/bin/caddy.new && mv /usr/bin/caddy.new /usr/bin/caddy
 
+# /logs: the anonymous count of visits (Caddyfile), a volume on the server; owned by the user Caddy runs
+# as, which a new volume takes from here.
+RUN mkdir /logs && chown 65532:65532 /logs
+
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY csp.caddy /etc/caddy/csp.caddy
 COPY build/ /srv/

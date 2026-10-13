@@ -17,12 +17,13 @@ La web app è fatta solo di file statici e il motore gira nel browser, quindi i 
 
 | File | A cosa serve |
 |---|---|
-| `Dockerfile`, `Caddyfile` | L'immagine `capriole-web`: Caddy 2.11 (immagine fissata per digest), utente 65532, porta 8080, sonda `/healthz`. Header: CSP con gli hash degli script inline, `nosniff`, `no-referrer`, `DENY`, COOP, Permissions-Policy. Cache di un anno per `/_app/immutable/*`, `no-cache` per il resto. Compressione zstd/gzip, che conta soprattutto per il motore WASM. |
+| `Dockerfile`, `Caddyfile` | L'immagine `capriole-web`: Caddy 2.11 (immagine fissata per digest), utente 65532, porta 8080, sonda `/healthz`. Header: CSP con gli hash degli script inline, `nosniff`, `no-referrer`, `DENY`, COOP, Permissions-Policy. Cache di un anno per `/_app/immutable/*`, `no-cache` per il resto. Compressione zstd/gzip, che conta soprattutto per il motore WASM. Un log anonimo delle aperture della pagina in `/logs` (volume). |
 | `csp.mjs` | Calcola la CSP dalle pagine compilate, così un hash non può mai essere vecchio. |
 | `package.sh` | Prepara il contesto dell'immagine (`context/`, non versionato) partendo da `apps/capriole/build`. |
 | `test.sh` | Prova l'immagine in locale con la stessa blindatura del server: header, poi **l'intera suite e2e contro il container** (`CAPRIOLE_E2E_URL`). |
 | `docker-compose.yml` | Il servizio sul server: file system in sola lettura, nessuna capability, `no-new-privileges`, limiti di memoria e di processi, log a rotazione, nessuna porta sull'host. |
 | `deploy.sh` | Sul server: porta il checkout al commit, scrive `IMAGE_TAG` in `deploy/web/.env`, scarica l'immagine e aspetta che il container sia sano. |
+| `stats.sh` | Sul server: le aperture della pagina per giorno, dal log anonimo del container (vedi «Quanto è usata»). |
 | `Caddyfile.capriole.snippet` | La copia di riferimento dello snippet del gateway: HSTS, redirect da `www`. |
 
 ## Come si rilascia (a regime)
@@ -69,3 +70,25 @@ Il server deve poter scaricare da `ghcr.io/capriole-app/`. Se il pacchetto `capr
 ## Indicizzazione
 
 Dal 2026-10-13 il sito è aperto ai motori di ricerca: lo snippet non manda più `X-Robots-Tag: noindex`. Per richiuderlo, si rimette nello snippet `header X-Robots-Tag "noindex, nofollow"` e si ricarica il gateway.
+
+## Quanto è usata
+
+Il Caddy del container scrive una riga per ogni apertura della pagina (`/`), e in quella riga c'è solo:
+ora, metodo, esito e nome del browser (per riconoscere i robot). Indirizzo IP, header e percorso vengono
+cancellati prima della scrittura; le richieste dei file dell'app non vengono registrate. Il log sta nel
+volume `capriole-web_logs`, quindi sopravvive ai rilasci, e ruota da solo (10 file da 10 MiB).
+Non distingue le persone: chi ricarica la pagina conta di nuovo. È quello che promettono le condizioni
+d'uso («non registriamo indirizzi IP»): se il log cambia, vanno riviste anche loro (`apps/capriole/src/lib/i18n/terms.ts`).
+
+`deploy/web/stats.sh` conta le aperture per giorno (UTC), separando i robot, e le aggiunge al registro
+`~/capriole-visits.csv` di `<deploy-user>` (`giorno,visite,robot`). Il registro tiene i totali anche quando le
+righe del log sono già ruotate via.
+
+**Il cron, una volta sola** (come `<deploy-user>`):
+
+    sudo -iu <deploy-user>
+    (crontab -l 2>/dev/null; echo '15 0 * * * /srv/apps/capriole-web/deploy/web/stats.sh >/dev/null 2>&1') | crontab -
+
+**Leggere i numeri** (aggiorna anche il registro):
+
+    sudo -iu <deploy-user> /srv/apps/capriole-web/deploy/web/stats.sh

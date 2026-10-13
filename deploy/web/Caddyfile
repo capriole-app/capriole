@@ -29,6 +29,39 @@
 	@mutable not path /_app/immutable/*
 	header @mutable Cache-Control "no-cache"
 
+	# Counting visits, anonymously (stats.sh): one line per opening of the page, and in it only the time,
+	# the method, the status and the browser's name (to tell search engines' robots apart). No address, no
+	# other header, no path: everything else of the request is taken away before the line is written.
+	# In /logs, a volume (docker-compose.yml), so that a new deploy does not lose the count.
+	@notpage not path / /index.html
+	log_skip @notpage
+	log_append ua {http.request.header.User-Agent}
+	log {
+		output file /logs/access.log {
+			roll_size 10MiB
+			roll_keep 10
+			roll_uncompressed
+		}
+		format filter {
+			wrap json {
+				time_format rfc3339
+			}
+			request>remote_ip delete
+			request>remote_port delete
+			request>client_ip delete
+			request>proto delete
+			request>host delete
+			request>uri delete
+			request>headers delete
+			request>tls delete
+			resp_headers delete
+			user_id delete
+			bytes_read delete
+			size delete
+			duration delete
+		}
+	}
+
 	# The container's health probe.
 	handle /healthz {
 		respond "ok" 200
