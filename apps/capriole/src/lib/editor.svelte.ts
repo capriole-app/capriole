@@ -181,6 +181,8 @@ export class Editor {
   pdfaRefusal = $state.raw<string[] | null>(null);
   /** The «Informazioni e licenze» dialog. */
   licensesOpen = $state(false);
+  /** The terms of use. */
+  termsOpen = $state(false);
   /** The settings dialog: open, or open at the graphic signatures. */
   settingsOpen = $state<boolean | 'signatures'>(false);
   /** The size of the next free text (points). */

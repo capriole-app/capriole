@@ -1,8 +1,8 @@
 <script lang="ts">
-  // «Informazioni e licenze» (About and licences): Capriole's licence (0BSD), and the notices of what it is built from — the
-  // engine's dependencies, the JavaScript packages in the app, the resource pack, and on the desktop the
-  // Rust crates of its shell. Read from licenses.json, which the build writes
-  // (packages/engine-client/scripts/licenses.mjs).
+  // «Informazioni e licenze» (About and licences): Capriole's licence (0BSD), a link to the terms of use,
+  // and the notices of what it is built from — the engine's dependencies, the JavaScript packages in the
+  // app, the resource pack, and on the desktop the Rust crates of its shell. Read from licenses.json, which
+  // the build writes (packages/engine-client/scripts/licenses.mjs).
   import Info from '@lucide/svelte/icons/info';
   import CodedInIreland from './CodedInIreland.svelte';
   import { base } from '$app/paths';
@@ -10,6 +10,7 @@
   import { isDesktop } from '$lib/platform';
   import { tr } from '$lib/i18n/index.svelte';
   import { licenseWords } from '$lib/i18n/licenses';
+  import { termsWords } from '$lib/i18n/terms';
 
   interface Notice {
     name: string;
@@ -29,6 +30,7 @@
 
   const editor = getEditor();
   const t = $derived(tr(licenseWords));
+  const tw = $derived(tr(termsWords));
   let data = $state.raw<Licenses | null>(null);
   /** Why the list could not be read (a key of the dialog's words). */
   let failure = $state<'onlyBuilt' | null>(null);
@@ -91,6 +93,13 @@
         Capriole
         {t.free}
         <strong>0BSD</strong>{t.freeRest}
+      </p>
+      <p>
+        <button
+          type="button"
+          class="underline underline-offset-2 hover:text-primary"
+          onclick={() => (editor.termsOpen = true)}>{tw.title}</button
+        >
       </p>
       {#if failure}
         <p class="rounded-md bg-warning-background px-3 py-2 text-warning" role="status">{t[failure]}</p>
