@@ -173,14 +173,14 @@ TEST(AnnotationEditing, EveryKindIsAddedWithItsAppearance) {
     Document document = open(page_pdf());
     EXPECT_EQ(ink(document), 0U);
     AnnotationSpec dated = spec;
-    dated.author = "Nicola";
+    dated.author = "Ada";
     dated.date = "D:20261002120000Z";
     const auto ref = add_annotation(document, 0, dated);
     ASSERT_TRUE(ref.has_value()) << ref.error().message;
     const Dict& a = dict_of(document, *ref);
     EXPECT_TRUE(a.contains("AP"));
     EXPECT_EQ(a.find("P")->as_ref()->number, 3U);
-    EXPECT_EQ(a.find("T")->as_string()->bytes, "Nicola");
+    EXPECT_EQ(a.find("T")->as_string()->bytes, "Ada");
     EXPECT_EQ(a.find("M")->as_string()->bytes, "D:20261002120000Z");
     EXPECT_GT(ink(document), 20U);  // drawn from its appearance
     // Listed, as shown; and it survives a full save.

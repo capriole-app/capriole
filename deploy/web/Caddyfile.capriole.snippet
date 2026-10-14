@@ -11,8 +11,14 @@
 
 capriole.app {
 	header Strict-Transport-Security "max-age=63072000; includeSubDomains"
-	# Static files only: nothing is posted.
-	request_body {
+	# Static files, and one thing posted: a problem report (16 KB at most, deploy/reports). Anything
+	# else posted stops here.
+	@report path /api/report
+	request_body @report {
+		max_size 16KB
+	}
+	@other not path /api/report
+	request_body @other {
 		max_size 1KB
 	}
 	reverse_proxy capriole-web:8080

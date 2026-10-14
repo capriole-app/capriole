@@ -1,0 +1,193 @@
+import { translations } from './index.svelte';
+
+/** «Segnala un problema» (components/ReportDialog.svelte, ReportButton.svelte). */
+export const reportWords = translations(
+  {
+    open: 'Segnala un problema',
+    reportThis: 'Segnala',
+    title: 'Segnala un problema',
+    intro:
+      'Raccontaci cosa non ha funzionato. La segnalazione è anonima: non contiene il documento né il suo nome, e non registriamo il tuo indirizzo IP.',
+    describe: 'Cosa stavi facendo, e che cosa è successo?',
+    placeholder: 'Per esempio: ho ruotato la seconda pagina e l’anteprima è diventata bianca.',
+    needed: 'Scrivi che cosa è successo.',
+    whatIsSent: 'Insieme al tuo testo viene inviato solo questo:',
+    app: 'Versione dell’app',
+    engine: 'Versione del motore',
+    browser: 'Browser e sistema',
+    language: 'Lingua',
+    error: 'Ultimo errore',
+    document: 'Documento aperto',
+    noDocument: 'nessuno',
+    traits: (version: string | null, pages: number | null, encrypted: boolean | null, size: string) =>
+      [
+        version ? `PDF ${version}` : null,
+        pages === null ? null : pages === 1 ? '1 pagina' : `${pages} pagine`,
+        encrypted === null ? null : encrypted ? 'cifrato' : 'non cifrato',
+        size,
+      ]
+        .filter(Boolean)
+        .join(', '),
+    repairs: 'Riparazioni all’apertura',
+    none: 'nessuno',
+    noRepairs: 'nessuna',
+    cancel: 'Annulla',
+    send: 'Invia',
+    sending: 'Invio…',
+    close: 'Chiudi',
+    sent: 'Grazie! La segnalazione è arrivata.',
+    tooMany: 'Troppe segnalazioni in poco tempo: riprova fra un’ora.',
+    failed: (contact: string) => `Invio non riuscito. Riprova più tardi, oppure scrivi a ${contact}.`,
+  },
+  {
+    en: {
+      open: 'Report a problem',
+      reportThis: 'Report',
+      title: 'Report a problem',
+      intro:
+        'Tell us what did not work. The report is anonymous: it does not contain the document or its name, and we do not log your IP address.',
+      describe: 'What were you doing, and what happened?',
+      placeholder: 'For example: I rotated the second page and its preview went blank.',
+      needed: 'Write what happened.',
+      whatIsSent: 'Along with your text, only this is sent:',
+      app: 'App version',
+      engine: 'Engine version',
+      browser: 'Browser and system',
+      language: 'Language',
+      error: 'Last error',
+      document: 'Open document',
+      noDocument: 'none',
+      traits: (version: string | null, pages: number | null, encrypted: boolean | null, size: string) =>
+        [
+          version ? `PDF ${version}` : null,
+          pages === null ? null : pages === 1 ? '1 page' : `${pages} pages`,
+          encrypted === null ? null : encrypted ? 'encrypted' : 'not encrypted',
+          size,
+        ]
+          .filter(Boolean)
+          .join(', '),
+      repairs: 'Repairs when opened',
+      none: 'none',
+      noRepairs: 'none',
+      cancel: 'Cancel',
+      send: 'Send',
+      sending: 'Sending…',
+      close: 'Close',
+      sent: 'Thank you! The report has arrived.',
+      tooMany: 'Too many reports in a short time: try again in an hour.',
+      failed: (contact: string) => `Sending failed. Try again later, or write to ${contact}.`,
+    },
+    fr: {
+      open: 'Signaler un problème',
+      reportThis: 'Signaler',
+      title: 'Signaler un problème',
+      intro:
+        'Dites-nous ce qui n’a pas fonctionné. Le signalement est anonyme : il ne contient ni le document ni son nom, et nous n’enregistrons pas votre adresse IP.',
+      describe: 'Que faisiez-vous, et que s’est-il passé ?',
+      placeholder: 'Par exemple : j’ai fait pivoter la deuxième page et son aperçu est devenu blanc.',
+      needed: 'Écrivez ce qui s’est passé.',
+      whatIsSent: 'Avec votre texte, seul ceci est envoyé :',
+      app: 'Version de l’application',
+      engine: 'Version du moteur',
+      browser: 'Navigateur et système',
+      language: 'Langue',
+      error: 'Dernière erreur',
+      document: 'Document ouvert',
+      noDocument: 'aucun',
+      traits: (version: string | null, pages: number | null, encrypted: boolean | null, size: string) =>
+        [
+          version ? `PDF ${version}` : null,
+          pages === null ? null : pages === 1 ? '1 page' : `${pages} pages`,
+          encrypted === null ? null : encrypted ? 'chiffré' : 'non chiffré',
+          size,
+        ]
+          .filter(Boolean)
+          .join(', '),
+      repairs: 'Réparations à l’ouverture',
+      none: 'aucune',
+      noRepairs: 'aucune',
+      cancel: 'Annuler',
+      send: 'Envoyer',
+      sending: 'Envoi…',
+      close: 'Fermer',
+      sent: 'Merci ! Le signalement est arrivé.',
+      tooMany: 'Trop de signalements en peu de temps : réessayez dans une heure.',
+      failed: (contact: string) => `L’envoi a échoué. Réessayez plus tard, ou écrivez à ${contact}.`,
+    },
+    de: {
+      open: 'Problem melden',
+      reportThis: 'Melden',
+      title: 'Problem melden',
+      intro:
+        'Sagen Sie uns, was nicht funktioniert hat. Die Meldung ist anonym: Sie enthält weder das Dokument noch seinen Namen, und wir speichern Ihre IP-Adresse nicht.',
+      describe: 'Was haben Sie gemacht, und was ist passiert?',
+      placeholder: 'Zum Beispiel: Ich habe die zweite Seite gedreht, und ihre Vorschau wurde weiß.',
+      needed: 'Schreiben Sie, was passiert ist.',
+      whatIsSent: 'Zusammen mit Ihrem Text wird nur dies gesendet:',
+      app: 'App-Version',
+      engine: 'Engine-Version',
+      browser: 'Browser und System',
+      language: 'Sprache',
+      error: 'Letzter Fehler',
+      document: 'Geöffnetes Dokument',
+      noDocument: 'keines',
+      traits: (version: string | null, pages: number | null, encrypted: boolean | null, size: string) =>
+        [
+          version ? `PDF ${version}` : null,
+          pages === null ? null : pages === 1 ? '1 Seite' : `${pages} Seiten`,
+          encrypted === null ? null : encrypted ? 'verschlüsselt' : 'nicht verschlüsselt',
+          size,
+        ]
+          .filter(Boolean)
+          .join(', '),
+      repairs: 'Reparaturen beim Öffnen',
+      none: 'keiner',
+      noRepairs: 'keine',
+      cancel: 'Abbrechen',
+      send: 'Senden',
+      sending: 'Wird gesendet…',
+      close: 'Schließen',
+      sent: 'Danke! Die Meldung ist angekommen.',
+      tooMany: 'Zu viele Meldungen in kurzer Zeit: Versuchen Sie es in einer Stunde erneut.',
+      failed: (contact: string) =>
+        `Senden fehlgeschlagen. Versuchen Sie es später erneut, oder schreiben Sie an ${contact}.`,
+    },
+    es: {
+      open: 'Informar de un problema',
+      reportThis: 'Informar',
+      title: 'Informar de un problema',
+      intro:
+        'Cuéntanos qué no ha funcionado. El informe es anónimo: no contiene el documento ni su nombre, y no registramos tu dirección IP.',
+      describe: '¿Qué estabas haciendo y qué ha pasado?',
+      placeholder: 'Por ejemplo: he girado la segunda página y su vista previa se ha quedado en blanco.',
+      needed: 'Escribe qué ha pasado.',
+      whatIsSent: 'Junto con tu texto, solo se envía esto:',
+      app: 'Versión de la aplicación',
+      engine: 'Versión del motor',
+      browser: 'Navegador y sistema',
+      language: 'Idioma',
+      error: 'Último error',
+      document: 'Documento abierto',
+      noDocument: 'ninguno',
+      traits: (version: string | null, pages: number | null, encrypted: boolean | null, size: string) =>
+        [
+          version ? `PDF ${version}` : null,
+          pages === null ? null : pages === 1 ? '1 página' : `${pages} páginas`,
+          encrypted === null ? null : encrypted ? 'cifrado' : 'sin cifrar',
+          size,
+        ]
+          .filter(Boolean)
+          .join(', '),
+      repairs: 'Reparaciones al abrir',
+      none: 'ninguno',
+      noRepairs: 'ninguna',
+      cancel: 'Cancelar',
+      send: 'Enviar',
+      sending: 'Enviando…',
+      close: 'Cerrar',
+      sent: '¡Gracias! El informe ha llegado.',
+      tooMany: 'Demasiados informes en poco tiempo: inténtalo de nuevo dentro de una hora.',
+      failed: (contact: string) => `No se ha podido enviar. Inténtalo más tarde o escribe a ${contact}.`,
+    },
+  },
+);

@@ -8,6 +8,9 @@
   import PasswordDialog from '$lib/components/PasswordDialog.svelte';
   import LicensesDialog from '$lib/components/LicensesDialog.svelte';
   import TermsDialog from '$lib/components/TermsDialog.svelte';
+  import ReportDialog from '$lib/components/ReportDialog.svelte';
+  import { isDesktop } from '$lib/platform';
+  import { reportWords } from '$lib/i18n/report';
   import SettingsDialog from '$lib/components/SettingsDialog.svelte';
   import PdfaDialog from '$lib/components/PdfaDialog.svelte';
   import SignaturesPanel from '$lib/components/SignaturesPanel.svelte';
@@ -20,6 +23,7 @@
 
   const editor = setEditor(new Editor());
   const t = $derived(tr(pagesWords));
+  const rt = $derived(tr(reportWords));
 
   /**
    * Keyboard shortcuts — not while typing. On the pages: Delete, Ctrl/Cmd+Z, Ctrl/Cmd+A. On a page shown
@@ -41,6 +45,7 @@
       editor.pdfaDialog !== null ||
       editor.licensesOpen ||
       editor.termsOpen ||
+      editor.reportOpen ||
       editor.settingsOpen
     )
       return;
@@ -96,6 +101,7 @@
 <PdfaDialog />
 <LicensesDialog />
 <TermsDialog />
+<ReportDialog />
 <SettingsDialog />
 
 {#if !editor.name}
@@ -108,7 +114,14 @@
       <Toolbar />
     {/if}
     {#if editor.error}
-      <p class="bg-danger-background px-4 py-2 text-sm text-danger" role="alert">{editor.error}</p>
+      <p class="flex items-center gap-3 bg-danger-background px-4 py-2 text-sm text-danger" role="alert">
+        <span class="flex-1">{editor.error}</span>
+        {#if !isDesktop}
+          <button type="button" class="shrink-0 underline underline-offset-2" onclick={() => (editor.reportOpen = true)}
+            >{rt.reportThis}</button
+          >
+        {/if}
+      </p>
     {/if}
     {#if editor.repairs.length > 0}
       <details class="bg-warning-background px-4 py-2 text-sm text-warning">

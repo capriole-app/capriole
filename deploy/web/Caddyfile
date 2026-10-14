@@ -5,6 +5,11 @@
 	admin off
 	auto_https off
 	persist_config off
+	# The gateway in front says who the client is (X-Forwarded-For): believed from a private address
+	# only, and passed on to the reports' service, which caps reports per sender (deploy/reports).
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 :8080 {
@@ -29,12 +34,18 @@
 	@mutable not path /_app/immutable/*
 	header @mutable Cache-Control "no-cache"
 
-	# Counting visits, anonymously (stats.sh): one line per opening of the page, and in it only the time,
-	# the method, the status and the browser's name (to tell search engines' robots apart). No address, no
-	# other header, no path: everything else of the request is taken away before the line is written.
+	# Counting visits, anonymously (stats.sh): one line per opening of the page («page»), and one per start
+	# of the app («start»: the first screen's logo, which only a browser running the app asks for — and
+	# asks again on each visit, no-cache — while the scanners a new domain draws fetch the page alone).
+	# In each line only the time, the method, the status, that label and the browser's name (to tell
+	# robots apart): no address, no other header, no path, all taken away before the line is written.
 	# In /logs, a volume (docker-compose.yml), so that a new deploy does not lose the count.
-	@notpage not path / /index.html
-	log_skip @notpage
+	@page path / /index.html
+	@start path /logo-light.svg
+	@uncounted not path / /index.html /logo-light.svg
+	log_skip @uncounted
+	log_append @page kind page
+	log_append @start kind start
 	log_append ua {http.request.header.User-Agent}
 	log {
 		output file /logs/access.log {
@@ -60,6 +71,15 @@
 			size delete
 			duration delete
 		}
+	}
+
+	# A problem report, sent by the app when the person asks (deploy/reports: the service on the
+	# compose's inner network). Only there is anything posted.
+	handle /api/report {
+		request_body {
+			max_size 16KB
+		}
+		reverse_proxy capriole-reports:8081
 	}
 
 	# The container's health probe.

@@ -57,6 +57,7 @@ export const termsWords = translations(
         body: [
           'Non raccogliamo i tuoi documenti; niente cookie di tracciamento né statistiche di utilizzo. Le preferenze (lingua, tema, impostazioni, l’accettazione di queste condizioni) restano sul tuo dispositivo, nella memoria del browser o dell’app.',
           'Non registriamo indirizzi IP: contiamo solo le aperture della pagina, in forma anonima (il giorno e il tipo di browser, per distinguere i robot dei motori di ricerca). L’app desktop si collega alla rete solo quando lo chiedi tu, per esempio a un servizio di marca temporale o di verifica della revoca per una firma.',
+          'Se scegli di inviare una segnalazione di problema, riceviamo solo ciò che l’app ti mostra prima dell’invio: il tuo testo, le versioni dell’app e del motore, browser e sistema in breve, la lingua, l’ultimo errore e alcuni tratti del documento aperto senza il suo contenuto (versione PDF, numero di pagine, cifratura, dimensione approssimativa). Non contiene il documento, il suo nome né il tuo indirizzo IP; non scrivere dati personali nel testo. La usiamo solo per correggere i difetti di Capriole e la conserviamo per 12 mesi.',
         ],
       },
       {
@@ -122,6 +123,7 @@ export const termsWords = translations(
           body: [
             'We do not collect your documents; there are no tracking cookies and no usage statistics. Your preferences (language, theme, settings, the acceptance of these terms) stay on your device, in the browser’s or the app’s storage.',
             'We do not log IP addresses: we only count how often the page is opened, anonymously (the day and the kind of browser, to tell search engines’ robots apart). The desktop app connects to the network only when you ask it to, for example to a time-stamping or revocation-checking service for a signature.',
+            'If you choose to send a problem report, we receive only what the app shows you before it is sent: your text, the versions of the app and the engine, your browser and system in short, the language, the last error and a few traits of the open document without its content (PDF version, number of pages, encryption, approximate size). It does not contain the document, its name or your IP address; do not write personal data in the text. We use it only to fix Capriole’s defects and keep it for 12 months.',
           ],
         },
         {
@@ -186,6 +188,7 @@ export const termsWords = translations(
           body: [
             'Nous ne collectons pas vos documents ; ni cookies de suivi ni statistiques d’utilisation. Vos préférences (langue, thème, réglages, l’acceptation de ces conditions) restent sur votre appareil, dans la mémoire du navigateur ou de l’application.',
             'Nous n’enregistrons pas les adresses IP : nous comptons seulement les ouvertures de la page, de façon anonyme (le jour et le type de navigateur, pour distinguer les robots des moteurs de recherche). L’application de bureau ne se connecte au réseau que lorsque vous le demandez, par exemple à un service d’horodatage ou de vérification de révocation pour une signature.',
+            'Si vous choisissez d’envoyer un signalement de problème, nous recevons uniquement ce que l’application vous montre avant l’envoi : votre texte, les versions de l’application et du moteur, le navigateur et le système en bref, la langue, la dernière erreur et quelques caractéristiques du document ouvert sans son contenu (version PDF, nombre de pages, chiffrement, taille approximative). Il ne contient ni le document, ni son nom, ni votre adresse IP ; n’écrivez pas de données personnelles dans le texte. Nous l’utilisons uniquement pour corriger les défauts de Capriole et le conservons 12 mois.',
           ],
         },
         {
@@ -251,6 +254,7 @@ export const termsWords = translations(
           body: [
             'Wir erheben Ihre Dokumente nicht; keine Tracking-Cookies, keine Nutzungsstatistiken. Ihre Einstellungen (Sprache, Design, Einstellungen, die Annahme dieser Bedingungen) bleiben auf Ihrem Gerät, im Speicher des Browsers oder der App.',
             'Wir speichern keine IP-Adressen: Wir zählen nur, wie oft die Seite geöffnet wird, anonym (der Tag und die Art des Browsers, um die Robots der Suchmaschinen zu unterscheiden). Die Desktop-App verbindet sich nur dann mit dem Netz, wenn Sie es verlangen, zum Beispiel mit einem Zeitstempel- oder Sperrprüfungsdienst für eine Signatur.',
+            'Wenn Sie eine Problemmeldung senden, erhalten wir nur, was Ihnen die App vor dem Senden zeigt: Ihren Text, die Versionen von App und Engine, Browser und System in Kurzform, die Sprache, den letzten Fehler und einige Merkmale des geöffneten Dokuments ohne dessen Inhalt (PDF-Version, Seitenzahl, Verschlüsselung, ungefähre Größe). Sie enthält weder das Dokument noch seinen Namen noch Ihre IP-Adresse; schreiben Sie keine personenbezogenen Daten in den Text. Wir verwenden sie nur, um Fehler in Capriole zu beheben, und bewahren sie 12 Monate auf.',
           ],
         },
         {
@@ -316,6 +320,7 @@ export const termsWords = translations(
           body: [
             'No recogemos tus documentos; ni cookies de seguimiento ni estadísticas de uso. Tus preferencias (idioma, tema, ajustes, la aceptación de estas condiciones) se quedan en tu dispositivo, en la memoria del navegador o de la aplicación.',
             'No registramos direcciones IP: solo contamos cuántas veces se abre la página, de forma anónima (el día y el tipo de navegador, para distinguir los robots de los buscadores). La aplicación de escritorio solo se conecta a la red cuando tú lo pides, por ejemplo a un servicio de sellado de tiempo o de comprobación de revocación para una firma.',
+            'Si decides enviar un informe de problema, recibimos solo lo que la aplicación te muestra antes del envío: tu texto, las versiones de la aplicación y del motor, el navegador y el sistema en breve, el idioma, el último error y algunos rasgos del documento abierto sin su contenido (versión PDF, número de páginas, cifrado, tamaño aproximado). No contiene el documento, su nombre ni tu dirección IP; no escribas datos personales en el texto. Lo usamos solo para corregir los defectos de Capriole y lo conservamos 12 meses.',
           ],
         },
         {

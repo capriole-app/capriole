@@ -12,6 +12,7 @@ export const licenseWords = translations(
     free: 'è software libero con licenza',
     freeRest:
       ': puoi usarlo, copiarlo, modificarlo e distribuirlo per qualunque scopo. I tuoi file non lasciano il dispositivo.',
+    repository: 'Il codice sorgente è pubblico: lo trovi su',
     onlyBuilt: 'L’elenco delle licenze c’è solo nella versione compilata dell’app (npm run build).',
     reading: 'Lettura…',
     caprioleLicense: 'Licenza di Capriole (0BSD)',
@@ -45,6 +46,7 @@ export const licenseWords = translations(
       free: 'is free software under the',
       freeRest:
         ' licence: you may use, copy, modify and distribute it for any purpose. Your files never leave the device.',
+      repository: 'The source code is public: you can find it on',
       onlyBuilt: 'The list of licences is only in the built app (npm run build).',
       reading: 'Reading…',
       caprioleLicense: 'Capriole’s licence (0BSD)',
@@ -65,6 +67,7 @@ export const licenseWords = translations(
       free: 'est un logiciel libre sous licence',
       freeRest:
         ' : vous pouvez l’utiliser, le copier, le modifier et le distribuer à toute fin. Vos fichiers ne quittent pas l’appareil.',
+      repository: 'Le code source est public : vous le trouverez sur',
       onlyBuilt: 'La liste des licences n’existe que dans la version compilée de l’application (npm run build).',
       reading: 'Lecture…',
       caprioleLicense: 'Licence de Capriole (0BSD)',
@@ -97,6 +100,7 @@ export const licenseWords = translations(
       free: 'ist freie Software unter der Lizenz',
       freeRest:
         ': Sie dürfen sie für jeden Zweck verwenden, kopieren, ändern und weitergeben. Ihre Dateien verlassen das Gerät nicht.',
+      repository: 'Der Quellcode ist öffentlich: Sie finden ihn auf',
       onlyBuilt: 'Die Liste der Lizenzen gibt es nur in der gebauten App (npm run build).',
       reading: 'Wird gelesen…',
       caprioleLicense: 'Lizenz von Capriole (0BSD)',
@@ -129,6 +133,7 @@ export const licenseWords = translations(
       free: 'es software libre con licencia',
       freeRest:
         ': puedes usarlo, copiarlo, modificarlo y distribuirlo para cualquier fin. Tus archivos no salen del dispositivo.',
+      repository: 'El código fuente es público: lo encontrarás en',
       onlyBuilt: 'La lista de licencias solo está en la versión compilada de la aplicación (npm run build).',
       reading: 'Leyendo…',
       caprioleLicense: 'Licencia de Capriole (0BSD)',
