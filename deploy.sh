@@ -4,9 +4,9 @@
 #
 #   cd /srv/apps/capriole-web && ./deploy.sh --env main --tag <sha>
 #
-# The server's SSH gate lets the deploy key run that line and nothing
-# else. The work is done by deploy/web/deploy.sh; this only checks --env and hands over with exec, so
-# the checkout that script makes cannot rewrite a file bash is still reading.
+# The server's SSH gate lets the deploy key run that line and nothing else. The work is done by
+# deploy/web/deploy.sh; this only checks --env and hands over with exec, so the checkout that script
+# makes cannot rewrite a file bash is still reading.
 set -euo pipefail
 
 args=()

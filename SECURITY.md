@@ -9,7 +9,7 @@ when it should not, or a file leave the user's device.
 Please report privately — do not open a public issue:
 
 - through GitHub's private vulnerability reporting ("Security" tab → "Report a vulnerability"), or
-- by e-mail to <<CONTACT-TBD>>.
+- by e-mail to security@capriole.app.
 
 Include the file that triggers the problem (minimized if you can) and what happens. You will get an
 answer within a week; fixes are released with a regression test, and the reporter is credited unless

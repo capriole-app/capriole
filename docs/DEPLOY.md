@@ -6,7 +6,7 @@ La web app è fatta solo di file statici e il motore gira nel browser, quindi i 
 |---|---|---|
 | `capriole.app` (e `www.` → reindirizzato) | `capriole-web:8080` | `/srv/apps/capriole-web` |
 
-- **Server:** contabo-b, indirizzo, porta SSH e utente negli appunti privati del titolare.
+- **Server:** un VPS (contabo-b). Indirizzo, porta SSH e utente di rilascio non stanno nel repository pubblico: Jenkins li legge dalle sue proprietà globali (`CAPRIOLE_DEPLOY_HOST`, `CAPRIOLE_DEPLOY_PORT`, `CAPRIOLE_DEPLOY_USER`); i dettagli sono negli appunti privati del titolare. Qui sotto l'utente di rilascio si chiama `<deploy-user>`.
 - **DNS:** record A `capriole.app` e `www.capriole.app` → l'indirizzo del server, su Cloudflare, **non proxied** (nuvola grigia).
   - I certificati li prende Caddy.
   - `.app` è nella lista di precaricamento HSTS: solo HTTPS.
@@ -47,12 +47,9 @@ La web app è fatta solo di file statici e il motore gira nel browser, quindi i 
 **Sul server**, come `<deploy-user>`:
 
     sudo mkdir -p /srv/apps/capriole-web && sudo chown <deploy-user>: /srv/apps/capriole-web
-    ssh-keygen -t ed25519 -N '' -f ~/.ssh/capriole-deploy -C 'contabo-b capriole'
-    # la .pub su GitHub: repo capriole → Settings → Deploy keys (sola lettura)
-    git clone -c core.sshCommand='ssh -i ~/.ssh/capriole-deploy -o IdentitiesOnly=yes' \
-      git@github.com:nik71b14/capriole.git /srv/apps/capriole-web
+    git clone https://github.com/capriole-app/capriole.git /srv/apps/capriole-web   # repo pubblico: nessuna chiave
 
-Il server deve poter scaricare da `ghcr.io/capriole-app/`. Se il pacchetto `capriole-web` ha una visibilità diversa, va dato accesso al token usato dal server.
+Il pacchetto `ghcr.io/capriole-app/capriole-web` è pubblico: il server lo scarica senza autenticarsi.
 
 **Il gateway:**
 

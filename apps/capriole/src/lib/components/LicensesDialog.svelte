@@ -1,8 +1,8 @@
 <script lang="ts">
-  // «Informazioni e licenze» (About and licences): Capriole's licence (0BSD), a link to the terms of use,
-  // and the notices of what it is built from — the engine's dependencies, the JavaScript packages in the
-  // app, the resource pack, and on the desktop the Rust crates of its shell. Read from licenses.json, which
-  // the build writes (packages/engine-client/scripts/licenses.mjs).
+  // «Informazioni e licenze» (About and licences): Capriole's licence (0BSD), where its source code is, a
+  // link to the terms of use, and the notices of what it is built from — the engine's dependencies, the
+  // JavaScript packages in the app, the resource pack, and on the desktop the Rust crates of its shell. Read
+  // from licenses.json, which the build writes (packages/engine-client/scripts/licenses.mjs).
   import Info from '@lucide/svelte/icons/info';
   import CodedInIreland from './CodedInIreland.svelte';
   import { base } from '$app/paths';
@@ -27,6 +27,9 @@
     resources: { name: string; text: string }[];
     crates: { license: string; crates: string[]; text: string; source?: string[] }[];
   }
+
+  /** Where Capriole's source code is (README.md, docs/PUBBLICAZIONE.md). */
+  const repository = 'https://github.com/capriole-app/capriole';
 
   const editor = getEditor();
   const t = $derived(tr(licenseWords));
@@ -93,6 +96,20 @@
         Capriole
         {t.free}
         <strong>0BSD</strong>{t.freeRest}
+      </p>
+      <!-- The desktop shell has no opener for external links: there the address is text to copy. -->
+      <p data-testid="about-repository">
+        {t.repository}
+        {#if isDesktop}
+          <span class="font-medium select-all">{repository}</span>
+        {:else}
+          <a
+            href={repository}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="underline underline-offset-2 hover:text-primary">GitHub</a
+          >
+        {/if}
       </p>
       <p>
         <button

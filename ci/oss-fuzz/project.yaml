@@ -2,7 +2,7 @@ homepage: "https://github.com/capriole-app/capriole"
 language: c++
 main_repo: "https://github.com/capriole-app/capriole.git"
 # A Google account's address: it receives the crash reports (docs/PUBBLICAZIONE.md).
-primary_contact: "<<CONTACT-TBD>>"
+primary_contact: "security@capriole.app"
 file_github_issue: false
 sanitizers:
   - address
