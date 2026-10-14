@@ -9,6 +9,11 @@ test('«Informazioni e licenze» lists Capriole’s licence and what it is built
   await expect(dialog.getByTestId('coded-in-ireland')).toBeVisible();
   await expect(dialog.getByTestId('about-versions')).toHaveText(/^versione \d+\.\d+\.\d+ · motore \d+\.\d+\.\d+$/);
 
+  // Where the source code is: a link that opens elsewhere, not in the app's tab.
+  const repository = dialog.getByTestId('about-repository').getByRole('link', { name: 'GitHub' });
+  await expect(repository).toHaveAttribute('href', 'https://github.com/capriole-app/capriole');
+  await expect(repository).toHaveAttribute('target', '_blank');
+
   // The engine's dependencies, with what their licences ask to say.
   const engine = dialog.getByTestId('licenses-engine');
   await expect(engine).toContainText('Mbed TLS 3.6.7 — Apache-2.0');

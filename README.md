@@ -2,6 +2,7 @@
 
 An open source PDF editor, built on its own PDF engine written from scratch in C++23.
 Files never leave the user's device: the same engine runs natively and as WebAssembly in the browser.
+Try it at **[capriole.app](https://capriole.app)**.
 
 > **Status:** in development, not yet released. The engine reads, renders, extracts text from and edits
 > PDF files; the web app and the desktop shell use it. See [docs/ROADMAP.md](docs/ROADMAP.md) for where
@@ -56,7 +57,8 @@ SKIP_WASM=0 SKIP_E2E=0 scripts/check.sh   # + WebAssembly, the apps and their en
 ## Contributing and security
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) (contributions are signed off under the DCO) and
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report vulnerabilities privately: [SECURITY.md](SECURITY.md).
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Report vulnerabilities privately: [SECURITY.md](SECURITY.md). Anything else:
+[hello@capriole.app](mailto:hello@capriole.app).
 
 ## License
 

@@ -24,10 +24,9 @@ pipeline {
     CI = 'true'
     // The Jenkins host is shared with other projects: do not take every core.
     CMAKE_BUILD_PARALLEL_LEVEL = '4'
-    // Where the web app is deployed (docs/DEPLOY.md): contabo-b, behind its shared Caddy.
-    DEPLOY_HOST = '<server>'
-    DEPLOY_PORT = '<port>'
-    DEPLOY_USER = '<deploy-user>'
+    // Where the web app is deployed (docs/DEPLOY.md). The server's address, SSH port and user are not in
+    // this public file: they come from Jenkins (Manage Jenkins → System → Global properties:
+    // CAPRIOLE_DEPLOY_HOST, CAPRIOLE_DEPLOY_PORT, CAPRIOLE_DEPLOY_USER); Deploy fails if one is missing.
     DEPLOY_DIR = '/srv/apps/capriole-web'
   }
 
@@ -156,9 +155,12 @@ pipeline {
               sh '''#!/usr/bin/env bash
                 set -euo pipefail
                 [ -n "${IMAGE_TAG:-}" ] || { echo "[ci] ERROR: IMAGE_TAG missing (did Image fail?)"; exit 1; }
-                ssh -p "$DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
+                for v in CAPRIOLE_DEPLOY_HOST CAPRIOLE_DEPLOY_PORT CAPRIOLE_DEPLOY_USER; do
+                  [ -n "${!v:-}" ] || { echo "[ci] ERROR: $v is not set in Jenkins (Global properties)"; exit 1; }
+                done
+                ssh -p "$CAPRIOLE_DEPLOY_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN_HOSTS" \
                   -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
-                  "$DEPLOY_USER@$DEPLOY_HOST" \
+                  "$CAPRIOLE_DEPLOY_USER@$CAPRIOLE_DEPLOY_HOST" \
                   "set -euo pipefail; cd '$DEPLOY_DIR'; ./deploy.sh --env main --tag '$IMAGE_TAG'"
               '''
             }

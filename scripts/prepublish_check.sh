@@ -5,7 +5,7 @@
 #
 # Checks, over the whole history (every commit, not only the files as they are now):
 #   1. no secrets: private keys outside the test PKI, cloud and API tokens, passwords in URLs;
-#   2. no private paths (a home directory, Dropbox);
+#   2. no private paths (a home directory, Dropbox), no e-mail address but the project's (commits' metadata too);
 #   3. no file over 5 MB;
 # and in the tree as it is:
 #   4. the licence and the public project files are there, and no GitHub Actions workflow (CI is Jenkins);
@@ -45,8 +45,19 @@ if [[ -z "$hits" ]]; then ok "no secrets in the history"; else fail "possible se
 # 2. Private paths, in every commit.
 # shellcheck disable=SC2086
 # (A Dropbox folder, not the name: "Copyright (c) 2016 Dropbox, Inc." is in licences.)
-hits=$(git grep -I -l -E '/home/[a-z]+/|/Dropbox( \([^)]*\))?/' $revisions -- . ':!scripts/prepublish_check.sh' 2>/dev/null | sed 's/^[0-9a-f]*://' | sort -u)
-if [[ -z "$hits" ]]; then ok "no private paths in the history"; else fail "private paths in: $(echo $hits)"; fi
+# (/home/node/ is the official Node image's home, inside the reports container: not a person's.)
+hits=$(git grep -I -h -o -E '/home/[a-z]+/|/Dropbox( \([^)]*\))?/' $revisions -- . ':!scripts/prepublish_check.sh' 2>/dev/null | grep -v '^/home/node/' | sort -u)
+if [[ -z "$hits" ]]; then ok "no private paths in the history"; else fail "private paths in the history: $(echo $hits)"; fi
+
+# 2b. E-mail addresses, in every commit and in the commits' metadata: only the project's own
+# (@capriole.app), GitHub's noreply ones and examples. Third parties' addresses in licence notices are theirs.
+email='[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
+allowed='@capriole\.app$|@users\.noreply\.github\.com$|^noreply@(github|anthropic)\.com$|@example\.(com|org|net)$|^git@github\.com$|@[0-9]+x\.png$'
+# shellcheck disable=SC2086
+hits=$( (git grep -I -h -o -E "$email" $revisions -- . ':!THIRD_PARTY_NOTICES.md' ':!third_party/notices.json' \
+          ':!apps/desktop/crate-notices.json' 2>/dev/null
+         git log --all --format='%ae%n%ce%n%B' | grep -o -E "$email") | sort -u | grep -v -E "$allowed")
+if [[ -z "$hits" ]]; then ok "no personal e-mail address in the history"; else fail "e-mail addresses in the history: $(echo $hits)"; fi
 
 # 3. Large files, in every commit.
 big=$(git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objectsize) %(rest)' | awk '$1 == "blob" && $2 > 5242880 {print $3 " (" $2 " bytes)"}')

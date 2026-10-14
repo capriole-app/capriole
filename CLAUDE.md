@@ -82,4 +82,4 @@ cmake --preset fuzz && cmake --build --preset fuzz   # richiede clang
 
 Si lavora su **`development`** (o branch `feat/…`, `fix/…` che confluiscono in `development`).
 `main` si aggiorna solo per merge da `development`; l'hook blocca il push diretto. Conventional Commits.
-Remote: `github.com/capriole-app/capriole` (privato).
+Remote: `github.com/capriole-app/capriole` (pubblico). Autore dei commit: l'indirizzo noreply di GitHub, mai un'e-mail personale o aziendale.
