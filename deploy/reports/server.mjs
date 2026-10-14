@@ -1,7 +1,9 @@
 // capriole-reports: receives the problem reports the web app sends («Segnala un problema»), each one
 // sent by a person who has seen all of it first. Every request is hostile until proven otherwise: a
 // report is at most 16 KB, only the expected fields are kept (anything else is dropped, every string is
-// cut to its size), and the reports a sender — or everyone — can make in an hour are capped. The address
+// cut to its size), and the reports a sender — or everyone — can make in an hour are capped; so is what a
+// day can keep on disk, counted from the disk itself, so that a restart does not reset it: whatever comes,
+// twelve months of reports stay under keepDays × dayBytes (about 3 GB). The address
 // that cap is counted by lives only in memory and is never written: a report on disk has no address, no
 // header, nothing but what the person was shown. Kept twelve months (the terms of use), then deleted.
 //
@@ -10,7 +12,7 @@
 //
 //   node server.mjs                     PORT (8081), REPORTS_DIR (/reports)
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 
@@ -20,6 +22,8 @@ export const limits = {
   everyone: 200,
   windowMs: 60 * 60 * 1000,
   keepDays: 365,
+  perDay: 1000,
+  dayBytes: 8 * 1024 * 1024,
 };
 
 const locales = new Set(['it', 'en', 'fr', 'de', 'es']);
@@ -106,6 +110,21 @@ export function keep(dir, report, now = new Date()) {
   return `${day}/${id}`;
 }
 
+/** True when today's folder already holds as many reports, or as many bytes, as a day may keep. */
+export function dayFull(dir, now = new Date()) {
+  const folder = join(dir, now.toISOString().slice(0, 10));
+  let names = [];
+  try {
+    names = readdirSync(folder).filter((n) => n.endsWith('.json'));
+  } catch {
+    return false; // no report yet today
+  }
+  if (names.length >= limits.perDay) return true;
+  let bytes = 0;
+  for (const n of names) bytes += statSync(join(folder, n), { throwIfNoEntry: false })?.size ?? 0;
+  return bytes >= limits.dayBytes;
+}
+
 /** Deletes the days older than the time reports are kept. */
 export function forget(dir, now = new Date()) {
   const oldest = new Date(now.getTime() - limits.keepDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -158,6 +177,8 @@ export function server(dir, quota = new Quota()) {
         report = null;
       }
       if (!report) return answer(response, 400, { error: 'not a report' });
+      // The day's cap before the sender's quota: a refusal for everyone does not use up anyone's share.
+      if (dayFull(dir)) return answer(response, 429, { error: 'too many reports today' });
       if (!quota.take(sender(request))) return answer(response, 429, { error: 'too many reports' });
       try {
         return answer(response, 201, { id: keep(dir, report) });

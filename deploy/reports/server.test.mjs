@@ -1,10 +1,10 @@
 // node --test deploy/reports/server.test.mjs   (deploy/web/test.sh runs it too)
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Quota, checked, forget, limits, server } from './server.mjs';
+import { Quota, checked, dayFull, forget, limits, server } from './server.mjs';
 
 const report = {
   v: 1,
@@ -62,6 +62,46 @@ test('old days are deleted, the others kept', () => {
   forget(dir, new Date('2026-10-14T00:00:00Z'));
   assert.equal(existsSync(join(dir, '2025-01-01')), false);
   assert.equal(existsSync(join(dir, '2026-10-01')), true);
+});
+
+test('a day is full at its count or at its bytes, and the next day starts empty', () => {
+  const now = new Date('2026-10-14T12:00:00Z');
+  const byCount = mkdtempSync(join(tmpdir(), 'reports-'));
+  assert.equal(dayFull(byCount, now), false); // no folder yet
+  mkdirSync(join(byCount, '2026-10-14'));
+  for (let i = 0; i < limits.perDay - 1; i++) writeFileSync(join(byCount, '2026-10-14', `${i}.json`), '{}');
+  assert.equal(dayFull(byCount, now), false);
+  writeFileSync(join(byCount, '2026-10-14', 'last.json'), '{}');
+  assert.equal(dayFull(byCount, now), true);
+  assert.equal(dayFull(byCount, new Date('2026-10-15T00:00:00Z')), false);
+
+  const byBytes = mkdtempSync(join(tmpdir(), 'reports-'));
+  mkdirSync(join(byBytes, '2026-10-14'));
+  writeFileSync(join(byBytes, '2026-10-14', 'a.json'), 'x'.repeat(limits.dayBytes - 1));
+  assert.equal(dayFull(byBytes, now), false);
+  writeFileSync(join(byBytes, '2026-10-14', 'b.json'), 'x');
+  assert.equal(dayFull(byBytes, now), true);
+});
+
+test('over HTTP: a full day refuses everyone, keeps nothing and uses up no one\'s quota', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'reports-'));
+  const today = join(dir, new Date().toISOString().slice(0, 10));
+  mkdirSync(today);
+  writeFileSync(join(today, 'big.json'), 'x'.repeat(limits.dayBytes));
+  const s = server(dir);
+  await new Promise((resolve) => s.listen(0, '127.0.0.1', resolve));
+  t.after(() => s.close());
+  const post = () =>
+    fetch(`http://127.0.0.1:${s.address().port}/api/report`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.9' },
+      body: JSON.stringify(report),
+    });
+  for (let i = 0; i < limits.perSender + 2; i++) assert.equal((await post()).status, 429);
+  assert.deepEqual(readdirSync(today), ['big.json']);
+  // Room again (the next day, here by emptying today): the same sender's share is whole.
+  rmSync(join(today, 'big.json'));
+  for (let i = 0; i < limits.perSender; i++) assert.equal((await post()).status, 201);
 });
 
 test('over HTTP: kept as checked, with no address; refused when wrong, too large or too many', async (t) => {
