@@ -73,16 +73,23 @@ Dal 2026-10-13 il sito è aperto ai motori di ricerca: lo snippet non manda più
 
 ## Quanto è usata
 
-Il Caddy del container scrive una riga per ogni apertura della pagina (`/`), e in quella riga c'è solo:
-ora, metodo, esito e nome del browser (per riconoscere i robot). Indirizzo IP, header e percorso vengono
-cancellati prima della scrittura; le richieste dei file dell'app non vengono registrate. Il log sta nel
-volume `capriole-web_logs`, quindi sopravvive ai rilasci, e ruota da solo (10 file da 10 MiB).
+Il Caddy del container scrive una riga quando qualcuno apre la pagina (`/`, etichetta `page`) e una quando
+l'app parte davvero in un browser (etichetta `start`: è il logo della prima schermata, che solo un browser
+che esegue l'app richiede, e lo richiede a ogni visita). In ogni riga ci sono solo: ora, metodo, esito,
+etichetta e nome del browser (serve a riconoscere i robot). Indirizzo IP, header, percorso e parametri
+vengono cancellati prima della scrittura; le altre richieste non vengono registrate. Il log sta nel volume
+`capriole-web_logs`, quindi sopravvive ai rilasci, e ruota da solo (10 file da 10 MiB).
 Non distingue le persone: chi ricarica la pagina conta di nuovo. È quello che promettono le condizioni
 d'uso («non registriamo indirizzi IP»): se il log cambia, vanno riviste anche loro (`apps/capriole/src/lib/i18n/terms.ts`).
 
-`deploy/web/stats.sh` conta le aperture per giorno (UTC), separando i robot, e le aggiunge al registro
-`~/capriole-visits.csv` di `<deploy-user>` (`giorno,visite,robot`). Il registro tiene i totali anche quando le
-righe del log sono già ruotate via.
+`deploy/web/stats.sh` conta per giorno (UTC) e aggiunge i numeri al registro `~/capriole-usage.csv` di
+`<deploy-user>`, che li tiene anche quando le righe del log sono già ruotate via:
+
+| Colonna | Che cosa conta |
+|---|---|
+| `starts` | l'app avviata in un browser: **le persone**, con buona approssimazione |
+| `pages` | la pagina aperta da chi si presenta come browser: le persone e gli scanner travestiti, che un dominio nuovo attira (aprono la pagina, non avviano l'app) |
+| `robots` | la pagina aperta da chi si dichiara robot: motori di ricerca, anteprime, script |
 
 **Il cron, una volta sola** (come `<deploy-user>`):
 
@@ -92,3 +99,7 @@ righe del log sono già ruotate via.
 **Leggere i numeri** (aggiorna anche il registro):
 
     sudo -iu <deploy-user> /srv/apps/capriole-web/deploy/web/stats.sh
+
+**Chi apre la pagina**, per ritoccare l'elenco dei robot in `stats.sh`:
+
+    docker exec capriole-web sh -c 'cat /logs/*.log' | grep -o '"ua":"[^"]*"' | sort | uniq -c | sort -rn | head -25

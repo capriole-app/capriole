@@ -37,14 +37,17 @@ grep -qi '^cache-control: public, max-age=31536000, immutable' <<<"$wasm" || fai
 grep -qi '^content-encoding: \(zstd\|gzip\)' <<<"$wasm" || fail "the engine is not compressed"
 echo "✔ headers"
 
-# The count of visits: the openings of the page (the HEAD above, a GET with an address forwarded),
-# each line with no address and no header but the browser's name.
-curl -fsS -o /dev/null -A 'capriole-test' -H 'X-Forwarded-For: 203.0.113.7' "$url/"
+# The count of visits: an opening of the page and a start of the app (its logo), with an address
+# forwarded and a query; each line with no address, no path and no header but the browser's name.
+curl -fsS -o /dev/null -A 'capriole-test' -H 'X-Forwarded-For: 203.0.113.7' "$url/?from=test"
+curl -fsS -o /dev/null -A 'capriole-test' "$url/logo-light.svg"
 sleep 0.5
 log="$(docker exec "$name" cat /logs/access.log)"
-grep -q '"method":"GET".*"status":200.*"ua":"capriole-test"' <<<"$log" || fail "a visit is not counted: $log"
-grep -qE '203\.0\.113|remote_ip|client_ip|"headers"|"uri"|wasm' <<<"$log" && fail "the count keeps more than it should: $log"
-"$here/stats.sh" --from-file <(printf '%s\n' "$log") >/dev/null || fail "stats.sh cannot read the count"
+grep -q '"method":"GET".*"status":200.*"ua":"capriole-test","kind":"page"' <<<"$log" || fail "an opening is not counted: $log"
+grep -q '"method":"GET".*"status":200.*"ua":"capriole-test","kind":"start"' <<<"$log" || fail "a start is not counted: $log"
+grep -qE '203\.0\.113|from=test|remote_ip|client_ip|"headers"|"uri"|wasm' <<<"$log" && fail "the count keeps more than it should: $log"
+counted="$("$here/stats.sh" --from-file <(printf '%s\n' "$log"))" || fail "stats.sh cannot read the count"
+grep -qE '^[0-9-]+ +1 +1 +0$' <<<"$counted" || fail "stats.sh counts wrong: $counted"
 echo "✔ anonymous count of visits"
 
 cd "$here/../../apps/capriole"
