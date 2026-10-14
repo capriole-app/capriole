@@ -49,5 +49,6 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | Indicizzazione nelle 5 lingue: un URL per lingua (`/it/`, `/fr/`…) con `hreflang` | ⬜ | oggi una sola pagina statica, i meta in inglese; l'app li traduce solo dopo l'avvio |
 | Distribuzione 12b–c: Windows, Flathub, self-hosted | ⬜ | CAPRIOLE.md §3 |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |
-| Pubblicazione: repo pubblico (`capriole-app/capriole`), OSS-Fuzz | 🟡 | contatti `@capriole.app`, nessun indirizzo personale (verificato da `prepublish_check.sh`), link al codice in «Informazioni e licenze»; restano: riscrittura della storia e passi del titolare (`docs/PUBBLICAZIONE.md`) |
+| Pubblicazione: repo pubblico | ✅ | dal 2026-10-14 su `github.com/capriole-app/capriole` (0BSD): storia riscritta senza indirizzi personali (autore noreply; `prepublish_check.sh` «Ready to publish»), contatti `security@`/`hello@capriole.app`, link al codice in «Informazioni e licenze»; vecchio repo cancellato; Jenkins sul nuovo repo |
+| OSS-Fuzz | ⬜ | kit pronto in `ci/oss-fuzz/`; serve un account Google con `security@capriole.app`, poi la PR a `google/oss-fuzz` (`docs/PUBBLICAZIONE.md`, passo 15) |
 | Togliere lo skip del passo Binaryen `constraint-analysis` | ⬜ | al prossimo aggiornamento di emsdk |

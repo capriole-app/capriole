@@ -35,6 +35,9 @@ progetto (`@capriole.app`), di GitHub (noreply) o un esempio — nei file di ogn
 
 ## Il giorno della pubblicazione (in quest'ordine)
 
+Fatto il 2026-10-14: il repository è pubblico su `github.com/capriole-app/capriole`. I passi restano come
+riferimento (rinnovo del token, OSS-Fuzz).
+
 **Prima, fuori dal repository (il titolare):**
 1. Cloudflare → `capriole.app` → Email Routing: `security@` e `hello@` inoltrati alla casella del titolare
    (record MX e SPF li aggiunge Cloudflare; non toccano i record A del sito).
@@ -56,8 +59,11 @@ progetto (`@capriole.app`), di GitHub (noreply) o un esempio — nei file di ogn
    noreply; `git config core.hooksPath scripts/hooks`.
 
 **Dopo il push (cosa cambia per la CI e il server, non si rifà nulla da zero):**
-8. Jenkins: nel job, l'URL del repository diventa `https://github.com/capriole-app/capriole.git` (pubblico:
-   nessuna credenziale per leggerlo); webhook, se c'era, sul nuovo repository. Gli hash dei commit sono
+8. Jenkins: nel job, l'URL del repository diventa `https://github.com/capriole-app/capriole.git`, con la
+   credenziale `github-capriole-app`: un token fine-grained con proprietario **`capriole-app`** (Contents e
+   Metadata in lettura, Commit statuses in scrittura). L'organizzazione rifiuta i token fine-grained che
+   durano più di 366 giorni: **va rinnovato ogni anno** (il primo scade a ottobre 2027). Webhook, se c'era,
+   sul nuovo repository. Gli hash dei commit sono
    cambiati: la prima build di ogni ramo riparte da zero.
 9. ghcr: il token della credenziale `ghcr-push` deve poter scrivere nell'organizzazione (`write:packages`,
    SSO dell'organizzazione se richiesto). Dopo la prima immagine: pacchetto `capriole-web` → visibilità
