@@ -7,6 +7,7 @@
   import PageView from '$lib/components/PageView.svelte';
   import PasswordDialog from '$lib/components/PasswordDialog.svelte';
   import LicensesDialog from '$lib/components/LicensesDialog.svelte';
+  import TermsDialog from '$lib/components/TermsDialog.svelte';
   import SettingsDialog from '$lib/components/SettingsDialog.svelte';
   import PdfaDialog from '$lib/components/PdfaDialog.svelte';
   import SignaturesPanel from '$lib/components/SignaturesPanel.svelte';
@@ -39,6 +40,7 @@
       editor.signRequest ||
       editor.pdfaDialog !== null ||
       editor.licensesOpen ||
+      editor.termsOpen ||
       editor.settingsOpen
     )
       return;
@@ -93,6 +95,7 @@
 <SignDialog />
 <PdfaDialog />
 <LicensesDialog />
+<TermsDialog />
 <SettingsDialog />
 
 {#if !editor.name}

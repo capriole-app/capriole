@@ -4,7 +4,7 @@ import { translations } from './index.svelte';
 export const openCardWords = translations(
   {
     region: 'Apri un PDF',
-    tagline: 'Le pagine di un PDF: riordina, ruota, elimina, unisci, estrai',
+    tagline: 'Modifica, firma e compila i PDF. Gratis, senza account.',
     opening: 'Apertura…',
     choose: 'Scegli un PDF',
     orDrop: '…oppure trascinalo qui.',
@@ -16,7 +16,7 @@ export const openCardWords = translations(
   {
     en: {
       region: 'Open a PDF',
-      tagline: 'The pages of a PDF: reorder, rotate, delete, merge, extract',
+      tagline: 'Edit, sign and fill in PDFs. Free, no account.',
       opening: 'Opening…',
       choose: 'Choose a PDF',
       orDrop: '…or drop it here.',
@@ -27,7 +27,7 @@ export const openCardWords = translations(
     },
     fr: {
       region: 'Ouvrir un PDF',
-      tagline: 'Les pages d’un PDF : réorganiser, faire pivoter, supprimer, fusionner, extraire',
+      tagline: 'Modifiez, signez et remplissez vos PDF. Gratuit, sans compte.',
       opening: 'Ouverture…',
       choose: 'Choisir un PDF',
       orDrop: '…ou déposez-le ici.',
@@ -38,7 +38,7 @@ export const openCardWords = translations(
     },
     de: {
       region: 'PDF öffnen',
-      tagline: 'Die Seiten eines PDF: neu ordnen, drehen, löschen, zusammenführen, extrahieren',
+      tagline: 'PDFs bearbeiten, signieren und ausfüllen. Kostenlos, ohne Konto.',
       opening: 'Wird geöffnet…',
       choose: 'PDF auswählen',
       orDrop: '…oder hierher ziehen.',
@@ -49,7 +49,7 @@ export const openCardWords = translations(
     },
     es: {
       region: 'Abrir un PDF',
-      tagline: 'Las páginas de un PDF: reordenar, girar, eliminar, combinar, extraer',
+      tagline: 'Edita, firma y rellena PDF. Gratis, sin cuenta.',
       opening: 'Abriendo…',
       choose: 'Elegir un PDF',
       orDrop: '…o arrástralo aquí.',

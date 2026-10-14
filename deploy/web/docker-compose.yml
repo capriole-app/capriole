@@ -20,6 +20,9 @@ services:
     # Read-only, no Linux capability, no privilege regained from a setuid binary. Caddy writes
     # nothing but its own state, kept in memory.
     read_only: true
+    # The anonymous count of visits (Caddyfile, stats.sh): kept across deploys.
+    volumes:
+      - logs:/logs
     tmpfs:
       - /tmp:size=16m
       - /config:size=4m,uid=65532,gid=65532
@@ -33,6 +36,9 @@ services:
       options:
         max-size: 10m
         max-file: '3'
+
+volumes:
+  logs:
 
 networks:
   proxy:

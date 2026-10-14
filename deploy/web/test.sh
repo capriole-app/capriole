@@ -16,7 +16,7 @@ name="capriole-web-test-$$"
 docker build -q -t "$image" "$here/context" >/dev/null
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 docker run -d --name "$name" -p "127.0.0.1:$port:8080" --read-only \
-  --tmpfs /tmp:size=16m --tmpfs /config:size=4m,uid=65532,gid=65532 --tmpfs /data:size=4m,uid=65532,gid=65532 \
+  --tmpfs /tmp:size=16m --tmpfs /config:size=4m,uid=65532,gid=65532 --tmpfs /data:size=4m,uid=65532,gid=65532 --tmpfs /logs:size=4m,uid=65532,gid=65532 \
   --cap-drop ALL --security-opt no-new-privileges:true --memory 256m "$image" >/dev/null
 
 url="http://127.0.0.1:$port"
@@ -36,6 +36,16 @@ grep -qi '^content-type: application/wasm' <<<"$wasm" || fail "the engine is not
 grep -qi '^cache-control: public, max-age=31536000, immutable' <<<"$wasm" || fail "hashed files not kept"
 grep -qi '^content-encoding: \(zstd\|gzip\)' <<<"$wasm" || fail "the engine is not compressed"
 echo "✔ headers"
+
+# The count of visits: the openings of the page (the HEAD above, a GET with an address forwarded),
+# each line with no address and no header but the browser's name.
+curl -fsS -o /dev/null -A 'capriole-test' -H 'X-Forwarded-For: 203.0.113.7' "$url/"
+sleep 0.5
+log="$(docker exec "$name" cat /logs/access.log)"
+grep -q '"method":"GET".*"status":200.*"ua":"capriole-test"' <<<"$log" || fail "a visit is not counted: $log"
+grep -qE '203\.0\.113|remote_ip|client_ip|"headers"|"uri"|wasm' <<<"$log" && fail "the count keeps more than it should: $log"
+"$here/stats.sh" --from-file <(printf '%s\n' "$log") >/dev/null || fail "stats.sh cannot read the count"
+echo "✔ anonymous count of visits"
 
 cd "$here/../../apps/capriole"
 CAPRIOLE_E2E_URL="$url" npx playwright test

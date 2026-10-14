@@ -68,7 +68,9 @@ if(EMSCRIPTEN)
 endif()
 
 # PRE_TEST: discover at ctest time, so cross-compiled (WASM) test binaries are not run during the build.
-gtest_discover_tests(capriole_unit_tests DISCOVERY_MODE PRE_TEST)
+# DISCOVERY_TIMEOUT: listing the tests starts the binary, which under ASan on Jenkins's shared host has
+# taken longer than the default 5 s; a timeout there fails the whole gate before a test has run.
+gtest_discover_tests(capriole_unit_tests DISCOVERY_MODE PRE_TEST DISCOVERY_TIMEOUT 120)
 
 # Regression suite (tests/regression/<area>/): one input per fixed bug, replayed by unit/regression_test.cpp.
 # Differential suite (tests/differential/): runs against external reference engines; not part of ctest.
