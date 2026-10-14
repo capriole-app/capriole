@@ -23,6 +23,7 @@
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import BrandMark from './BrandMark.svelte';
   import LanguageMenu from './LanguageMenu.svelte';
+  import ReportButton from './ReportButton.svelte';
   import SettingsButton from './SettingsButton.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
   import ZoomControl from './ZoomControl.svelte';
@@ -203,6 +204,7 @@
       disabled={editor.busy}
       onclick={() => editor.save()}><FileDown class="size-4" /> {t.save}</button
     >
+    <ReportButton />
     <SettingsButton />
     <LanguageMenu />
     <ThemeMenu />

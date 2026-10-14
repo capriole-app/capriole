@@ -63,8 +63,9 @@ test('the terms in English, the language that prevails', async ({ browser }) => 
   await accept.getByRole('button', { name: 'terms of use' }).click();
   const dialog = page.getByTestId('terms-dialog');
   await expect(dialog.getByRole('heading', { level: 2 })).toHaveText('Terms of use');
-  await expect(dialog).toContainText('Version of 13 October 2026');
+  await expect(dialog).toContainText('Version of 14 October 2026');
   await expect(dialog).toContainText('governed by the laws of Ireland');
   await expect(dialog).toContainText('We do not log IP addresses');
+  await expect(dialog).toContainText('If you choose to send a problem report');
   await context.close();
 });

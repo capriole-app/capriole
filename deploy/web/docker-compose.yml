@@ -14,6 +14,7 @@ services:
       - '8080'
     networks:
       - proxy
+      - inner
     # A shared host: a spike restarts this container, not the OOM killer on the others.
     mem_limit: 256m
     pids_limit: 128
@@ -37,9 +38,53 @@ services:
         max-size: 10m
         max-file: '3'
 
+  # The problem reports (deploy/reports/server.mjs): no image of its own — Node's, pinned, runs the
+  # script of this same checkout, so the service is always the commit deployed. Reached only by the web
+  # app's Caddy, on the inner network, which has no way out.
+  reports:
+    image: 'node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402'
+    container_name: capriole-reports
+    restart: unless-stopped
+    user: '1000:1000'
+    command: ['node', '/app/server.mjs']
+    environment:
+      REPORTS_DIR: /home/node
+    volumes:
+      - ../reports/server.mjs:/app/server.mjs:ro
+      # The reports, kept across deploys. On /home/node, which the image gives to its user: a new
+      # volume takes that owner, so the service can write there and nowhere else.
+      - reports:/home/node
+    expose:
+      - '8081'
+    networks:
+      - inner
+    mem_limit: 128m
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8081/healthz']
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
 volumes:
   logs:
+  reports:
 
 networks:
   proxy:
     external: true
+  inner:
+    internal: true

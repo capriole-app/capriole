@@ -96,6 +96,10 @@ if [[ "$SKIP_WASM" != 1 ]]; then
       fi
     )
   done
+
+  # The service that receives the web app's problem reports: plain Node, no dependency.
+  step "Reports' service (deploy/reports): tests"
+  out="$(node --test deploy/reports/server.test.mjs 2>&1)" || { echo "$out"; die "deploy/reports: tests failed"; }
 fi
 
 if [[ "${SKIP_DESKTOP:-1}" != 1 ]]; then

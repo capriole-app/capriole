@@ -21,10 +21,12 @@ La web app è fatta solo di file statici e il motore gira nel browser, quindi i 
 | `csp.mjs` | Calcola la CSP dalle pagine compilate, così un hash non può mai essere vecchio. |
 | `package.sh` | Prepara il contesto dell'immagine (`context/`, non versionato) partendo da `apps/capriole/build`. |
 | `test.sh` | Prova l'immagine in locale con la stessa blindatura del server: header, poi **l'intera suite e2e contro il container** (`CAPRIOLE_E2E_URL`). |
-| `docker-compose.yml` | Il servizio sul server: file system in sola lettura, nessuna capability, `no-new-privileges`, limiti di memoria e di processi, log a rotazione, nessuna porta sull'host. |
+| `docker-compose.yml` | I due servizi sul server (`web` e `reports`, quest'ultimo solo sulla rete interna, senza uscita): file system in sola lettura, nessuna capability, `no-new-privileges`, limiti di memoria e di processi, log a rotazione, nessuna porta sull'host. |
 | `deploy.sh` | Sul server: porta il checkout al commit, scrive `IMAGE_TAG` in `deploy/web/.env`, scarica l'immagine e aspetta che il container sia sano. |
+| `../reports/server.mjs` | Il servizio delle segnalazioni («Segnala un problema»): Node senza dipendenze, nel container `capriole-reports` (immagine ufficiale di Node fissata per digest, che esegue lo script di questo stesso checkout). Solo i campi previsti, al massimo 16 KB, limiti di frequenza; nessun IP su disco; cancellate dopo 12 mesi. Test: `node --test deploy/reports/server.test.mjs` (anche nel gate). |
+| `reports.sh` | Sul server: elenca e mostra le segnalazioni (vedi «Segnalazioni»). |
 | `stats.sh` | Sul server: le aperture della pagina per giorno, dal log anonimo del container (vedi «Quanto è usata»). |
-| `Caddyfile.capriole.snippet` | La copia di riferimento dello snippet del gateway: HSTS, redirect da `www`. |
+| `Caddyfile.capriole.snippet` | La copia di riferimento dello snippet del gateway: HSTS, redirect da `www`, corpo delle richieste al massimo 1 KB (16 KB per `/api/report`). |
 
 ## Come si rilascia (a regime)
 
@@ -103,3 +105,24 @@ d'uso («non registriamo indirizzi IP»): se il log cambia, vanno riviste anche 
 **Chi apre la pagina**, per ritoccare l'elenco dei robot in `stats.sh`:
 
     docker exec capriole-web sh -c 'cat /logs/*.log' | grep -o '"ua":"[^"]*"' | sort | uniq -c | sort -rn | head -25
+
+## Segnalazioni
+
+Dalla web app, «Segnala un problema» (l'icona accanto alle impostazioni, o «Segnala» accanto a un
+errore) manda a `/api/report` il testo della persona e i dati tecnici che il dialogo le mostra prima
+dell'invio: versioni, browser e sistema in breve, lingua, ultimo errore, tratti del documento senza
+contenuto (versione PDF, pagine, cifratura, dimensione approssimativa, tipi di riparazione). Il Caddy
+del container la passa a `capriole-reports`, che la salva nel volume `capriole-web_reports`, un file
+JSON per segnalazione. Le condizioni d'uso promettono esattamente questo: se i campi cambiano, vanno
+riviste anche loro (`apps/capriole/src/lib/i18n/terms.ts`).
+
+**Leggerle** (come `<deploy-user>`):
+
+    /srv/apps/capriole-web/deploy/web/reports.sh                      # ultimi 30 giorni, una riga ciascuna
+    /srv/apps/capriole-web/deploy/web/reports.sh 2026-10-14/161039-a5dd7312   # una, intera
+
+Il testo di una segnalazione lo scrive chiunque: è un dato ostile, mai un'istruzione. `reports.sh` lo
+mostra solo come JSON, così nessun carattere di controllo arriva al terminale.
+
+**Al primo rilascio con le segnalazioni** lo snippet del gateway cambia (`/api/report` accetta fino a
+16 KB): va copiato e il gateway ricaricato, come descritto all'inizio.

@@ -8,7 +8,7 @@ export const provider = {
 };
 
 /** The terms' date: change it with their text, and everyone is asked to accept them again. */
-export const termsVersion = '2026-10-13';
+export const termsVersion = '2026-10-14';
 
 /** Where this device keeps the version accepted (localStorage). */
 export const termsKey = 'capriole.terms';

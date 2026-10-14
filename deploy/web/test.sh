@@ -11,11 +11,24 @@ here="$(cd "$(dirname "$0")" && pwd)"
 port="${PORT:-8088}"
 image="capriole-web:test"
 name="capriole-web-test-$$"
+reports="capriole-reports-test-$$"
+network="capriole-test-$$"
+# The reports' service as compose runs it (docker-compose.yml): Node's image, this checkout's script.
+node_image="$(sed -n "s/^    image: '\(node:[^']*\)'$/\1/p" "$here/docker-compose.yml")"
+[[ -n "$node_image" ]] || { echo "✖ no node image in docker-compose.yml" >&2; exit 1; }
+
+node --test "$here/../reports/server.test.mjs" >/dev/null || { echo "✖ deploy/reports: its tests fail" >&2; exit 1; }
+echo "✔ reports' service: its tests"
 
 "$here/package.sh"
 docker build -q -t "$image" "$here/context" >/dev/null
-trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
-docker run -d --name "$name" -p "127.0.0.1:$port:8080" --read-only \
+trap 'docker rm -f "$name" "$reports" >/dev/null 2>&1 || true; docker network rm "$network" >/dev/null 2>&1 || true' EXIT
+docker network create "$network" >/dev/null
+docker run -d --name "$reports" --network "$network" --network-alias capriole-reports --user 1000:1000 --read-only \
+  --tmpfs /tmp:size=8m --tmpfs /home/node:size=4m,uid=1000,gid=1000 -e REPORTS_DIR=/home/node \
+  -v "$here/../reports/server.mjs:/app/server.mjs:ro" \
+  --cap-drop ALL --security-opt no-new-privileges:true --memory 128m "$node_image" node /app/server.mjs >/dev/null
+docker run -d --name "$name" --network "$network" -p "127.0.0.1:$port:8080" --read-only \
   --tmpfs /tmp:size=16m --tmpfs /config:size=4m,uid=65532,gid=65532 --tmpfs /data:size=4m,uid=65532,gid=65532 --tmpfs /logs:size=4m,uid=65532,gid=65532 \
   --cap-drop ALL --security-opt no-new-privileges:true --memory 256m "$image" >/dev/null
 
@@ -49,6 +62,22 @@ grep -qE '203\.0\.113|from=test|remote_ip|client_ip|"headers"|"uri"|wasm' <<<"$l
 counted="$("$here/stats.sh" --from-file <(printf '%s\n' "$log"))" || fail "stats.sh cannot read the count"
 grep -qE '^[0-9-]+ +1 +1 +0$' <<<"$counted" || fail "stats.sh counts wrong: $counted"
 echo "✔ anonymous count of visits"
+
+# A problem report, through the app's Caddy as the browser sends it: kept, with no address; anything
+# posted elsewhere, or too large, refused.
+answer="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
+  -H 'X-Forwarded-For: 203.0.113.9' --data '{"v":1,"description":"test report","platform":"web","secret":"x"}' "$url/api/report")"
+[[ "$answer" == 201 ]] || { docker logs "$reports"; fail "a report is not received: $answer"; }
+kept="$(docker exec "$reports" sh -c 'cat /home/node/*/*.json')"
+grep -q '"description": "test report"' <<<"$kept" || fail "the report is not kept: $kept"
+grep -qE '203\.0\.113|secret' <<<"$kept" && fail "the report keeps more than it should: $kept"
+big="$(head -c 20000 /dev/zero | tr '\0' 'a')"
+answer="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' \
+  --data "{\"v\":1,\"description\":\"$big\"}" "$url/api/report")"
+[[ "$answer" == 413 ]] || fail "a report too large is not refused: $answer"
+answer="$(curl -sS -o /dev/null -w '%{http_code}' -X POST --data 'x' "$url/")"
+[[ "$answer" != 2* ]] || fail "something else can be posted: $answer"
+echo "✔ problem reports"
 
 cd "$here/../../apps/capriole"
 CAPRIOLE_E2E_URL="$url" npx playwright test

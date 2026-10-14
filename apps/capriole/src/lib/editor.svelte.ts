@@ -48,6 +48,7 @@ import {
 import { nearest, objectRefusal } from './objects';
 import { fontId, fontRefusal, forgetFont, loadFonts, rememberFont, type StoredFont } from './fonts';
 import { fromBrowser, pickPdf, saveFile, savePdf, type PickedFile } from './platform';
+import { sizeRange, type DocumentTraits } from './report';
 import { cardProblem, cardShell, signWithCard, type CardSigner, type LongTermReport } from './smartcard';
 
 /**
@@ -127,7 +128,18 @@ export class Editor {
   /** Where a Shift-click range starts. */
   anchor = $state<number | null>(null);
   busy = $state(false);
-  error = $state<string | null>(null);
+  #error = $state<string | null>(null);
+  /** What went wrong, said to the person (null: nothing). The last one said stays for a problem report. */
+  get error(): string | null {
+    return this.#error;
+  }
+  set error(message: string | null) {
+    this.#error = message;
+    if (message) this.lastError = message;
+  }
+  lastError = $state<string | null>(null);
+  /** The open document's traits that carry none of its content, for a problem report (report.ts). */
+  traits = $state.raw<DocumentTraits | null>(null);
   /** What the engine repaired in the file when opening it (already written into the edited copy). */
   repairs = $state.raw<Repair[]>([]);
   /** Edited since opened or saved. */
@@ -183,6 +195,8 @@ export class Editor {
   licensesOpen = $state(false);
   /** The terms of use. */
   termsOpen = $state(false);
+  /** «Segnala un problema» (ReportDialog). */
+  reportOpen = $state(false);
   /** The settings dialog: open, or open at the graphic signatures. */
   settingsOpen = $state<boolean | 'signatures'>(false);
   /** The size of the next free text (points). */
@@ -311,6 +325,14 @@ export class Editor {
   async open(source: PickedFile, password = ''): Promise<void> {
     this.#source = source;
     this.#password = password;
+    // Known before the engine reads it: a file that cannot be opened is reported with its size.
+    this.traits = {
+      pdfVersion: null,
+      pages: null,
+      encrypted: null,
+      size: sizeRange(source.data.byteLength),
+      repairs: [],
+    };
     await this.#run(async () => {
       try {
         // A copy goes to the engine (the bytes are transferred): asking for a password reads them again.
@@ -325,6 +347,14 @@ export class Editor {
         this.passwordNeeded = false;
         this.passwordRejected = false;
         this.#show(opened.summary, []);
+        this.traits = {
+          pdfVersion: opened.summary.version,
+          pages: this.pages,
+          encrypted: opened.summary.encryption !== null,
+          size: sizeRange(source.data.byteLength),
+          repairs: opened.repairs.map((r) => r.kind),
+        };
+        this.lastError = null;
         this.modified = false;
         await this.#loadAttachments();
       } catch (error) {

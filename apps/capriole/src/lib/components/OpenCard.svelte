@@ -4,6 +4,7 @@
   import FolderOpen from '@lucide/svelte/icons/folder-open';
   import CodedInIreland from './CodedInIreland.svelte';
   import LanguageMenu from './LanguageMenu.svelte';
+  import ReportButton from './ReportButton.svelte';
   import SettingsButton from './SettingsButton.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
   import { getEditor } from '$lib/editor.svelte';
@@ -11,11 +12,13 @@
   import { tr } from '$lib/i18n/index.svelte';
   import { openCardWords } from '$lib/i18n/openCard';
   import { termsWords } from '$lib/i18n/terms';
+  import { reportWords } from '$lib/i18n/report';
   import { terms } from '$lib/terms.svelte';
 
   const editor = getEditor();
   const t = $derived(tr(openCardWords));
   const tt = $derived(tr(termsWords));
+  const tw = $derived(tr(reportWords));
   let ticked = $state(false);
   /** A file dropped or chosen before the terms were accepted: say what is missing. */
   let refused = $state(false);
@@ -52,7 +55,7 @@
       take(e.dataTransfer?.files);
     }}
   >
-    <div class="absolute end-3 top-3 flex gap-2"><SettingsButton /><LanguageMenu /><ThemeMenu /></div>
+    <div class="absolute end-3 top-3 flex gap-2"><ReportButton /><SettingsButton /><LanguageMenu /><ThemeMenu /></div>
     <header class="mt-10 mb-8 flex flex-col items-center gap-3 text-center">
       <img src="/logo-light.svg" alt="Capriole" class="h-14 dark:hidden" />
       <img src="/logo-dark.svg" alt="Capriole" class="hidden h-14 dark:block" />
@@ -60,7 +63,17 @@
     </header>
 
     {#if editor.error}
-      <p class="mb-4 rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">{editor.error}</p>
+      <p
+        class="mb-4 flex items-center gap-3 rounded-md bg-danger-background px-3 py-2 text-sm text-danger"
+        role="alert"
+      >
+        <span class="flex-1">{editor.error}</span>
+        {#if !isDesktop}
+          <button type="button" class="shrink-0 underline underline-offset-2" onclick={() => (editor.reportOpen = true)}
+            >{tw.reportThis}</button
+          >
+        {/if}
+      </p>
     {/if}
 
     {#if !terms.accepted}

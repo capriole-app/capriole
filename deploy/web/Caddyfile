@@ -5,6 +5,11 @@
 	admin off
 	auto_https off
 	persist_config off
+	# The gateway in front says who the client is (X-Forwarded-For): believed from a private address
+	# only, and passed on to the reports' service, which caps reports per sender (deploy/reports).
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 :8080 {
@@ -66,6 +71,15 @@
 			size delete
 			duration delete
 		}
+	}
+
+	# A problem report, sent by the app when the person asks (deploy/reports: the service on the
+	# compose's inner network). Only there is anything posted.
+	handle /api/report {
+		request_body {
+			max_size 16KB
+		}
+		reverse_proxy capriole-reports:8081
 	}
 
 	# The container's health probe.
