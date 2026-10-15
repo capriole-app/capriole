@@ -93,6 +93,11 @@ echo "▶ docker compose pull"
 echo "▶ docker compose up -d --remove-orphans --wait"
 "${COMPOSE[@]}" up -d --remove-orphans --wait --wait-timeout 120
 
+# The reports' service runs deploy/reports/server.mjs from the checkout, which compose does not see:
+# a new script and the same compose leave the old one running. Started again, with the commit's script.
+echo "▶ docker compose up -d --force-recreate reports"
+"${COMPOSE[@]}" up -d --force-recreate --no-deps --wait --wait-timeout 60 reports
+
 docker image prune -f >/dev/null 2>&1 || true
 
 echo "▶ state"
