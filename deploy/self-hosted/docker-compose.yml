@@ -1,0 +1,28 @@
+# Capriole's web app on your own server (docs/SELF-HOSTED.md). One container: Caddy serving static files
+# on port 8080, plain HTTP; put it behind the proxy that terminates TLS for your domain. Documents are never
+# sent to it: the engine runs in the browser.
+#
+#   CAPRIOLE_VERSION=0.1.0 docker compose up -d     # then http://localhost:8080
+name: capriole
+
+services:
+  web:
+    # The image capriole.app runs, tagged with the release's version.
+    image: 'ghcr.io/capriole-app/capriole-web:${CAPRIOLE_VERSION:?set CAPRIOLE_VERSION, e.g. 0.1.0}'
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8080:8080'
+    mem_limit: 256m
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+      - /config:size=4m,uid=65532,gid=65532
+      - /data:size=4m,uid=65532,gid=65532
+      # The image writes an anonymous count of page openings to /logs (no address, no path: deploy/web/
+      # Caddyfile). Here it stays in memory and is gone at each restart; mount a volume to keep it.
+      - /logs:size=16m,uid=65532,gid=65532
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

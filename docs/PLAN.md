@@ -1624,7 +1624,7 @@ Criterio: `prepublish_check.sh --allow-pending` verde (resta solo il contatto da
 pagina delle licenze verde; emulazione OSS-Fuzz: i 29 target compilati senza rete e ciascuno eseguito
 20 s sul suo corpus senza crash, con ASan e con UBSan; gate verde; nulla pubblicato.
 
-## Distribuzione 12b–c — app desktop Windows e Linux, Flathub, self-hosted — in corso
+## Distribuzione 12b–c — app desktop Windows e Linux, Flathub, self-hosted — pronta, da rilasciare
 
 Decisioni del 2026-10-16. Zero spesa, quindi niente GitHub Actions. Windows si compila **in incrocio su
 Jenkins** con `cargo-xwin`: il motore nel desktop è il modulo WASM nella webview, per cui si incrocia solo
@@ -1652,6 +1652,45 @@ Passi: **12b-1** la shell pronta per Windows · **12b-2** immagine e stage Jenki
   WASM, desktop ed e2e. La compilazione per Windows si prova nel passo 12b-2, nell'immagine con gli
   strumenti dell'incrocio. Restano da fare in quel passo gli avvisi dei crate linkati su Windows
   (`gen_crate_notices.py` oggi legge solo quelli di Linux).
+
+**12b-2 (2026-10-16) — immagine e build dei binari.**
+- `ci/desktop.Dockerfile` (3,6 GB): Rust 1.99.0 con il target `x86_64-pc-windows-msvc`, cargo-xwin 0.23.1
+  con CRT e Windows SDK già scaricati (1,1 GB), clang/lld/llvm 20, NSIS, WebKitGTK, Xvfb, Node 22.
+- `scripts/build_release.sh`: il pacchetto di risorse, `.deb` e AppImage, poi l'installer NSIS incrociato
+  con la stessa web app (senza ricompilarla), uno smoke del binario Linux sotto Xvfb (vivo dopo 15 s),
+  e infine `dist/release/` con nomi senza versione e `SHA256SUMS`.
+- Gli avvisi dei crate sono quelli di Linux **e** di Windows (`gen_crate_notices.py`, per esempio
+  `windows`, `webview2-com`): una sola pagina «Licenze», perché la web app è la stessa.
+- Jenkins: su un tag `v*` lo stage CI passa il modulo WASM con uno stash e «Release (tag)» lancia lo
+  script nell'immagine desktop.
+- Criterio raggiunto in locale: `Capriole_x64-setup.exe` (29 MB, PE32 NSIS; l'eseguibile dentro è PE32+
+  x86-64), `Capriole_amd64.deb` (30 MB), `Capriole_amd64.AppImage` (108 MB), smoke verde. L'installer
+  **non è ancora stato provato su un Windows vero**.
+- Trovato strada facendo: il gate di Jenkins non scaricava il pacchetto di risorse, quindi capriole.app
+  lo serviva senza (404 su `/resources/…`: niente font CJK né profilo CMYK). Ora lo stage Gate esegue
+  `fetch_resources.sh` prima di `check.sh`.
+
+**12b-3 — GitHub Release.** `scripts/github_release.sh`: crea la release del tag come bozza, carica i file e
+solo allora la pubblica. Rifiuta un tag già rilasciato; un tag con il trattino fa una pre-release. In
+Jenkins usa la credenziale `github-release` (Contents in scrittura, la crea il titolare). Sullo stesso tag
+«Image» pubblica `capriole-web:<versione>`. Da provare con un tag `v0.1.0-rc1`.
+
+**12b-4 — «Scarica l'app per il computer».** Un dialogo (`DownloadDialog.svelte`, 5 lingue) dalla prima
+schermata, solo nell'app web. Dà i link `releases/latest/download/…` dei tre installer e di `SHA256SUMS`,
+spiega l'avviso di SmartScreen e dice cosa fa in più il desktop. e2e `download.test.ts`. Arriva su
+capriole.app con `main`, **dopo** la prima release.
+
+**12b-5 — Flathub** (`packaging/flathub/`). Il manifest `app.capriole.Capriole` (runtime GNOME 50)
+riconfeziona il `.deb` della release e compila OpenSC 0.27.1 per le smart card dal sandbox (`--socket=pcsc`;
+il modulo è `/app/lib/opensc-pkcs11.so`, ora tra i suggeriti). Ci sono anche il `.desktop` e il metainfo,
+validati (`desktop-file-validate`, `appstreamcli`), e `update.sh`, che punta a una release. Mancano la build
+con `flatpak-builder` (flatpak non è installato qui), gli screenshot, la verifica del dominio e la PR a
+Flathub.
+
+**12c — self-hosted.** `docs/SELF-HOSTED.md` (in inglese, per chi installa) e
+`deploy/self-hosted/docker-compose.yml`: l'immagine di capriole.app con la versione nel tag, in sola
+lettura, oppure `capriole-web.tar.gz` della release per un altro server, con gli header richiesti.
+Provato in locale: header, risorse servite, `/api/report` che risponde 502 come documentato.
 
 ---
 

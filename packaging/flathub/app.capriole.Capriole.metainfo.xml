@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>app.capriole.Capriole</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>0BSD</project_license>
+  <name>Capriole</name>
+  <summary>Edit, sign and fill in PDF files</summary>
+  <developer id="app.capriole">
+    <name>Bobolar Ltd</name>
+  </developer>
+  <description>
+    <p>
+      Capriole edits PDF files on your computer, with its own PDF engine. Files never leave the device.
+    </p>
+    <ul>
+      <li>Pages: reorder, rotate, duplicate, delete, merge and extract</li>
+      <li>Text: edit lines and whole paragraphs, in the document's own fonts</li>
+      <li>Images and drawings: move, resize, delete</li>
+      <li>Annotations, forms, attachments and Factur-X invoices</li>
+      <li>Real redaction, PDF/A conversion</li>
+      <li>Digital signatures (PAdES) with a .p12 file or a smart card, with long-term validation</li>
+    </ul>
+    <p>Free and open source, no account.</p>
+  </description>
+  <launchable type="desktop-id">app.capriole.Capriole.desktop</launchable>
+  <url type="homepage">https://capriole.app</url>
+  <url type="bugtracker">https://github.com/capriole-app/capriole/issues</url>
+  <url type="vcs-browser">https://github.com/capriole-app/capriole</url>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">640</display_length>
+  </requires>
+  <categories>
+    <category>Office</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-10-16">
+      <description>
+        <p>The first release.</p>
+      </description>
+    </release>
+  </releases>
+</component>
