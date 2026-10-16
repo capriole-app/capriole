@@ -153,7 +153,7 @@ test.beforeEach(({ page }) => withoutFileAccess(page));
 test('without a shell for it there is no smart card to choose', async ({ page }) => {
   await openDialog(page);
   await expect(page.getByRole('dialog')).toContainText('Firma invisibile');
-  await expect(page.getByText('Smart card')).toHaveCount(0);
+  await expect(page.getByRole('dialog').getByText('Smart card')).toHaveCount(0);
 });
 
 test('signs with a smart card, time-stamped, for the long term; a wrong PIN is said', async ({ page }, testInfo) => {

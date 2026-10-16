@@ -74,6 +74,7 @@ export const knownModules = onWindows
     ]
   : [
       '/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so',
+      '/app/lib/opensc-pkcs11.so', // the Flatpak's own OpenSC (packaging/flathub)
       '/usr/lib/libbit4xpki.so',
       '/usr/local/lib/libcie-pkcs11.so',
       '/usr/lib/softhsm/libsofthsm2.so',
