@@ -10,7 +10,8 @@ bundled with the app when it has been fetched (`scripts/fetch_resources.sh`).
 # once: Rust and WebKitGTK (docs/SETUP.md), the engine as WebAssembly, the web app's packages
 cd apps/capriole && npm ci && cd ../desktop && npm ci
 npm run dev        # the shell around `npm run dev` of apps/capriole (hot reload)
-npm run build      # .deb and AppImage in src-tauri/target/release/bundle/
+npm run build      # .deb and AppImage in src-tauri/target/release/bundle/ (the Windows
+                   # installer, NSIS, is cross-built on Jenkins: PLAN.md 12b)
 ```
 
 What the shell may do is in `src-tauri/capabilities/default.json`: the open and save dialogs, and

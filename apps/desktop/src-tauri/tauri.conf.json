@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Capriole",
   "version": "0.1.0",
-  "identifier": "org.capriole.app",
+  "identifier": "app.capriole.Capriole",
   "build": {
     "frontendDist": "../../capriole/build",
     "devUrl": "http://localhost:5173",
@@ -25,10 +25,21 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage"],
+    "targets": ["deb", "appimage", "nsis"],
+    "publisher": "Bobolar Ltd",
+    "homepage": "https://capriole.app",
+    "license": "0BSD",
+    "copyright": "Bobolar Ltd",
     "category": "Productivity",
-    "shortDescription": "PDF pages: reorder, rotate, delete, merge, extract",
-    "longDescription": "Capriole works on PDF files on your computer: reorder, rotate, duplicate, delete, merge and extract pages. Files never leave the device.",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"]
+    "shortDescription": "Edit, sign and fill in PDF files, on your computer",
+    "longDescription": "Capriole edits PDF files on your computer: pages, text, images, annotations, forms, attachments, redaction, PDF/A, and digital signatures with a .p12 file or a smart card. Free, no account; files never leave the device.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png", "icons/icon.ico"],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "Italian", "French", "German", "Spanish"]
+      }
+    }
   }
 }

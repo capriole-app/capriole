@@ -1624,6 +1624,35 @@ Criterio: `prepublish_check.sh --allow-pending` verde (resta solo il contatto da
 pagina delle licenze verde; emulazione OSS-Fuzz: i 29 target compilati senza rete e ciascuno eseguito
 20 s sul suo corpus senza crash, con ASan e con UBSan; gate verde; nulla pubblicato.
 
+## Distribuzione 12b–c — app desktop Windows e Linux, Flathub, self-hosted — in corso
+
+Decisioni del 2026-10-16. Zero spesa, quindi niente GitHub Actions. Windows si compila **in incrocio su
+Jenkins** con `cargo-xwin`: il motore nel desktop è il modulo WASM nella webview, per cui si incrocia solo
+il crate Rust. L'installer è NSIS, per utente, **non firmato** per ora (SmartScreen avvisa; lo spiega la
+pagina di download). I binari stanno nelle GitHub Release di `capriole-app/capriole`, con una pagina
+«Scarica» su capriole.app. Linux: `.deb`, AppImage, Flathub (manifest che riconfeziona il `.deb` della
+release). Self-hosted: l'immagine della web app, resa pubblica e documentata, più un archivio statico.
+
+Passi: **12b-1** la shell pronta per Windows · **12b-2** immagine e stage Jenkins dei binari ·
+**12b-3** GitHub Release dai tag `v*` · **12b-4** pagina «Scarica» · **12b-5** Flathub · **12c** self-hosted.
+
+**12b-1 (2026-10-16) — la shell pronta per Windows.**
+- `tauri.conf.json`: target `nsis` accanto a `deb` e `appimage` (sugli host Linux il bundler lo ignora).
+  NSIS per utente (`currentUser`, senza diritti di amministratore), 5 lingue dell'installer; WebView2 col
+  bootstrapper se manca (Windows 10). Editore, sito, licenza 0BSD, icona `.ico`; descrizioni allineate
+  all'app di oggi (non più «solo pagine»).
+- Identificatore `app.capriole.Capriole`, al posto di `org.capriole.app` (un dominio che non è nostro).
+  Flathub vuole un ID su un dominio controllato. Lo si cambia prima del primo rilascio perché
+  l'identificatore decide anche la cartella dei dati dell'app (impostazioni, firme grafiche, font).
+- Moduli PKCS#11 suggeriti per piattaforma (`smartcard.ts`): su Windows le DLL di OpenSC, Bit4id e CIE.
+  Sono solo suggerimenti nel campo, la persona può scrivere qualsiasi percorso.
+- Gate: un passo verifica che la versione dell'app sia la stessa nei due `package.json`, in `Cargo.toml` e
+  in `tauri.conf.json` (è quella di «Informazioni», delle segnalazioni e dei nomi degli installer).
+- Criterio: `npm run build` della shell produce ancora `.deb` (28 MB) e AppImage (105 MB); gate verde con
+  WASM, desktop ed e2e. La compilazione per Windows si prova nel passo 12b-2, nell'immagine con gli
+  strumenti dell'incrocio. Restano da fare in quel passo gli avvisi dei crate linkati su Windows
+  (`gen_crate_notices.py` oggi legge solo quelli di Linux).
+
 ---
 
 ## Decisioni aperte (con la fase in cui diventano bloccanti)

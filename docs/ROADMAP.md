@@ -47,7 +47,13 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | Condizioni d'uso (Bobolar Ltd, legge irlandese) | ✅ | online dal 2026-10-14, verificate da fuori; 5 lingue, prevale l'inglese; accettate con una spunta prima di aprire un file, chieste di nuovo quando cambiano; privacy: nessun IP registrato; e2e. **Da far rivedere a un legale** |
 | Conteggio anonimo delle visite | ✅ | attivo dal 2026-10-14: aperture della pagina per giorno, senza IP né header (`deploy/web/stats.sh`, cron dell'utente di rilascio alle 00:15, registro `~/capriole-usage.csv`); conta a parte le persone (l’app avviata) e gli scanner che aprono solo la pagina; il gateway non tiene log degli accessi (verificato) |
 | Indicizzazione nelle 5 lingue: un URL per lingua (`/it/`, `/fr/`…) con `hreflang` | ⬜ | oggi una sola pagina statica, i meta in inglese; l'app li traduce solo dopo l'avvio |
-| Distribuzione 12b–c: Windows, Flathub, self-hosted | ⬜ | CAPRIOLE.md §3 |
+| Distribuzione 12b–c: Windows, Flathub, self-hosted | 🟡 | CAPRIOLE.md §3; PLAN.md «Distribuzione 12b–c» |
+| 12b-1 Shell pronta per Windows (NSIS, ID `app.capriole.Capriole`, moduli PKCS#11 per piattaforma) | ✅ | versione unica controllata dal gate; build Windows da provare in 12b-2 |
+| 12b-2 Immagine e stage Jenkins: `.deb`, AppImage, `setup.exe` (cargo-xwin) | 🔜 | con gli avvisi dei crate di Windows |
+| 12b-3 GitHub Release dai tag `v*` | ⬜ | serve un token con `Contents: write` (lo crea il titolare) |
+| 12b-4 Pagina «Scarica» su capriole.app | ⬜ | |
+| 12b-5 Flathub | ⬜ | manifest che riconfeziona il `.deb` |
+| 12c Self-hosted | ⬜ | immagine pubblica + archivio statico |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |
 | Pubblicazione: repo pubblico | ✅ | dal 2026-10-14 su `github.com/capriole-app/capriole` (0BSD): storia riscritta senza indirizzi personali (autore noreply; `prepublish_check.sh` «Ready to publish»), contatti `security@`/`hello@capriole.app`, link al codice in «Informazioni e licenze»; vecchio repo cancellato; Jenkins sul nuovo repo |
 | OSS-Fuzz | ⬜ | kit pronto in `ci/oss-fuzz/`; serve un account Google con `security@capriole.app`, poi la PR a `google/oss-fuzz` (`docs/PUBBLICAZIONE.md`, passo 15) |
