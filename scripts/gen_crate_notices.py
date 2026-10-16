@@ -2,12 +2,13 @@
 """The Rust crates the desktop shell (apps/desktop) is built from, with their licences, for the app's
 «Licenze» page: apps/desktop/crate-notices.json (grouped by licence text — hundreds of crates share a few).
 
-Only the crates linked into the binary for Linux (the desktop's first platform): normal dependencies of the
-shell, followed from the lock file — not build scripts' or tests'. Read offline from cargo's registry
+The crates linked into the binary for Linux or for Windows (the two platforms the app is released for; one
+page lists both, since the same web app is in both): normal dependencies of the shell, followed from the lock
+file — not build scripts' or tests'. Read offline from cargo's registry
 cache (cargo metadata), so the crates must have been fetched once (a build of apps/desktop does it).
 Run again when apps/desktop/src-tauri/Cargo.lock changes; --check fails when the file is out of date.
 
-    scripts/gen_crate_notices.py [--check] [--target x86_64-unknown-linux-gnu]
+    scripts/gen_crate_notices.py [--check] [--target TRIPLE ...]
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+TARGETS = ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc")
 SHELL = ROOT / "apps/desktop/src-tauri"
 OUT = ROOT / "apps/desktop/crate-notices.json"
 LICENSE_FILES = ("LICENSE", "LICENSE-MIT", "LICENSE-APACHE", "LICENSE.md", "LICENSE.txt", "COPYING", "LICENSE-MIT.md",
@@ -62,9 +64,10 @@ def texts(package: dict) -> str:
     return "\n\n".join(p.read_text(errors="replace").strip() for p in seen)
 
 
-def notices(target: str) -> list[dict]:
+def notices(targets: list[str]) -> list[dict]:
+    packages = {p["id"]: p for target in targets for p in linked(metadata(target))}
     groups: dict[tuple[str, str], list[str]] = {}
-    for p in linked(metadata(target)):
+    for p in sorted(packages.values(), key=lambda p: (p["name"], p["version"])):
         spdx = p.get("license") or "see the licence text"
         text = texts(p)
         if not text:
@@ -85,7 +88,7 @@ def notices(target: str) -> list[dict]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true")
-    parser.add_argument("--target", default="x86_64-unknown-linux-gnu")
+    parser.add_argument("--target", nargs="+", default=list(TARGETS))
     args = parser.parse_args()
     data = json.dumps(notices(args.target), ensure_ascii=False, indent=1) + "\n"
     if args.check:

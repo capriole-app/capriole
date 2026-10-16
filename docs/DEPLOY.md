@@ -32,8 +32,8 @@ La web app è fatta solo di file statici e il motore gira nel browser, quindi i 
 
 `development` confluisce in `main`; non si fa mai un push diretto su `main`. Jenkins (`Jenkinsfile`):
 1. esegue il gate, che compila anche la web app;
-2. con «Web package (main)» prepara il contesto;
-3. con «Image (main)» costruisce `ghcr.io/capriole-app/capriole-web:<sha7>` e la pubblica (credenziale `ghcr-push`);
+2. con «Web package» prepara il contesto;
+3. con «Image» costruisce `ghcr.io/capriole-app/capriole-web:<sha7>` e la pubblica (credenziale `ghcr-push`);
 4. con «Deploy (main)» entra in contabo-b (`jenkins-master-ssh-key`, impronta fissata in `contabo-b-known-hosts`) e lancia `./deploy.sh --env main --tag <sha7>`: è l'unica forma che il gate SSH del server lascia passare; `deploy.sh` alla radice controlla `--env` e passa a `deploy/web/deploy.sh`.
 
 **Tornare indietro:** sul server, `cd /srv/apps/capriole-web && deploy/web/deploy.sh --tag <sha-precedente>`. Ogni rilascio stampa la riga pronta.
@@ -123,3 +123,56 @@ mostra solo come JSON, così nessun carattere di controllo arriva al terminale.
 
 **Al primo rilascio con le segnalazioni** lo snippet del gateway cambia (`/api/report` accetta fino a
 16 KB): va copiato e il gateway ricaricato, come descritto all'inizio.
+
+## Rilascio di una versione: app desktop (Windows e Linux), archivio e immagine self-hosted
+
+Una versione si rilascia con un **tag** `v<versione>` (per esempio `v0.1.0`) su `main`. La versione del tag
+è quella dell'app: il gate verifica che sia la stessa in `apps/capriole/package.json`,
+`apps/desktop/package.json`, `Cargo.toml` e `tauri.conf.json`. Un tag con il trattino (`v0.1.0-rc1`) fa una
+pre-release, che i link «ultima versione» saltano: serve per provare la catena.
+
+Su un tag, Jenkins esegue il gate e poi:
+1. «Release (tag)» lancia `scripts/build_release.sh` nell'immagine `ci/desktop.Dockerfile`, conserva
+   `dist/release/` come artefatti della build e con `scripts/github_release.sh` ne fa la GitHub Release
+   del tag. La release nasce come bozza, riceve i file e solo dopo viene pubblicata. Un tag già
+   rilasciato fa fallire lo stage: una release non si sovrascrive;
+2. «Image» pubblica `ghcr.io/capriole-app/capriole-web:<versione>`, l'immagine per il self-hosting
+   (`docs/SELF-HOSTED.md`). Su un tag non c'è nessun rilascio su capriole.app: quello lo fa `main`.
+
+| File della release | Che cos'è |
+|---|---|
+| `Capriole_x64-setup.exe` | Windows 10/11 x64: installer NSIS per utente, senza diritti di amministratore; scarica WebView2 se manca. **Non firmato**, quindi SmartScreen avvisa («editore sconosciuto» → «Ulteriori informazioni» → «Esegui comunque») |
+| `Capriole_amd64.deb` | Debian, Ubuntu e derivate (`sudo apt install ./Capriole_amd64.deb`) |
+| `Capriole_amd64.AppImage` | le altre distribuzioni x86_64 (`chmod +x`, poi si avvia) |
+| `capriole-web.tar.gz` | la web app per il self-hosting: il contesto di `deploy/web/package.sh` (sito, Caddyfile, CSP) |
+| `SHA256SUMS` | le impronte dei file |
+
+I nomi non contengono la versione, così i link «ultima versione» del dialogo «Scarica l'app per il
+computer» (`DownloadDialog.svelte`) non cambiano mai. Quel dialogo arriva su capriole.app con `main`:
+**si unisce in `main` solo dopo che la prima release è pubblicata**, altrimenti i link portano a un 404.
+
+L'eseguibile Windows si compila su Linux con `cargo-xwin`. Si incrocia solo il crate Rust della shell,
+perché il motore nel desktop è il modulo WebAssembly che il gate ha già compilato (passato con uno stash).
+L'immagine scarica il CRT e il Windows SDK di Microsoft, e usarli vuol dire accettarne la licenza (sono
+strumenti di compilazione, non vengono ridistribuiti). Il binario Linux viene avviato su
+un display virtuale e deve essere ancora vivo dopo 15 s, prima che i file vengano conservati.
+
+**In locale** (lo stesso script, la stessa immagine; prima il motore: `cmake --preset wasm && cmake
+--build --preset wasm`):
+
+    docker build -t capriole-desktop -f ci/desktop.Dockerfile ci
+    docker run --rm -u "$(id -u)" -e HOME=/tmp -v "$PWD":/src -w /src capriole-desktop scripts/build_release.sh
+
+**Da fare una volta in Jenkins e su GitHub** (lo fa il titolare):
+- la credenziale `github-release` («Secret text»): un token fine-grained con proprietario
+  **`capriole-app`**, solo questo repository, permesso **Contents: read and write**, da rinnovare ogni anno
+  come `github-capriole-app`;
+- nel job multibranch: «Branch Sources» → GitHub → il comportamento «Discover tags». Jenkins di norma non
+  avvia da sé le build dei tag: dopo il push del tag la si avvia a mano dalla scheda «Tags» del job,
+  oppure si installa il plugin «Basic Branch Build Strategies» con la strategia «Tags»;
+- dopo la prima «Image» di un tag: rendere **pubblico** il pacchetto `capriole-web` su ghcr
+  (`github.com/orgs/capriole-app/packages` → capriole-web → Package settings → Change visibility).
+
+**Prima di annunciare una versione:** l'installer va provato a mano su un Windows vero (apri, modifica,
+salva, firma con un `.p12`, l'avviso di SmartScreen), e il `.deb` o l'AppImage su Linux. Flathub viene
+dopo la release (`packaging/flathub/README.md`).
