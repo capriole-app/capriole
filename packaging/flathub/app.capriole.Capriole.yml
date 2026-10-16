@@ -1,0 +1,62 @@
+# Capriole on Flathub. The app is the .deb of a GitHub release, repackaged: building it from source here
+# would need emsdk, cargo and npm offline, all inside flatpak-builder. The .deb's binary carries the web app
+# and the engine (WebAssembly). OpenSC is built from source, so a smart card can be used from the sandbox
+# (a module of the host would not load against the runtime's libraries). update.sh sets the release.
+id: app.capriole.Capriole
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: capriole-desktop
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # Long-term signatures (B-LT, B-LTA): the time stamp, OCSP answers, CRLs (the shell's net_fetch). The
+  # engine itself makes no request.
+  - --share=network
+  # Smart cards, through the host's pcscd.
+  - --socket=pcsc
+
+modules:
+  - name: opensc
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --disable-doc
+      - --disable-man
+      - --disable-tests
+      - --disable-notify
+      - --sysconfdir=/app/etc
+    cleanup:
+      - /bin
+      - /include
+      - /share/man
+      - /share/doc
+      - /share/bash-completion
+      - '*.la'
+    sources:
+      - type: archive
+        url: https://github.com/OpenSC/OpenSC/releases/download/0.27.1/opensc-0.27.1.tar.gz
+        sha256: 976f4a23eaf3397a1a2c3a7aac80bf971a8c3d829c9a79f06145bfaeeae5eca7
+
+  - name: capriole
+    buildsystem: simple
+    sources:
+      - type: file
+        dest-filename: capriole.deb
+        url: https://github.com/capriole-app/capriole/releases/download/v0.1.0/Capriole_amd64.deb
+        sha256: 0000000000000000000000000000000000000000000000000000000000000000
+        only-arches: [x86_64]
+      - type: file
+        path: app.capriole.Capriole.metainfo.xml
+      - type: file
+        path: app.capriole.Capriole.desktop
+    build-commands:
+      - ar -x capriole.deb
+      - tar -xf data.tar.gz
+      - install -Dm755 usr/bin/capriole-desktop /app/bin/capriole-desktop
+      - install -Dm644 app.capriole.Capriole.desktop /app/share/applications/app.capriole.Capriole.desktop
+      - install -Dm644 app.capriole.Capriole.metainfo.xml /app/share/metainfo/app.capriole.Capriole.metainfo.xml
+      - for size in 32x32 128x128 512x512; do install -Dm644 usr/share/icons/hicolor/$size/apps/capriole-desktop.png /app/share/icons/hicolor/$size/apps/app.capriole.Capriole.png; done
