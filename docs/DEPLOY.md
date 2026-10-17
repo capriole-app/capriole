@@ -138,6 +138,10 @@ Su un tag, Jenkins esegue il gate e poi:
    rilasciato fa fallire lo stage: una release non si sovrascrive;
 2. «Image» pubblica `ghcr.io/capriole-app/capriole-web:<versione>`, l'immagine per il self-hosting
    (`docs/SELF-HOSTED.md`). Su un tag non c'è nessun rilascio su capriole.app: quello lo fa `main`.
+3. alla fine, il workspace del tag viene cancellato (circa 11 GB: gli alberi di build, il `target` di Rust,
+   `node_modules`). Un tag non si ricompila, quindi non serve come cache, a differenza di quello di un ramo.
+   Lo cancella l'ultimo stage («Image») oppure quello che fallisce, perché ogni stage ha il suo agent e i
+   successivi non partono (`dropTagWorkspace` nel `Jenkinsfile`).
 
 | File della release | Che cos'è |
 |---|---|
