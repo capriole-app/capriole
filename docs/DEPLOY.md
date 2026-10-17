@@ -141,7 +141,7 @@ Su un tag, Jenkins esegue il gate e poi:
 
 | File della release | Che cos'è |
 |---|---|
-| `Capriole_x64-setup.exe` | Windows 10/11 x64: installer NSIS per utente, senza diritti di amministratore; scarica WebView2 se manca. **Non firmato**, quindi SmartScreen avvisa («editore sconosciuto» → «Ulteriori informazioni» → «Esegui comunque») |
+| `Capriole_x64-setup.exe` | Windows 10/11 x64: installer NSIS per utente, senza diritti di amministratore: se si sceglie a mano una cartella in cui l'utente non può scrivere (`C:\Program Files`), lo spiega e propone la sua (`apps/desktop/src-tauri/windows/installer-hooks.nsh`); scarica WebView2 se manca. **Non firmato**, quindi SmartScreen avvisa («editore sconosciuto» → «Ulteriori informazioni» → «Esegui comunque») |
 | `Capriole_amd64.deb` | Debian, Ubuntu e derivate (`sudo apt install ./Capriole_amd64.deb`) |
 | `Capriole_amd64.AppImage` | le altre distribuzioni x86_64 (`chmod +x`, poi si avvia) |
 | `capriole-web.tar.gz` | la web app per il self-hosting: il contesto di `deploy/web/package.sh` (sito, Caddyfile, CSP) |
