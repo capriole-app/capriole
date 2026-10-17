@@ -13,6 +13,18 @@
 // Jenkins host needs only docker. The pipeline starts nothing with a fixed name or host port, so it
 // needs no lock(): each build lives in its own container and network namespace.
 
+// A release tag is built once and never again: unlike a branch's, its workspace (the gate's build trees, the
+// desktop's Rust target, node_modules: ~11 GB) is no cache for a next build, and two tags in a day filled the
+// Jenkins host's disk. It goes at the end of the build: after the last stage (Image), or after the stage that
+// failed, since the later ones do not run. Each stage has its own agent (agent none below), so each one can
+// delete only the workspace it ran in, from its own post; the stages share it (Image builds the context
+// that the earlier ones made), so none deletes it while a later stage still needs it.
+def dropTagWorkspace(boolean lastStage) {
+  if (env.TAG_NAME && (lastStage || currentBuild.currentResult != 'SUCCESS')) {
+    deleteDir()
+  }
+}
+
 pipeline {
   agent none
 
@@ -121,6 +133,9 @@ pipeline {
           }
         }
       }
+      post {
+        cleanup { script { dropTagWorkspace(false) } }
+      }
     }
 
     // On a release tag: the desktop app's installers (.deb, AppImage, Windows setup.exe cross-built) and the
@@ -148,6 +163,9 @@ pipeline {
             sh 'scripts/github_release.sh "$TAG_NAME" dist/release'
           }
         }
+      }
+      post {
+        cleanup { script { dropTagWorkspace(false) } }
       }
     }
 
@@ -179,6 +197,9 @@ pipeline {
             '''
           }
         }
+      }
+      post {
+        cleanup { script { dropTagWorkspace(true) } }
       }
     }
 
