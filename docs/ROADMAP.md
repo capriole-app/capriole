@@ -47,9 +47,9 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | Condizioni d'uso (Bobolar Ltd, legge irlandese) | ✅ | online dal 2026-10-14, verificate da fuori; 5 lingue, prevale l'inglese; accettate con una spunta prima di aprire un file, chieste di nuovo quando cambiano; privacy: nessun IP registrato; e2e. **Da far rivedere a un legale** |
 | Conteggio anonimo delle visite | ✅ | attivo dal 2026-10-14: aperture della pagina per giorno, senza IP né header (`deploy/web/stats.sh`, cron dell'utente di rilascio alle 00:15, registro `~/capriole-usage.csv`); conta a parte le persone (l’app avviata) e gli scanner che aprono solo la pagina; il gateway non tiene log degli accessi (verificato) |
 | Indicizzazione nelle 5 lingue: un URL per lingua (`/it/`, `/fr/`…) con `hreflang` | ⬜ | oggi una sola pagina statica, i meta in inglese; l'app li traduce solo dopo l'avvio |
-| Distribuzione 12b–c: Windows, Flathub, self-hosted | 🟡 | tutto pronto nel repo; catena di rilascio provata con `v0.1.0-rc1`; mancano la prova su Windows, `v0.1.0` e il merge in `main` — PLAN.md «Distribuzione 12b–c» |
+| Distribuzione 12b–c: Windows, Flathub, self-hosted | 🟡 | tutto pronto nel repo; catena di rilascio e installer provati (`v0.1.0-rc2`); mancano `v0.1.0`, ghcr pubblico e il merge in `main` — PLAN.md «Distribuzione 12b–c» |
 | 12b-1 Shell pronta per Windows (NSIS, ID `app.capriole.Capriole`, moduli PKCS#11 per piattaforma) | ✅ | versione unica controllata dal gate |
-| 12b-2 Immagine e build: `.deb`, AppImage, `setup.exe` incrociato | ✅ | provato in locale con l'immagine; smoke Linux verde; **setup.exe da provare su un Windows vero** |
+| 12b-2 Immagine e build: `.deb`, AppImage, `setup.exe` incrociato | ✅ | `v0.1.0-rc2` provata su Windows 11 (installa, apre, modifica, salva, firma `.p12`); l'installer spiega le cartelle non scrivibili |
 | 12b-3 GitHub Release dai tag `v*` | ✅ | pre-release `v0.1.0-rc1` pubblicata da Jenkins (17/10), `SHA256SUMS` verificato |
 | 12b-4 «Scarica l'app per il computer» | ✅ | dialogo in 5 lingue, e2e; in `main` solo dopo la prima release |
 | 12b-5 Flathub | 🟡 | manifest, metainfo e `.desktop` validati; mancano `flatpak-builder`, screenshot, verifica del dominio e PR |
