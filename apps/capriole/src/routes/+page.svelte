@@ -9,6 +9,7 @@
   import LicensesDialog from '$lib/components/LicensesDialog.svelte';
   import TermsDialog from '$lib/components/TermsDialog.svelte';
   import ReportDialog from '$lib/components/ReportDialog.svelte';
+  import DownloadDialog from '$lib/components/DownloadDialog.svelte';
   import { isDesktop } from '$lib/platform';
   import { reportWords } from '$lib/i18n/report';
   import SettingsDialog from '$lib/components/SettingsDialog.svelte';
@@ -46,6 +47,7 @@
       editor.licensesOpen ||
       editor.termsOpen ||
       editor.reportOpen ||
+      editor.downloadOpen ||
       editor.settingsOpen
     )
       return;
@@ -102,6 +104,7 @@
 <LicensesDialog />
 <TermsDialog />
 <ReportDialog />
+{#if !isDesktop}<DownloadDialog />{/if}
 <SettingsDialog />
 
 {#if !editor.name}

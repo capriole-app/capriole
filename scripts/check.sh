@@ -46,6 +46,22 @@ ctest --preset asan
 step "third-party notices up to date (scripts/gen_notices.py)"
 python3 scripts/gen_notices.py --check --build-dir build/asan
 
+# One version for the app everywhere it is written: the web app's (shown in «Informazioni», sent with a
+# report), the shell's npm package, its crate, its Tauri config (the installers' names).
+step "app version the same in the web app, the shell's package, crate and Tauri config"
+python3 - <<'EOF' || die "the app's versions differ"
+import json, sys, tomllib
+versions = {
+    "apps/capriole/package.json": json.load(open("apps/capriole/package.json"))["version"],
+    "apps/desktop/package.json": json.load(open("apps/desktop/package.json"))["version"],
+    "apps/desktop/src-tauri/Cargo.toml": tomllib.load(open("apps/desktop/src-tauri/Cargo.toml", "rb"))["package"]["version"],
+    "apps/desktop/src-tauri/tauri.conf.json": json.load(open("apps/desktop/src-tauri/tauri.conf.json"))["version"],
+}
+for path, version in versions.items():
+    print(f"  {version:10} {path}")
+sys.exit(0 if len(set(versions.values())) == 1 else 1)
+EOF
+
 if [[ "$SKIP_TIDY" != 1 ]]; then
   step "clang-tidy"
   # Needs clang-tidy >= 19: Clang 18 cannot see std::expected in libstdc++ 13 (it gates it on

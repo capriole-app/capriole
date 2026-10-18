@@ -1624,6 +1624,74 @@ Criterio: `prepublish_check.sh --allow-pending` verde (resta solo il contatto da
 pagina delle licenze verde; emulazione OSS-Fuzz: i 29 target compilati senza rete e ciascuno eseguito
 20 s sul suo corpus senza crash, con ASan e con UBSan; gate verde; nulla pubblicato.
 
+## Distribuzione 12b–c — app desktop Windows e Linux, Flathub, self-hosted — pronta, da rilasciare
+
+Decisioni del 2026-10-16. Zero spesa, quindi niente GitHub Actions. Windows si compila **in incrocio su
+Jenkins** con `cargo-xwin`: il motore nel desktop è il modulo WASM nella webview, per cui si incrocia solo
+il crate Rust. L'installer è NSIS, per utente, **non firmato** per ora (SmartScreen avvisa; lo spiega la
+pagina di download). I binari stanno nelle GitHub Release di `capriole-app/capriole`, con una pagina
+«Scarica» su capriole.app. Linux: `.deb`, AppImage, Flathub (manifest che riconfeziona il `.deb` della
+release). Self-hosted: l'immagine della web app, resa pubblica e documentata, più un archivio statico.
+
+Passi: **12b-1** la shell pronta per Windows · **12b-2** immagine e stage Jenkins dei binari ·
+**12b-3** GitHub Release dai tag `v*` · **12b-4** pagina «Scarica» · **12b-5** Flathub · **12c** self-hosted.
+
+**12b-1 (2026-10-16) — la shell pronta per Windows.**
+- `tauri.conf.json`: target `nsis` accanto a `deb` e `appimage` (sugli host Linux il bundler lo ignora).
+  NSIS per utente (`currentUser`, senza diritti di amministratore), 5 lingue dell'installer; WebView2 col
+  bootstrapper se manca (Windows 10). Editore, sito, licenza 0BSD, icona `.ico`; descrizioni allineate
+  all'app di oggi (non più «solo pagine»).
+- Identificatore `app.capriole.Capriole`, al posto di `org.capriole.app` (un dominio che non è nostro).
+  Flathub vuole un ID su un dominio controllato. Lo si cambia prima del primo rilascio perché
+  l'identificatore decide anche la cartella dei dati dell'app (impostazioni, firme grafiche, font).
+- Moduli PKCS#11 suggeriti per piattaforma (`smartcard.ts`): su Windows le DLL di OpenSC, Bit4id e CIE.
+  Sono solo suggerimenti nel campo, la persona può scrivere qualsiasi percorso.
+- Gate: un passo verifica che la versione dell'app sia la stessa nei due `package.json`, in `Cargo.toml` e
+  in `tauri.conf.json` (è quella di «Informazioni», delle segnalazioni e dei nomi degli installer).
+- Criterio: `npm run build` della shell produce ancora `.deb` (28 MB) e AppImage (105 MB); gate verde con
+  WASM, desktop ed e2e. La compilazione per Windows si prova nel passo 12b-2, nell'immagine con gli
+  strumenti dell'incrocio. Restano da fare in quel passo gli avvisi dei crate linkati su Windows
+  (`gen_crate_notices.py` oggi legge solo quelli di Linux).
+
+**12b-2 (2026-10-16) — immagine e build dei binari.**
+- `ci/desktop.Dockerfile` (3,6 GB): Rust 1.99.0 con il target `x86_64-pc-windows-msvc`, cargo-xwin 0.23.1
+  con CRT e Windows SDK già scaricati (1,1 GB), clang/lld/llvm 20, NSIS, WebKitGTK, Xvfb, Node 22.
+- `scripts/build_release.sh`: il pacchetto di risorse, `.deb` e AppImage, poi l'installer NSIS incrociato
+  con la stessa web app (senza ricompilarla), uno smoke del binario Linux sotto Xvfb (vivo dopo 15 s),
+  e infine `dist/release/` con nomi senza versione e `SHA256SUMS`.
+- Gli avvisi dei crate sono quelli di Linux **e** di Windows (`gen_crate_notices.py`, per esempio
+  `windows`, `webview2-com`): una sola pagina «Licenze», perché la web app è la stessa.
+- Jenkins: su un tag `v*` lo stage CI passa il modulo WASM con uno stash e «Release (tag)» lancia lo
+  script nell'immagine desktop.
+- Criterio raggiunto in locale: `Capriole_x64-setup.exe` (29 MB, PE32 NSIS; l'eseguibile dentro è PE32+
+  x86-64), `Capriole_amd64.deb` (30 MB), `Capriole_amd64.AppImage` (108 MB), smoke verde. L'installer
+  **non è ancora stato provato su un Windows vero**.
+- Trovato strada facendo: il gate di Jenkins non scaricava il pacchetto di risorse, quindi capriole.app
+  lo serviva senza (404 su `/resources/…`: niente font CJK né profilo CMYK). Ora lo stage Gate esegue
+  `fetch_resources.sh` prima di `check.sh`.
+
+**12b-3 — GitHub Release.** `scripts/github_release.sh`: crea la release del tag come bozza, carica i file e
+solo allora la pubblica. Rifiuta un tag già rilasciato; un tag con il trattino fa una pre-release. In
+Jenkins usa la credenziale `github-release` (Contents in scrittura, la crea il titolare). Sullo stesso tag
+«Image» pubblica `capriole-web:<versione>`. Da provare con un tag `v0.1.0-rc1`.
+
+**12b-4 — «Scarica l'app per il computer».** Un dialogo (`DownloadDialog.svelte`, 5 lingue) dalla prima
+schermata, solo nell'app web. Dà i link `releases/latest/download/…` dei tre installer e di `SHA256SUMS`,
+spiega l'avviso di SmartScreen e dice cosa fa in più il desktop. e2e `download.test.ts`. Arriva su
+capriole.app con `main`, **dopo** la prima release.
+
+**12b-5 — Flathub** (`packaging/flathub/`). Il manifest `app.capriole.Capriole` (runtime GNOME 50)
+riconfeziona il `.deb` della release e compila OpenSC 0.27.1 per le smart card dal sandbox (`--socket=pcsc`;
+il modulo è `/app/lib/opensc-pkcs11.so`, ora tra i suggeriti). Ci sono anche il `.desktop` e il metainfo,
+validati (`desktop-file-validate`, `appstreamcli`), e `update.sh`, che punta a una release. Mancano la build
+con `flatpak-builder` (flatpak non è installato qui), gli screenshot, la verifica del dominio e la PR a
+Flathub.
+
+**12c — self-hosted.** `docs/SELF-HOSTED.md` (in inglese, per chi installa) e
+`deploy/self-hosted/docker-compose.yml`: l'immagine di capriole.app con la versione nel tag, in sola
+lettura, oppure `capriole-web.tar.gz` della release per un altro server, con gli header richiesti.
+Provato in locale: header, risorse servite, `/api/report` che risponde 502 come documentato.
+
 ---
 
 ## Decisioni aperte (con la fase in cui diventano bloccanti)

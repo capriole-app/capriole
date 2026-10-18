@@ -99,5 +99,15 @@ long-term signature: PLAN.md 11c).
 The crates' own dependencies (a few hundred, as for any Tauri app) are pinned by `Cargo.lock`; their
 licences are permissive (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode) — to be checked with `cargo deny`
 when the app is distributed. System libraries on Linux: WebKitGTK 4.1, GTK 3, libsoup 3 (LGPL, linked
-dynamically from the system, as every Tauri app on Linux does: not linked into the engine).
+dynamically from the system, as every Tauri app on Linux does: not linked into the engine). On Windows:
+WebView2, the system's (installed by its bootstrapper where missing), and the `windows`/`webview2-com`
+crates (MIT OR Apache-2.0): `gen_crate_notices.py` lists the crates of both platforms.
+
+Distribution only (PLAN.md 12b), never linked:
+
+| Component | Version | Licence | Use |
+|---|---|---|---|
+| OpenSC | 0.27.1 (archive's SHA-256 in `packaging/flathub/app.capriole.Capriole.yml`) | LGPL-2.1 | built inside the Flatpak only, so a smart card works from the sandbox: a PKCS#11 module the shell loads at run time, when the person names it, as with the host's OpenSC; its source is the archive the manifest names |
+| cargo-xwin, xwin | 0.23.1 (`ci/desktop.Dockerfile`) | MIT OR Apache-2.0 | cross-build of the Windows installer; they fetch Microsoft's CRT and Windows SDK (Microsoft's licence: build only, not redistributed) |
+| NSIS | Ubuntu 24.04's `nsis` | zlib/libpng (+ bzip2) | the Windows installer; its stub is in the `setup.exe` |
 

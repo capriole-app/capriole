@@ -13,12 +13,14 @@
   import { openCardWords } from '$lib/i18n/openCard';
   import { termsWords } from '$lib/i18n/terms';
   import { reportWords } from '$lib/i18n/report';
+  import { downloadWords } from '$lib/i18n/download';
   import { terms } from '$lib/terms.svelte';
 
   const editor = getEditor();
   const t = $derived(tr(openCardWords));
   const tt = $derived(tr(termsWords));
   const tw = $derived(tr(reportWords));
+  const td = $derived(tr(downloadWords));
   let ticked = $state(false);
   /** A file dropped or chosen before the terms were accepted: say what is missing. */
   let refused = $state(false);
@@ -147,6 +149,16 @@
         onclick={() => (editor.termsOpen = true)}>{tt.title}</button
       >
     </p>
+    {#if !isDesktop}
+      <p class="mt-2 text-center text-xs">
+        <button
+          type="button"
+          class="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          data-testid="download-open"
+          onclick={() => (editor.downloadOpen = true)}>{td.open}</button
+        >
+      </p>
+    {/if}
     <div class="mt-5 flex justify-center"><CodedInIreland /></div>
   </div>
 </main>

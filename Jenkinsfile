@@ -5,11 +5,25 @@
 // re-implements a check, so CI cannot drift into passing what the pre-push hook would fail.
 // On top of it, CI adds what is too slow or too specific for every push: a Clang release build and
 // a short libFuzzer run per target. On main, the web app is then deployed to capriole.app (an image on
-// ghcr.io, pulled by contabo-b: docs/DEPLOY.md).
+// ghcr.io, pulled by contabo-b: docs/DEPLOY.md). On a release tag (v*): the desktop app's installers and
+// the GitHub release, and the web app's image tagged with the version, for self-hosting (docs/DEPLOY.md,
+// «Rilascio di una versione»; docs/SELF-HOSTED.md).
 //
 // Why a dockerfile agent: the toolchain (GCC 13, Clang 20, emsdk) is pinned in ci/Dockerfile, so the
 // Jenkins host needs only docker. The pipeline starts nothing with a fixed name or host port, so it
 // needs no lock(): each build lives in its own container and network namespace.
+
+// A release tag is built once and never again: unlike a branch's, its workspace (the gate's build trees, the
+// desktop's Rust target, node_modules: ~11 GB) is no cache for a next build, and two tags in a day filled the
+// Jenkins host's disk. It goes at the end of the build: after the last stage (Image), or after the stage that
+// failed, since the later ones do not run. Each stage has its own agent (agent none below), so each one can
+// delete only the workspace it ran in, from its own post; the stages share it (Image builds the context
+// that the earlier ones made), so none deletes it while a later stage still needs it.
+def dropTagWorkspace(boolean lastStage) {
+  if (env.TAG_NAME && (lastStage || currentBuild.currentResult != 'SUCCESS')) {
+    deleteDir()
+  }
+}
 
 pipeline {
   agent none
@@ -51,6 +65,9 @@ pipeline {
                 # longer ignores it (the engine module once lived in apps/inspector) would be checked as
                 # source. Untracked files go; ignored ones (build trees, node_modules) stay as caches.
                 git clean -fd
+                # The resource pack (CJK fonts, CMaps, the CMYK profile: ADR 0005), so the web app the gate
+                # builds — the one deployed — serves it. Pinned and checked; kept between builds (build/).
+                scripts/fetch_resources.sh
                 source "$EMSDK/emsdk_env.sh" >/dev/null
                 SKIP_WASM=0 scripts/check.sh
               '''
@@ -99,28 +116,71 @@ pipeline {
           }
         }
 
-        // On main only (it is reached from development by merge): the web app the gate built, with
-        // its Content-Security-Policy, as the image's context (deploy/web/package.sh needs node).
-        stage('Web package (main)') {
-          when { branch 'main' }
+        // On main (it is reached from development by merge) and on a release tag: the web app the gate
+        // built, with its Content-Security-Policy, as the image's context (deploy/web/package.sh needs node).
+        stage('Web package') {
+          when { anyOf { branch 'main'; tag 'v*' } }
           steps {
             sh 'deploy/web/package.sh'
           }
         }
+
+        // On a release tag: the engine the gate built for WebAssembly, for the desktop app (stage «Release (tag)»).
+        stage('Engine for the desktop (tag)') {
+          when { tag 'v*' }
+          steps {
+            stash name: 'engine-wasm', includes: 'build/wasm/bindings/wasm/capriole.mjs,build/wasm/bindings/wasm/capriole.wasm'
+          }
+        }
+      }
+      post {
+        cleanup { script { dropTagWorkspace(false) } }
       }
     }
 
-    // The image of the web app, tagged with the commit's sha (never `latest`), pushed to ghcr.io.
-    stage('Image (main)') {
+    // On a release tag: the desktop app's installers (.deb, AppImage, Windows setup.exe cross-built) and the
+    // web app as an archive for self-hosting (scripts/build_release.sh), in their own image
+    // (ci/desktop.Dockerfile); kept as the build's artifacts, then published as the tag's GitHub release
+    // (scripts/github_release.sh; credential github-release: Contents read and write on this repository).
+    stage('Release (tag)') {
       when {
         beforeAgent true
-        branch 'main'
+        tag 'v*'
+      }
+      agent {
+        dockerfile {
+          filename 'desktop.Dockerfile'
+          dir 'ci'
+          args '-e HOME=/tmp'
+        }
+      }
+      steps {
+        timeout(time: 60, unit: 'MINUTES') {
+          unstash 'engine-wasm'
+          sh 'scripts/build_release.sh'
+          archiveArtifacts artifacts: 'dist/release/*', fingerprint: true
+          withCredentials([string(credentialsId: 'github-release', variable: 'GITHUB_TOKEN')]) {
+            sh 'scripts/github_release.sh "$TAG_NAME" dist/release'
+          }
+        }
+      }
+      post {
+        cleanup { script { dropTagWorkspace(false) } }
+      }
+    }
+
+    // The image of the web app, tagged with the commit's sha (never `latest`), pushed to ghcr.io. On a
+    // release tag, tagged with the version instead (v0.1.0 → 0.1.0): the image self-hosting uses.
+    stage('Image') {
+      when {
+        beforeAgent true
+        anyOf { branch 'main'; tag 'v*' }
       }
       agent any
       steps {
         timeout(time: 15, unit: 'MINUTES') {
           script {
-            env.IMAGE_TAG = env.GIT_COMMIT.take(7)
+            env.IMAGE_TAG = env.TAG_NAME ? env.TAG_NAME.substring(1) : env.GIT_COMMIT.take(7)
           }
           withCredentials([usernamePassword(credentialsId: 'ghcr-push', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
             sh '''#!/usr/bin/env bash
@@ -137,6 +197,9 @@ pipeline {
             '''
           }
         }
+      }
+      post {
+        cleanup { script { dropTagWorkspace(true) } }
       }
     }
 

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Capriole
+Comment=Edit, sign and fill in PDF files, on your computer
+Exec=capriole-desktop
+Icon=app.capriole.Capriole
+StartupWMClass=capriole-desktop
+Terminal=false
+Categories=Office;Viewer;
+Keywords=PDF;edit;sign;signature;form;annotate;redact;

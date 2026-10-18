@@ -63,13 +63,22 @@ export function cardShell(): CardShell | null {
   return typeof window !== 'undefined' ? (window.capriolePkcs11Shell ?? null) : null;
 }
 
-/** Where the cards' modules usually are (Linux): OpenSC, Bit4id (CNS), the CIE's, SoftHSM (tests). */
-export const knownModules = [
-  '/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so',
-  '/usr/lib/libbit4xpki.so',
-  '/usr/local/lib/libcie-pkcs11.so',
-  '/usr/lib/softhsm/libsofthsm2.so',
-];
+const onWindows = typeof navigator !== 'undefined' && /Windows/.test(navigator.userAgent);
+
+/** Where the cards' modules usually are: OpenSC, Bit4id (CNS), the CIE's; on Linux also SoftHSM (tests). */
+export const knownModules = onWindows
+  ? [
+      'C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll',
+      'C:\\Windows\\System32\\bit4xpki.dll',
+      'C:\\Windows\\System32\\ciepki.dll',
+    ]
+  : [
+      '/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so',
+      '/app/lib/opensc-pkcs11.so', // the Flatpak's own OpenSC (packaging/flathub)
+      '/usr/lib/libbit4xpki.so',
+      '/usr/local/lib/libcie-pkcs11.so',
+      '/usr/lib/softhsm/libsofthsm2.so',
+    ];
 
 // The module and the authority last used are kept in the settings (settings.svelte.ts).
 export const rememberedModule = () => settings.values.pkcs11Module;

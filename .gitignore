@@ -1,6 +1,7 @@
 # Build trees (one per CMake preset)
 /build/
 /out/
+/dist/
 CMakeUserPresets.json
 
 # Editors / tooling

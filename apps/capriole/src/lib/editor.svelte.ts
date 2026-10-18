@@ -197,6 +197,8 @@ export class Editor {
   termsOpen = $state(false);
   /** «Segnala un problema» (ReportDialog). */
   reportOpen = $state(false);
+  /** «Scarica l'app per il computer» (DownloadDialog, web app only). */
+  downloadOpen = $state(false);
   /** The settings dialog: open, or open at the graphic signatures. */
   settingsOpen = $state<boolean | 'signatures'>(false);
   /** The size of the next free text (points). */
