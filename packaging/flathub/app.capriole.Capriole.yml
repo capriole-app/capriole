@@ -4,7 +4,7 @@
 # (a module of the host would not load against the runtime's libraries). update.sh sets the release.
 id: app.capriole.Capriole
 runtime: org.gnome.Platform
-runtime-version: '50'
+runtime-version: '51'
 sdk: org.gnome.Sdk
 command: capriole-desktop
 
@@ -20,6 +20,30 @@ finish-args:
   - --socket=pcsc
 
 modules:
+  # The PC/SC client library, which the runtime lacks (OpenSC needs winscard.h): the daemon is the host's,
+  # reached through --socket=pcsc, so only libpcsclite is kept. Its protocol (4.6, falling back to 4.4) speaks
+  # to the pcscd of today's distributions.
+  - name: pcsc-lite
+    buildsystem: meson
+    config-opts:
+      # Where OpenSC's pkg-config and the app's loader look (meson would pick lib64).
+      - --libdir=lib
+      - -Dlibsystemd=false
+      - -Dlibudev=false
+      - -Dlibusb=false
+      - -Dpolkit=false
+      - -Dusb=false
+      - -Dserial=false
+    cleanup:
+      - /bin
+      - /sbin
+      - /share/man
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://pcsclite.apdu.fr/files/pcsc-lite-2.5.3.tar.xz
+        sha256: fe2bb733ecf95e52768907eb00da9f9f3daf180960283e514a05dcc090afa3bd
+
   - name: opensc
     buildsystem: autotools
     config-opts:
@@ -29,12 +53,17 @@ modules:
       - --disable-tests
       - --disable-notify
       - --sysconfdir=/app/etc
+      # p11-kit's module list and the tools' Bash completion would go into the runtime's /usr, which is
+      # read-only: into /app, and cleaned up (the app loads the module by its path).
+      - --enable-p11_system_config_modules=/app/share/p11-kit/modules
+      - --with-completiondir=/app/share/bash-completion/completions
     cleanup:
       - /bin
       - /include
       - /share/man
       - /share/doc
       - /share/bash-completion
+      - /share/p11-kit
       - '*.la'
     sources:
       - type: archive
