@@ -47,7 +47,7 @@ modules:
       - type: file
         dest-filename: capriole.deb
         url: https://github.com/capriole-app/capriole/releases/download/v0.1.0/Capriole_amd64.deb
-        sha256: 0000000000000000000000000000000000000000000000000000000000000000
+        sha256: b969fe2894f6c30ecc59706eea9433b6e79263cf756a5786ab4a4fbf9b11123e
         only-arches: [x86_64]
       - type: file
         path: app.capriole.Capriole.metainfo.xml
