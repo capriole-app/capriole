@@ -108,6 +108,7 @@ Distribution only (PLAN.md 12b), never linked:
 | Component | Version | Licence | Use |
 |---|---|---|---|
 | OpenSC | 0.27.1 (archive's SHA-256 in `packaging/flathub/app.capriole.Capriole.yml`) | LGPL-2.1 | built inside the Flatpak only, so a smart card works from the sandbox: a PKCS#11 module the shell loads at run time, when the person names it, as with the host's OpenSC; its source is the archive the manifest names |
+| pcsc-lite | 2.5.3 (archive's SHA-256 in `packaging/flathub/app.capriole.Capriole.yml`) | BSD-3-Clause (the library) | built inside the Flatpak only, as the runtime lacks it: the PC/SC client library OpenSC is built against and talks to the host's `pcscd` with (`--socket=pcsc`); the daemon and the tools are cleaned up |
 | cargo-xwin, xwin | 0.23.1 (`ci/desktop.Dockerfile`) | MIT OR Apache-2.0 | cross-build of the Windows installer; they fetch Microsoft's CRT and Windows SDK (Microsoft's licence: build only, not redistributed) |
 | NSIS | Ubuntu 24.04's `nsis` | zlib/libpng (+ bzip2) | the Windows installer; its stub is in the `setup.exe` |
 

@@ -1680,7 +1680,7 @@ schermata, solo nell'app web. Dà i link `releases/latest/download/…` dei tre 
 spiega l'avviso di SmartScreen e dice cosa fa in più il desktop. e2e `download.test.ts`. Arriva su
 capriole.app con `main`, **dopo** la prima release.
 
-**12b-5 — Flathub** (`packaging/flathub/`). Il manifest `app.capriole.Capriole` (runtime GNOME 50)
+**12b-5 — Flathub** (`packaging/flathub/`). Il manifest `app.capriole.Capriole` (runtime GNOME 51)
 riconfeziona il `.deb` della release e compila OpenSC 0.27.1 per le smart card dal sandbox (`--socket=pcsc`;
 il modulo è `/app/lib/opensc-pkcs11.so`, ora tra i suggeriti). Ci sono anche il `.desktop` e il metainfo,
 validati (`desktop-file-validate`, `appstreamcli`), e `update.sh`, che punta a una release. Mancano la build
