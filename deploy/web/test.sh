@@ -79,6 +79,18 @@ answer="$(curl -sS -o /dev/null -w '%{http_code}' -X POST --data 'x' "$url/")"
 [[ "$answer" != 2* ]] || fail "something else can be posted: $answer"
 echo "✔ problem reports"
 
+# Caddy's own log of an error (the reports' service gone: 502), on the container's output: what failed is
+# there, the client's address and headers are not.
+docker stop -t 1 "$reports" >/dev/null
+answer="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -A 'capriole-test' \
+  -H 'X-Forwarded-For: 203.0.113.11' --data '{"v":1,"description":"x"}' "$url/api/report")"
+[[ "$answer" == 502 ]] || fail "without the reports' service, a report is not answered 502: $answer"
+sleep 0.5
+errors="$(docker logs "$name" 2>&1 | grep '"level":"error"')"
+grep -q '"uri":"/api/report"' <<<"$errors" || fail "the error is not logged: $errors"
+grep -qE '203\.0\.113|remote_ip|client_ip|"headers"|capriole-test' <<<"$errors" && fail "the error log keeps the client: $errors"
+echo "✔ error log without the client"
+
 cd "$here/../../apps/capriole"
 CAPRIOLE_E2E_URL="$url" npx playwright test
 echo "✔ capriole-web: the whole app works as served"
