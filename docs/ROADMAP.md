@@ -52,7 +52,7 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 12b-2 Immagine e build: `.deb`, AppImage, `setup.exe` incrociato | ✅ | `v0.1.0-rc2` provata su Windows 11 (installa, apre, modifica, salva, firma `.p12`); l'installer spiega le cartelle non scrivibili |
 | 12b-3 GitHub Release dai tag `v*` | ✅ | pre-release `v0.1.0-rc1` pubblicata da Jenkins (17/10), `SHA256SUMS` verificato |
 | 12b-4 «Scarica l'app per il computer» | ✅ | online su capriole.app dal 18/10, link verificati sui file di `v0.1.0` |
-| 12b-5 Flathub | 🟡 | costruito, installato e passato al linter in locale (GNOME 51, smart card via pcscd); mancano screenshot, verifica del dominio e PR |
+| 12b-5 Flathub | 🟡 | costruito, installato e passato al linter in locale (GNOME 51, smart card via pcscd); screenshot e colori del marchio nel metainfo; mancano la PR e la verifica del dominio |
 | 12c Self-hosted | ✅ | `docs/SELF-HOSTED.md`, compose provato in locale; `ghcr.io/capriole-app/capriole-web:0.1.0` pubblica |
 | Pacchetto di risorse su capriole.app | ✅ | servito dal 18/10 (font, CMap, profilo CMYK); prima dava 404 |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |

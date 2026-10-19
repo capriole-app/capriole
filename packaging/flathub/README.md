@@ -18,8 +18,9 @@ Then a pull request to `flathub/app.capriole.Capriole`, with the three files. Th
 `flathub/flathub` instead, on the `new-pr` branch, following https://docs.flathub.org/docs/for-app-authors/submission.
 
 Before the first submission:
-- **Screenshots** in the metainfo (`<screenshots>`). Flathub requires them; they are PNGs at stable URLs,
-  for example in this folder on `main`.
+- **Screenshots**: `screenshots/`, from the desktop app (on documents of our own, with no name in them).
+  The metainfo points at them at the commit that added them, so the URLs never change; a new screenshot is a
+  new commit, then its URL in the metainfo.
 - The domain check: Flathub verifies `app.capriole` by a token served at
   `https://capriole.app/.well-known/org.flathub.VerifiedApps.txt`.
 - Built and linted locally on 2026-10-18 (GNOME 51, which ships WebKitGTK 4.1: `ldd` finds every library;
