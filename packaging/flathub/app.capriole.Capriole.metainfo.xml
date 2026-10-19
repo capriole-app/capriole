@@ -26,7 +26,7 @@
   <url type="homepage">https://capriole.app</url>
   <url type="bugtracker">https://github.com/capriole-app/capriole/issues</url>
   <url type="vcs-browser">https://github.com/capriole-app/capriole</url>
-  <!-- At the commit that added them, so the URLs never change. -->
+  <!-- Each at the commit that added it, so the URLs never change. -->
   <screenshots>
     <screenshot type="default">
       <caption>Rearrange, rotate, merge and extract pages</caption>
@@ -42,7 +42,7 @@
     </screenshot>
     <screenshot>
       <caption>Sign with a .p12 file or a smart card</caption>
-      <image>https://raw.githubusercontent.com/capriole-app/capriole/c2dbb2517478a9bb5582e94d5d84fa2b362ef755/packaging/flathub/screenshots/4-signature.png</image>
+      <image>https://raw.githubusercontent.com/capriole-app/capriole/7ab2f590046902bae7797bb122b4609fec65be1b/packaging/flathub/screenshots/4-signature.png</image>
     </screenshot>
   </screenshots>
   <!-- The logo's colours. -->
