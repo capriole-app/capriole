@@ -12,6 +12,7 @@
   import { settings } from '$lib/settings.svelte';
   import { commonName } from '$lib/certificates';
   import { localDateTime } from '$lib/files';
+  import { isDesktop } from '$lib/platform';
   import { cardShell, type CardSigner as Card } from '$lib/smartcard';
   import CardSigner from './CardSigner.svelte';
   import { tr } from '$lib/i18n/index.svelte';
@@ -244,7 +245,7 @@
 
       <p class="text-xs text-muted-foreground">
         {t.whatSigningDoes}
-        {method === 'card' ? t.keyStaysOnCard : t.keyStaysInBrowser}
+        {method === 'card' ? t.keyStaysOnCard : isDesktop ? t.keyStaysOnDevice : t.keyStaysInBrowser}
       </p>
 
       {#if editor.error && request}
