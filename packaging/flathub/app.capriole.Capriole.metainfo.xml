@@ -26,6 +26,30 @@
   <url type="homepage">https://capriole.app</url>
   <url type="bugtracker">https://github.com/capriole-app/capriole/issues</url>
   <url type="vcs-browser">https://github.com/capriole-app/capriole</url>
+  <!-- At the commit that added them, so the URLs never change. -->
+  <screenshots>
+    <screenshot type="default">
+      <caption>Rearrange, rotate, merge and extract pages</caption>
+      <image>https://raw.githubusercontent.com/capriole-app/capriole/c2dbb2517478a9bb5582e94d5d84fa2b362ef755/packaging/flathub/screenshots/1-pages.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Edit the text, in the document's own fonts</caption>
+      <image>https://raw.githubusercontent.com/capriole-app/capriole/c2dbb2517478a9bb5582e94d5d84fa2b362ef755/packaging/flathub/screenshots/2-text.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Highlight, underline, draw and comment</caption>
+      <image>https://raw.githubusercontent.com/capriole-app/capriole/c2dbb2517478a9bb5582e94d5d84fa2b362ef755/packaging/flathub/screenshots/3-annotations.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Sign with a .p12 file or a smart card</caption>
+      <image>https://raw.githubusercontent.com/capriole-app/capriole/c2dbb2517478a9bb5582e94d5d84fa2b362ef755/packaging/flathub/screenshots/4-signature.png</image>
+    </screenshot>
+  </screenshots>
+  <!-- The logo's colours. -->
+  <branding>
+    <color type="primary" scheme_preference="light">#E6EAF7</color>
+    <color type="primary" scheme_preference="dark">#111D4A</color>
+  </branding>
   <content_rating type="oars-1.1"/>
   <supports>
     <control>pointing</control>
