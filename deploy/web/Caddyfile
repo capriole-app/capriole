@@ -10,6 +10,21 @@
 	servers {
 		trusted_proxies static private_ranges
 	}
+	# Caddy's own log, on the container's output: the errors (a report the service cannot take, /api/report
+	# answered 502). Each error line carries the request it failed, with the client's address and headers
+	# (X-Forwarded-For among them): the terms of use promise no address is kept, so they are taken away here
+	# as in the visits' log below. What failed, the method, the path and the status stay, for the diagnosis.
+	log default {
+		output stderr
+		format filter {
+			wrap json
+			request>remote_ip delete
+			request>remote_port delete
+			request>client_ip delete
+			request>headers delete
+			request>tls delete
+		}
+	}
 }
 
 :8080 {

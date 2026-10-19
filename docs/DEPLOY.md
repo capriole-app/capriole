@@ -17,7 +17,7 @@ La web app è fatta solo di file statici e il motore gira nel browser, quindi i 
 
 | File | A cosa serve |
 |---|---|
-| `Dockerfile`, `Caddyfile` | L'immagine `capriole-web`: Caddy 2.11 (immagine fissata per digest), utente 65532, porta 8080, sonda `/healthz`. Header: CSP con gli hash degli script inline, `nosniff`, `no-referrer`, `DENY`, COOP, Permissions-Policy. Cache di un anno per `/_app/immutable/*`, `no-cache` per il resto. Compressione zstd/gzip, che conta soprattutto per il motore WASM. Un log anonimo delle aperture della pagina in `/logs` (volume). |
+| `Dockerfile`, `Caddyfile` | L'immagine `capriole-web`: Caddy 2.11 (immagine fissata per digest), utente 65532, porta 8080, sonda `/healthz`. Header: CSP con gli hash degli script inline, `nosniff`, `no-referrer`, `DENY`, COOP, Permissions-Policy. Cache di un anno per `/_app/immutable/*`, `no-cache` per il resto. Compressione zstd/gzip, che conta soprattutto per il motore WASM. Un log anonimo delle aperture della pagina in `/logs` (volume). Anche il log degli errori di Caddy, sull'uscita del container, è senza indirizzo né header del client (lo verifica `test.sh`). |
 | `csp.mjs` | Calcola la CSP dalle pagine compilate, così un hash non può mai essere vecchio. |
 | `package.sh` | Prepara il contesto dell'immagine (`context/`, non versionato) partendo da `apps/capriole/build`. |
 | `test.sh` | Prova l'immagine in locale con la stessa blindatura del server: header, poi **l'intera suite e2e contro il container** (`CAPRIOLE_E2E_URL`). |
