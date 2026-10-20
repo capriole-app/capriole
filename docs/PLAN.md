@@ -1683,9 +1683,11 @@ capriole.app con `main`, **dopo** la prima release.
 **12b-5 — Flathub** (`packaging/flathub/`). Il manifest `app.capriole.Capriole` (runtime GNOME 51)
 riconfeziona il `.deb` della release e compila OpenSC 0.27.1 per le smart card dal sandbox (`--socket=pcsc`;
 il modulo è `/app/lib/opensc-pkcs11.so`, ora tra i suggeriti). Ci sono anche il `.desktop` e il metainfo,
-validati (`desktop-file-validate`, `appstreamcli`), e `update.sh`, che punta a una release. Mancano la build
-con `flatpak-builder` (flatpak non è installato qui), gli screenshot, la verifica del dominio e la PR a
-Flathub.
+validati (`desktop-file-validate`, `appstreamcli`), e `update.sh`, che punta a una release. Costruito e passato
+al linter di Flathub, con gli screenshot (19/10). **La submission è rinviata** (20/10): le regole di Flathub
+escludono manifest e PR scritti con l'AI, chiedono la build dai sorgenti per il software open source e una
+storia di sviluppo lunga (`packaging/flathub/README.md`). Il manifest, già costruito e verificato, resta per
+un tentativo futuro; Linux è coperto da `.deb` e AppImage.
 
 **12c — self-hosted.** `docs/SELF-HOSTED.md` (in inglese, per chi installa) e
 `deploy/self-hosted/docker-compose.yml`: l'immagine di capriole.app con la versione nel tag, in sola

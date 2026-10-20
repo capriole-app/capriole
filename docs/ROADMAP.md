@@ -47,12 +47,12 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | Condizioni d'uso (Bobolar Ltd, legge irlandese) | ✅ | online dal 2026-10-14, verificate da fuori; 5 lingue, prevale l'inglese; accettate con una spunta prima di aprire un file, chieste di nuovo quando cambiano; privacy: nessun IP registrato; e2e. **Da far rivedere a un legale** |
 | Conteggio anonimo delle visite | ✅ | attivo dal 2026-10-14: aperture della pagina per giorno, senza IP né header (`deploy/web/stats.sh`, cron dell'utente di rilascio alle 00:15, registro `~/capriole-usage.csv`); conta a parte le persone (l’app avviata) e gli scanner che aprono solo la pagina; il gateway non tiene log degli accessi (verificato) |
 | Indicizzazione nelle 5 lingue: un URL per lingua (`/it/`, `/fr/`…) con `hreflang` | ⬜ | oggi una sola pagina statica, i meta in inglese; l'app li traduce solo dopo l'avvio |
-| Distribuzione 12b–c: Windows, Flathub, self-hosted | 🟡 | tutto pronto nel repo; **Capriole 0.1.0 pubblicata** (18/10): desktop Windows e Linux su GitHub Releases, «Scarica» su capriole.app, immagine `capriole-web:0.1.0`; resta Flathub — PLAN.md «Distribuzione 12b–c» |
+| Distribuzione 12b–c: Windows, Flathub, self-hosted | ✅ | **Capriole 0.1.0 pubblicata** (18/10): desktop Windows e Linux su GitHub Releases, «Scarica» su capriole.app, immagine `capriole-web:0.1.0`; Flathub rinviato — PLAN.md «Distribuzione 12b–c» |
 | 12b-1 Shell pronta per Windows (NSIS, ID `app.capriole.Capriole`, moduli PKCS#11 per piattaforma) | ✅ | versione unica controllata dal gate |
 | 12b-2 Immagine e build: `.deb`, AppImage, `setup.exe` incrociato | ✅ | `v0.1.0-rc2` provata su Windows 11 (installa, apre, modifica, salva, firma `.p12`); l'installer spiega le cartelle non scrivibili |
 | 12b-3 GitHub Release dai tag `v*` | ✅ | pre-release `v0.1.0-rc1` pubblicata da Jenkins (17/10), `SHA256SUMS` verificato |
 | 12b-4 «Scarica l'app per il computer» | ✅ | online su capriole.app dal 18/10, link verificati sui file di `v0.1.0` |
-| 12b-5 Flathub | 🟡 | costruito, installato e passato al linter in locale (GNOME 51, smart card via pcscd); screenshot e colori del marchio nel metainfo; mancano la PR e la verifica del dominio |
+| 12b-5 Flathub | ⏸️ rinviato | il manifest si costruisce e passa il linter di Flathub (`manifest` e `repo`), ma la submission viola le regole di Flathub (20/10): niente manifest né PR scritti con l'AI, build dai sorgenti, storia di sviluppo lunga — `packaging/flathub/README.md`. Linux resta coperto da `.deb` e AppImage |
 | 12c Self-hosted | ✅ | `docs/SELF-HOSTED.md`, compose provato in locale; `ghcr.io/capriole-app/capriole-web:0.1.0` pubblica |
 | Pacchetto di risorse su capriole.app | ✅ | servito dal 18/10 (font, CMap, profilo CMYK); prima dava 404 |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |
