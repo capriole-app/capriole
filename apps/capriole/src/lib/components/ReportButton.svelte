@@ -3,6 +3,7 @@
   // would need its own way to the service (deploy/reports), not made yet.
   import MessageSquareWarning from '@lucide/svelte/icons/message-square-warning';
   import { getEditor } from '$lib/editor.svelte';
+  import { barButton } from '$lib/ui';
   import { isDesktop } from '$lib/platform';
   import { tr } from '$lib/i18n/index.svelte';
   import { reportWords } from '$lib/i18n/report';
@@ -14,7 +15,7 @@
 {#if !isDesktop}
   <button
     type="button"
-    class="flex size-9 items-center justify-center rounded-md border hover:bg-muted"
+    class={barButton}
     aria-label={t.open}
     title={t.open}
     data-testid="report-button"

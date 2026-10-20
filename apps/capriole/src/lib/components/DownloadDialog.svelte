@@ -6,6 +6,7 @@
   import { getEditor } from '$lib/editor.svelte';
   import { tr } from '$lib/i18n/index.svelte';
   import { downloadWords } from '$lib/i18n/download';
+  import { dialog, dialogFooter, dialogTitle, secondaryButton } from '$lib/ui';
 
   const releases = 'https://github.com/capriole-app/capriole/releases';
   const latest = (file: string) => `${releases}/latest/download/${file}`;
@@ -36,7 +37,7 @@
 
 <dialog
   {@attach modal}
-  class="m-auto w-full max-w-lg rounded-xl border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  class={[dialog, 'max-w-lg']}
   aria-labelledby="download-title"
   data-testid="download-dialog"
   oncancel={(e) => {
@@ -45,7 +46,7 @@
   }}
 >
   <div class="flex flex-col gap-4 text-sm">
-    <h2 id="download-title" class="flex items-center gap-2 text-base font-semibold">
+    <h2 id="download-title" class={dialogTitle}>
       <Download class="size-4" />
       {t.title}
     </h2>
@@ -64,22 +65,18 @@
     </section>
 
     <p class="text-xs">
-      <a href={latest('SHA256SUMS')} class="underline underline-offset-2 hover:text-primary">{t.checksums}</a>
+      <a href={latest('SHA256SUMS')} class="underline underline-offset-2 hover:text-emphasis">{t.checksums}</a>
       ·
       <a
         href={releases}
         target="_blank"
         rel="noopener noreferrer"
-        class="underline underline-offset-2 hover:text-primary">{t.allReleases}</a
+        class="underline underline-offset-2 hover:text-emphasis">{t.allReleases}</a
       >
     </p>
 
-    <div class="flex justify-end">
-      <button
-        type="button"
-        class="rounded-md border px-3 py-1.5 hover:bg-muted"
-        onclick={() => (editor.downloadOpen = false)}>{t.close}</button
-      >
+    <div class={dialogFooter}>
+      <button type="button" class={secondaryButton} onclick={() => (editor.downloadOpen = false)}>{t.close}</button>
     </div>
   </div>
 </dialog>

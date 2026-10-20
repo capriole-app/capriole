@@ -506,7 +506,7 @@
       <!-- Fitted: the whole page in the window, as wide as the room or as the height allows. Zoomed: its
            size at the zoom, scrolled when larger than the window. -->
       <div
-        class="@container relative mx-auto bg-white shadow-sm"
+        class="@container relative mx-auto bg-white ring-1 ring-border"
         style:aspect-ratio="{page.width} / {page.height}"
         style:width={pageWidth}
         data-testid="page-sheet"
@@ -559,7 +559,7 @@
               width={l[2] - l[0] + 2}
               height={l[3] - l[1] + 2}
               fill="transparent"
-              class="stroke-primary"
+              class="stroke-emphasis"
               stroke-width="1"
               stroke-dasharray="3 2"
               vector-effect="non-scaling-stroke"
@@ -577,7 +577,7 @@
                 height={a.rect[3] - a.rect[1]}
                 fill="transparent"
                 class={[
-                  'stroke-primary',
+                  'stroke-emphasis',
                   same(a, editor.selectedAnnotation) ? 'opacity-100' : 'opacity-0',
                   editor.tool === 'select' && 'hover:opacity-60',
                 ]}
@@ -600,7 +600,7 @@
               width={o[2] - o[0]}
               height={o[3] - o[1]}
               fill="transparent"
-              class="stroke-primary"
+              class="stroke-emphasis"
               stroke-width="1"
               stroke-dasharray="3 2"
               vector-effect="non-scaling-stroke"
@@ -613,7 +613,7 @@
                 y={cy - 2.5}
                 width="5"
                 height="5"
-                class="fill-background stroke-primary"
+                class="fill-background stroke-emphasis"
                 stroke-width="1"
                 vector-effect="non-scaling-stroke"
                 style:cursor={i % 2 === 0 ? 'nwse-resize' : 'nesw-resize'}
@@ -631,7 +631,7 @@
                 width={r[2] - r[0]}
                 height={r[3] - r[1]}
                 fill="transparent"
-                class="stroke-primary"
+                class="stroke-emphasis"
                 stroke-width="1"
                 stroke-dasharray="3 2"
                 vector-effect="non-scaling-stroke"
@@ -644,7 +644,7 @@
                 y={cy - 2.5}
                 width="5"
                 height="5"
-                class="fill-background stroke-primary"
+                class="fill-background stroke-emphasis"
                 stroke-width="1"
                 vector-effect="non-scaling-stroke"
                 style:cursor={i % 2 === 0 ? 'nwse-resize' : 'nesw-resize'}
@@ -756,7 +756,7 @@
             <label class="flex flex-col gap-1">
               <span class="text-muted-foreground">{a.subtype === 'FreeText' ? t.text : t.comment}</span>
               <textarea
-                class="min-h-24 rounded-md border bg-background px-2 py-1.5 text-base"
+                class="min-h-24 rounded-md border bg-card px-2 py-1.5 text-base focus:border-emphasis focus:ring-3 focus:ring-accent focus:outline-none sm:text-sm"
                 defaultValue={a.contents}
                 oninput={(e) => typed(ref, e.currentTarget.value)}
                 onchange={() => written()}
@@ -809,7 +809,7 @@
                     : t.helpDraw}
       </p>
       {#if editor.tool === 'edittext'}
-        <div class="flex rounded-md border p-0.5" role="radiogroup" aria-label={t.editWhat}>
+        <div class="flex gap-0.5 rounded-lg bg-muted p-1" role="radiogroup" aria-label={t.editWhat}>
           {#each ['line', 'paragraph'] as const as mode (mode)}
             <button
               type="button"
@@ -817,7 +817,9 @@
               aria-checked={editor.editMode === mode}
               class={[
                 'flex-1 rounded px-2 py-1',
-                editor.editMode === mode ? 'bg-accent font-medium' : 'hover:bg-muted',
+                editor.editMode === mode
+                  ? 'bg-card font-medium shadow-xs ring-1 ring-border'
+                  : 'text-muted-foreground hover:text-foreground',
               ]}
               onclick={() => {
                 editor.editMode = mode;

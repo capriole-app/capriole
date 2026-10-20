@@ -7,6 +7,7 @@
   import { reportWords } from '$lib/i18n/report';
   import { browserOf, reportVersion, send, type Report, type Sent } from '$lib/report';
   import { provider } from '$lib/terms-version';
+  import { dialog, dialogFooter, dialogTitle, field, primaryButton, secondaryButton } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(reportWords));
@@ -53,7 +54,7 @@
 
 <dialog
   {@attach modal}
-  class="m-auto w-full max-w-lg rounded-xl border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  class={[dialog, 'max-w-lg']}
   aria-labelledby="report-title"
   data-testid="report-dialog"
   oncancel={(e) => {
@@ -62,7 +63,7 @@
   }}
 >
   <div class="flex max-h-[85dvh] flex-col gap-4 text-sm">
-    <h2 id="report-title" class="flex items-center gap-2 text-base font-semibold">
+    <h2 id="report-title" class={dialogTitle}>
       <MessageSquareWarning class="size-4" />
       {t.title}
     </h2>
@@ -79,7 +80,7 @@
             oninput={() => (missing = false)}
             maxlength="2000"
             rows="4"
-            class="rounded-md border bg-background px-3 py-2 outline-none focus:border-primary"
+            class={field}
             placeholder={t.placeholder}
             disabled={phase === 'sending'}></textarea>
         </label>
@@ -129,16 +130,13 @@
       </div>
     {/if}
 
-    <div class="flex justify-end gap-2">
+    <div class={dialogFooter}>
       {#if phase === 'sent'}
-        <button type="button" class="rounded-md border px-3 py-1.5 hover:bg-muted" onclick={close}>{t.close}</button>
+        <button type="button" class={secondaryButton} onclick={close}>{t.close}</button>
       {:else}
-        <button type="button" class="rounded-md border px-3 py-1.5 hover:bg-muted" onclick={close}>{t.cancel}</button>
-        <button
-          type="button"
-          class="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60"
-          disabled={phase === 'sending'}
-          onclick={submit}>{phase === 'sending' ? t.sending : t.send}</button
+        <button type="button" class={secondaryButton} onclick={close}>{t.cancel}</button>
+        <button type="button" class={primaryButton} disabled={phase === 'sending'} onclick={submit}
+          >{phase === 'sending' ? t.sending : t.send}</button
         >
       {/if}
     </div>

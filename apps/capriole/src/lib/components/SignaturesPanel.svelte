@@ -12,6 +12,7 @@
   import { localDateTime } from '$lib/files';
   import { tr } from '$lib/i18n/index.svelte';
   import { signaturesWords } from '$lib/i18n/signatures';
+  import { secondaryButton as button } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(signaturesWords));
@@ -29,8 +30,6 @@
     danger: 'bg-danger-background text-danger',
     muted: 'bg-muted text-muted-foreground',
   };
-  const button =
-    'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
 </script>
 
 <aside

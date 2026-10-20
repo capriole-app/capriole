@@ -1,8 +1,8 @@
 <script lang="ts">
   // «Informazioni e licenze» (About and licences): Capriole's licence (0BSD), where its source code is, a
   // link to the terms of use, and the notices of what it is built from — the engine's dependencies, the
-  // JavaScript packages in the app, the resource pack, and on the desktop the Rust crates of its shell. Read
-  // from licenses.json, which the build writes (packages/engine-client/scripts/licenses.mjs).
+  // JavaScript packages and fonts in the app, the resource pack, and on the desktop the Rust crates of its
+  // shell. Read from licenses.json, which the build writes (packages/engine-client/scripts/licenses.mjs).
   import Info from '@lucide/svelte/icons/info';
   import CodedInIreland from './CodedInIreland.svelte';
   import { base } from '$app/paths';
@@ -11,6 +11,7 @@
   import { tr } from '$lib/i18n/index.svelte';
   import { licenseWords } from '$lib/i18n/licenses';
   import { termsWords } from '$lib/i18n/terms';
+  import { dialog, dialogFooter, dialogTitle, secondaryButton } from '$lib/ui';
 
   interface Notice {
     name: string;
@@ -65,7 +66,7 @@
 
 <dialog
   {@attach modal}
-  class="m-auto w-full max-w-2xl rounded-xl border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  class={[dialog, 'max-w-2xl']}
   aria-labelledby="licenses-title"
   data-testid="licenses-dialog"
   oncancel={(e) => {
@@ -74,7 +75,7 @@
   }}
 >
   <div class="flex max-h-[80dvh] flex-col gap-4 text-sm">
-    <h2 id="licenses-title" class="flex items-center gap-2 text-base font-semibold">
+    <h2 id="licenses-title" class={dialogTitle}>
       <Info class="size-4" />
       {t.title}
     </h2>
@@ -107,14 +108,14 @@
             href={repository}
             target="_blank"
             rel="noopener noreferrer"
-            class="underline underline-offset-2 hover:text-primary">GitHub</a
+            class="underline underline-offset-2 hover:text-emphasis">GitHub</a
           >
         {/if}
       </p>
       <p>
         <button
           type="button"
-          class="underline underline-offset-2 hover:text-primary"
+          class="underline underline-offset-2 hover:text-emphasis"
           onclick={() => (editor.termsOpen = true)}>{tw.title}</button
         >
       </p>
@@ -178,12 +179,8 @@
         {/if}
       {/if}
     </div>
-    <div class="flex justify-end">
-      <button
-        type="button"
-        class="rounded-md border px-3 py-1.5 hover:bg-muted"
-        onclick={() => (editor.licensesOpen = false)}>{t.close}</button
-      >
+    <div class={dialogFooter}>
+      <button type="button" class={secondaryButton} onclick={() => (editor.licensesOpen = false)}>{t.close}</button>
     </div>
   </div>
 </dialog>

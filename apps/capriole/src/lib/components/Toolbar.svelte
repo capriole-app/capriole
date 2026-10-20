@@ -17,16 +17,14 @@
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import X from '@lucide/svelte/icons/x';
   import BrandMark from './BrandMark.svelte';
-  import LanguageMenu from './LanguageMenu.svelte';
-  import ReportButton from './ReportButton.svelte';
-  import SettingsButton from './SettingsButton.svelte';
-  import ThemeMenu from './ThemeMenu.svelte';
+  import MoreMenu from './MoreMenu.svelte';
   import ZoomControl from './ZoomControl.svelte';
   import { gridRange } from '$lib/zoom';
   import { getEditor } from '$lib/editor.svelte';
   import { choosesWhere, fromBrowser } from '$lib/platform';
   import { tr } from '$lib/i18n/index.svelte';
   import { toolbarWords } from '$lib/i18n/toolbar';
+  import { barButton as button, pressed, primaryButton, separator } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(toolbarWords));
@@ -34,15 +32,13 @@
 
   const some = $derived(editor.selected.size > 0);
   const all = $derived(editor.selected.size === editor.pages);
-  const button =
-    'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
 </script>
 
-<header class="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2">
+<header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-background px-4 py-2">
   <BrandMark label={t.about} />
   <div class="me-2 min-w-0 flex-1">
     <p class="truncate text-sm font-medium" title={editor.name ?? ''}>
-      {editor.name}{editor.modified ? ' •' : ''}
+      {editor.name}{#if editor.modified}<span class="text-emphasis"> •</span>{/if}
     </p>
     <!-- One line, truncated: the bar keeps its height whatever the selection says (a drag must not move the grid). -->
     <p class="truncate text-xs text-muted-foreground" aria-live="polite">
@@ -51,7 +47,7 @@
     </p>
   </div>
 
-  <div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t.selectedPages}>
+  <div class="flex flex-wrap items-center gap-1" role="toolbar" aria-label={t.selectedPages}>
     <button
       type="button"
       class={button}
@@ -70,6 +66,7 @@
     >
       <RotateCw class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.rotateRight}</span>
     </button>
+    <span class={separator} aria-hidden="true"></span>
     <button
       type="button"
       class={button}
@@ -108,6 +105,7 @@
     >
       <Trash2 class="size-4" /> <span class="sr-only min-[1900px]:not-sr-only">{t.delete}</span>
     </button>
+    <span class={separator} aria-hidden="true"></span>
     <button
       type="button"
       class={button}
@@ -147,9 +145,10 @@
         e.currentTarget.value = '';
       }}
     />
+    <span class={separator} aria-hidden="true"></span>
     <button
       type="button"
-      class={[button, editor.attachmentsOpen && 'border-primary bg-accent']}
+      class={[button, editor.attachmentsOpen && pressed]}
       aria-pressed={editor.attachmentsOpen}
       title={editor.facturx ? t.invoiceTitle : t.attachmentsTitle}
       onclick={() => {
@@ -181,7 +180,7 @@
     </button>
     <button
       type="button"
-      class={[button, editor.signaturesOpen && 'border-primary bg-accent']}
+      class={[button, editor.signaturesOpen && pressed]}
       aria-pressed={editor.signaturesOpen}
       title={t.signaturesTitle}
       onclick={() => {
@@ -197,6 +196,7 @@
           >{editor.signatures.length}</span
         >{/if}
     </button>
+    <span class={separator} aria-hidden="true"></span>
     <button
       type="button"
       class={button}
@@ -208,7 +208,7 @@
     </button>
     <button
       type="button"
-      class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
+      class={[primaryButton, 'ms-1']}
       disabled={editor.busy}
       onclick={() => editor.save()}
       title={editor.signed ? t.saveSigned : editor.path ? t.overwrites(editor.path) : undefined}
@@ -223,18 +223,18 @@
     {/if}
   </div>
   <ZoomControl percent={editor.gridZoom} range={gridRange} onzoom={(percent) => editor.zoomGrid(percent)} />
-  <ReportButton />
-  <SettingsButton />
-  <LanguageMenu />
-  <ThemeMenu />
-  <button
-    type="button"
-    class="flex size-9 items-center justify-center rounded-md border hover:bg-muted"
-    aria-label={t.close}
-    onclick={() => {
-      if (!editor.modified || confirm(t.closeUnsaved)) editor.close();
-    }}
-  >
-    <X class="size-4" />
-  </button>
+  <div class="flex items-center gap-1">
+    <MoreMenu />
+    <button
+      type="button"
+      class={[button, 'text-muted-foreground hover:text-foreground']}
+      aria-label={t.close}
+      title={t.close}
+      onclick={() => {
+        if (!editor.modified || confirm(t.closeUnsaved)) editor.close();
+      }}
+    >
+      <X class="size-4" />
+    </button>
+  </div>
 </header>

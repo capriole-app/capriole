@@ -17,6 +17,7 @@
   import CardSigner from './CardSigner.svelte';
   import { tr } from '$lib/i18n/index.svelte';
   import { signingWords } from '$lib/i18n/signing';
+  import { dialog, dialogFooter, dialogTitle, field, primaryButton, secondaryButton } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(signingWords));
@@ -104,13 +105,11 @@
   }
 
   const ready = $derived(method === 'card' ? card !== null : certificate !== null);
-
-  const field = 'rounded-md border bg-background px-3 py-2 text-base';
 </script>
 
 <dialog
   {@attach modal}
-  class="m-auto w-full max-w-md rounded-xl border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  class={[dialog, 'max-w-md']}
   aria-labelledby="sign-title"
   oncancel={(e) => {
     e.preventDefault();
@@ -124,7 +123,7 @@
       sign();
     }}
   >
-    <h2 id="sign-title" class="flex items-center gap-2 text-base font-semibold">
+    <h2 id="sign-title" class={dialogTitle}>
       <Signature class="size-4" />
       {t.title}
     </h2>
@@ -148,17 +147,17 @@
           {/if}
         </ul>
       </div>
-      <div class="flex justify-end">
-        <button type="button" class="rounded-md border px-3 py-1.5 hover:bg-muted" onclick={close}>{t.close}</button>
+      <div class={dialogFooter}>
+        <button type="button" class={secondaryButton} onclick={close}>{t.close}</button>
       </div>
     {:else}
       {#if cards}
-        <div class="flex gap-1 rounded-md border p-1" role="radiogroup" aria-label={t.method}>
+        <div class="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="radiogroup" aria-label={t.method}>
           {#each [['file', t.methodFile], ['card', t.methodCard]] as [value, label] (value)}
             <label
               class={[
-                'flex-1 cursor-pointer rounded px-2 py-1 text-center',
-                method === value && 'bg-muted font-medium',
+                'cursor-pointer rounded-md px-2 py-1.5 text-center focus-within:ring-2 focus-within:ring-emphasis',
+                method === value ? 'bg-card font-medium shadow-xs ring-1 ring-border' : 'text-muted-foreground',
               ]}
             >
               <input type="radio" class="sr-only" name="sign-method" {value} bind:group={method} />
@@ -174,7 +173,7 @@
         <div class="flex flex-col gap-1.5">
           <span class="font-medium">{t.keyFile}</span>
           <label
-            class="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 focus-within:ring-2 focus-within:ring-primary hover:bg-muted"
+            class="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 focus-within:ring-2 focus-within:ring-emphasis hover:bg-muted"
           >
             <FileKey class="size-4 shrink-0" />
             <span class="truncate">{key ? key.name : t.chooseKey}</span>
@@ -252,18 +251,9 @@
         <p class="rounded-md bg-danger-background px-3 py-2 text-danger" role="alert">{editor.error}</p>
       {/if}
 
-      <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-md border px-3 py-1.5 hover:bg-muted"
-          disabled={editor.busy}
-          onclick={close}>{t.cancel}</button
-        >
-        <button
-          type="submit"
-          class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60"
-          disabled={!ready || editor.busy || checking}
-        >
+      <div class={dialogFooter}>
+        <button type="button" class={secondaryButton} disabled={editor.busy} onclick={close}>{t.cancel}</button>
+        <button type="submit" class={primaryButton} disabled={!ready || editor.busy || checking}>
           <Signature class="size-4" />
           {t.signAndSave}
         </button>

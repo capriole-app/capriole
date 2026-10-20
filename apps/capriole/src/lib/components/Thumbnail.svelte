@@ -58,16 +58,15 @@
   }
 
   const selected = $derived(editor.selected.has(index));
+  /** A selected page: a blue line around it, apart from it (the page itself stays as it is). */
+  const page = 'outline-2 outline-offset-3 outline-emphasis';
 </script>
 
 <button
   type="button"
   draggable="true"
   {@attach watch}
-  class={[
-    'group relative flex flex-col items-center gap-2 rounded-lg p-2 outline-offset-2 hover:bg-accent',
-    selected && 'bg-accent ring-2 ring-primary',
-  ]}
+  class={['group relative flex flex-col items-center gap-2 rounded-lg p-2 outline-offset-2 hover:bg-muted']}
   aria-pressed={selected}
   aria-label={t.page(index + 1)}
   data-testid="page"
@@ -91,7 +90,7 @@
     {#if raster && !(raster instanceof Promise)}
       <canvas
         {@attach (node) => paint(node, raster)}
-        class="max-h-(--box-h) max-w-(--box-w) bg-white shadow-sm ring-1 ring-border"
+        class={['max-h-(--box-h) max-w-(--box-w) bg-white ring-1 ring-border', selected && page]}
         style:aspect-ratio="{raster.width} / {raster.height}"
       ></canvas>
     {:else if raster}
@@ -100,7 +99,7 @@
       {:then image}
         <canvas
           {@attach (node) => paint(node, image)}
-          class="max-h-(--box-h) max-w-(--box-w) bg-white shadow-sm ring-1 ring-border"
+          class={['max-h-(--box-h) max-w-(--box-w) bg-white ring-1 ring-border', selected && page]}
           style:aspect-ratio="{image.width} / {image.height}"
         ></canvas>
       {:catch}
@@ -113,5 +112,7 @@
       <span class="h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] rounded bg-muted"></span>
     {/if}
   </span>
-  <span class="text-xs text-muted-foreground tabular-nums">{index + 1}</span>
+  <span class={['text-xs tabular-nums', selected ? 'font-semibold text-emphasis' : 'text-muted-foreground']}
+    >{index + 1}</span
+  >
 </button>

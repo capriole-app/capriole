@@ -84,6 +84,10 @@ a static site does not have.
 Apache-2.0: through them, and directly for the shell's own commands — smart cards, the network of a
 long-term signature: PLAN.md 11c).
 
+`apps/capriole` serves the interface's font itself (the CSP allows no outside fonts): Inter, from
+`@fontsource-variable/inter` 5.3.0 (OFL-1.1, the variable font in woff2, no code; listed in «Informazioni e
+licenze», which `licenses.mjs` builds from the bundle's code and files).
+
 ## Desktop shell (`apps/desktop`, PLAN.md 8c, ADR 0008)
 
 | Component | Version | Licence | Use |

@@ -22,10 +22,7 @@
   import Underline from '@lucide/svelte/icons/underline';
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import BrandMark from './BrandMark.svelte';
-  import LanguageMenu from './LanguageMenu.svelte';
-  import ReportButton from './ReportButton.svelte';
-  import SettingsButton from './SettingsButton.svelte';
-  import ThemeMenu from './ThemeMenu.svelte';
+  import MoreMenu from './MoreMenu.svelte';
   import ZoomControl from './ZoomControl.svelte';
   import { pageRange } from '$lib/zoom';
   import { fontSizes } from '$lib/settings.svelte';
@@ -35,6 +32,7 @@
   import { colors, css, sameColor } from '$lib/colors';
   import { tr } from '$lib/i18n/index.svelte';
   import { annotationToolbarWords } from '$lib/i18n/annotationToolbar';
+  import { barButton as button, pressed, primaryButton, separator } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(annotationToolbarWords));
@@ -63,20 +61,18 @@
   const tools = $derived(hasForm ? all : all.filter((t) => t.tool !== 'form'));
   // The size of the next free text, or of the free text selected.
   const selectedText = $derived(editor.annotation?.subtype === 'FreeText' ? editor.annotation : null);
-  const button =
-    'flex items-center justify-center rounded-md border hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
 </script>
 
-<header class="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2">
+<header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-background px-4 py-2">
   <BrandMark label={t.about} />
-  <button type="button" class={[button, 'gap-1.5 px-2.5 py-1.5 text-sm']} onclick={() => editor.closeView()}>
+  <button type="button" class={button} onclick={() => editor.closeView()}>
     <LayoutGrid class="size-4" />
     {t.pages}
   </button>
   <div class="flex items-center gap-1">
     <button
       type="button"
-      class={[button, 'size-8']}
+      class={button}
       aria-label={t.previous}
       disabled={page === 0 || editor.busy}
       onclick={() => editor.view(page - 1)}><ChevronLeft class="size-4" /></button
@@ -84,13 +80,14 @@
     <span class="min-w-24 text-center text-sm tabular-nums" aria-live="polite">{t.pageOf(page + 1, editor.pages)}</span>
     <button
       type="button"
-      class={[button, 'size-8']}
+      class={button}
       aria-label={t.next}
       disabled={page >= editor.pages - 1 || editor.busy}
       onclick={() => editor.view(page + 1)}><ChevronRight class="size-4" /></button
     >
   </div>
 
+  <span class={separator} aria-hidden="true"></span>
   <ZoomControl
     percent={editor.pageZoomShown}
     range={pageRange}
@@ -99,11 +96,12 @@
     onfit={() => (editor.pageZoom = 'fit')}
   />
 
+  <span class={separator} aria-hidden="true"></span>
   <div class="flex flex-wrap items-center gap-1" role="toolbar" aria-label={t.tools}>
     {#each tools as { tool, icon: Icon } (tool)}
       <button
         type="button"
-        class={[button, 'size-9', editor.tool === tool && 'border-primary bg-accent']}
+        class={[button, editor.tool === tool && pressed]}
         aria-label={t[tool]}
         title={t[tool]}
         aria-pressed={editor.tool === tool}
@@ -124,22 +122,20 @@
           title={s.name}
           class={[
             'flex h-8 w-16 items-center justify-center rounded-md border-2 bg-white px-1',
-            graphicSignatures.chosen?.id === s.id ? 'border-primary' : 'border-transparent',
+            graphicSignatures.chosen?.id === s.id ? 'border-emphasis' : 'border-transparent',
           ]}
           onclick={() => graphicSignatures.choose(s.id)}
         >
           <img {@attach showPicture(s.png)} alt="" class="max-h-6 max-w-full" />
         </button>
       {/each}
-      <button
-        type="button"
-        class={[button, 'gap-1.5 px-2.5 py-1.5 text-sm']}
-        onclick={() => (editor.settingsOpen = 'signatures')}
+      <button type="button" class={button} onclick={() => (editor.settingsOpen = 'signatures')}
         >{graphicSignatures.list.length === 0 ? g.add : g.manage}</button
       >
     </div>
   {/if}
 
+  <span class={separator} aria-hidden="true"></span>
   <div class="flex items-center gap-1" role="radiogroup" aria-label={t.color}>
     {#each colors as { name, rgb } (name)}
       <button
@@ -161,7 +157,7 @@
   <label class="flex items-center gap-1.5 text-sm" title={t.textSize}>
     <Type class="size-4 text-muted-foreground" aria-hidden="true" />
     <select
-      class="rounded-md border bg-background px-1.5 py-1"
+      class="h-9 rounded-md border bg-card px-2 text-sm"
       aria-label={t.textSize}
       value={selectedText?.fontSize ? Math.round(selectedText.fontSize) : editor.fontSize}
       onchange={(e) => {
@@ -179,7 +175,7 @@
   {#if editor.redactionMarks.length > 0}
     <button
       type="button"
-      class="flex items-center gap-1.5 rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+      class="flex h-9 items-center gap-1.5 rounded-md bg-danger px-3 text-sm font-medium text-white disabled:opacity-60"
       disabled={editor.busy}
       onclick={() => {
         const n = editor.redactionMarks.length;
@@ -191,22 +187,14 @@
     </button>
   {/if}
 
-  <div class="ms-auto flex items-center gap-2">
-    <button
-      type="button"
-      class={[button, 'gap-1.5 px-2.5 py-1.5 text-sm']}
-      disabled={!editor.canUndo || editor.busy}
-      onclick={() => editor.undo()}><Undo2 class="size-4" /> {t.undo}</button
+  <div class="ms-auto flex items-center gap-1">
+    <button type="button" class={button} disabled={!editor.canUndo || editor.busy} onclick={() => editor.undo()}
+      ><Undo2 class="size-4" /> {t.undo}</button
     >
-    <button
-      type="button"
-      class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
-      disabled={editor.busy}
-      onclick={() => editor.save()}><FileDown class="size-4" /> {t.save}</button
+    <button type="button" class={[primaryButton, 'ms-1']} disabled={editor.busy} onclick={() => editor.save()}
+      ><FileDown class="size-4" /> {t.save}</button
     >
-    <ReportButton />
-    <SettingsButton />
-    <LanguageMenu />
-    <ThemeMenu />
+    <span class={separator} aria-hidden="true"></span>
+    <MoreMenu />
   </div>
 </header>
