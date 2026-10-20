@@ -178,5 +178,5 @@ un display virtuale e deve essere ancora vivo dopo 15 s, prima che i file vengan
   (`github.com/orgs/capriole-app/packages` → capriole-web → Package settings → Change visibility).
 
 **Prima di annunciare una versione:** l'installer va provato a mano su un Windows vero (apri, modifica,
-salva, firma con un `.p12`, l'avviso di SmartScreen), e il `.deb` o l'AppImage su Linux. Flathub viene
-dopo la release (`packaging/flathub/README.md`).
+salva, firma con un `.p12`, l'avviso di SmartScreen), e il `.deb` o l'AppImage su Linux. Flathub è
+rinviato (`packaging/flathub/README.md`).
