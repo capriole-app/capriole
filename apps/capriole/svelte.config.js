@@ -10,6 +10,10 @@ const config = {
     adapter: adapter(),
     // The engine client shared by the apps (packages/engine-client, ADR 0008).
     alias: { '@capriole/engine-client': '../../packages/engine-client/src' },
+    // A page per language (/it/, /en/…: src/routes/[[lang=locale]]), each one the same app: its files by
+    // their absolute path (/_app/…), which a page one directory down finds as well as /.
+    paths: { relative: false },
+    prerender: { entries: ['/', '/it/', '/en/', '/fr/', '/de/', '/es/'] },
   },
 };
 

@@ -1,8 +1,9 @@
 // The languages of the interface. Each area of the app keeps its words in one file of this folder, all
 // languages side by side (`translations(it, { en, fr, de, es })`): Italian is the source, and the others
 // must have exactly its keys — a key missing or left over fails the type check, so the gate. Words that
-// depend on a number are functions. The language is the person's choice when they made one (remembered
-// here), else the first of the system's languages that the app speaks, else English.
+// depend on a number are functions. The language is the address's when it has one (/it/, /fr/…: a page
+// per language for search engines), else the person's choice when they made one (remembered here), else
+// the first of the system's languages that the app speaks, else English.
 //
 // The engine's messages (errors, repairs) are in English and stay so.
 
@@ -42,7 +43,7 @@ export function translations<T>(
 
 const storageKey = 'capriole.locale';
 
-function isLocale(value: unknown): value is Locale {
+export function isLocale(value: unknown): value is Locale {
   return typeof value === 'string' && (locales as readonly string[]).includes(value);
 }
 
@@ -87,6 +88,12 @@ export const i18n = {
     } catch {
       // a convenience only
     }
+  },
+  /** The language of the address (/it/, /fr/…): the page the person opened, a search result in that
+   *  language, wins over a choice made before, but is not remembered as one. */
+  visit(locale: Locale): void {
+    current = locale;
+    apply(locale);
   },
   /** The tag for Intl: dates and numbers as the language writes them. */
   get intl(): string {

@@ -1,6 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<!-- The app's pages: / for any language, and one per language (src/lib/page-head.ts), each listing all. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://capriole.app/</loc>
+    <xhtml:link rel="alternate" hreflang="it" href="https://capriole.app/it/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://capriole.app/en/" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://capriole.app/fr/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://capriole.app/de/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://capriole.app/es/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://capriole.app/" />
+  </url>
+  <url>
+    <loc>https://capriole.app/it/</loc>
+    <xhtml:link rel="alternate" hreflang="it" href="https://capriole.app/it/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://capriole.app/en/" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://capriole.app/fr/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://capriole.app/de/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://capriole.app/es/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://capriole.app/" />
+  </url>
+  <url>
+    <loc>https://capriole.app/en/</loc>
+    <xhtml:link rel="alternate" hreflang="it" href="https://capriole.app/it/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://capriole.app/en/" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://capriole.app/fr/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://capriole.app/de/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://capriole.app/es/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://capriole.app/" />
+  </url>
+  <url>
+    <loc>https://capriole.app/fr/</loc>
+    <xhtml:link rel="alternate" hreflang="it" href="https://capriole.app/it/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://capriole.app/en/" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://capriole.app/fr/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://capriole.app/de/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://capriole.app/es/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://capriole.app/" />
+  </url>
+  <url>
+    <loc>https://capriole.app/de/</loc>
+    <xhtml:link rel="alternate" hreflang="it" href="https://capriole.app/it/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://capriole.app/en/" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://capriole.app/fr/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://capriole.app/de/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://capriole.app/es/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://capriole.app/" />
+  </url>
+  <url>
+    <loc>https://capriole.app/es/</loc>
+    <xhtml:link rel="alternate" hreflang="it" href="https://capriole.app/it/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://capriole.app/en/" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://capriole.app/fr/" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://capriole.app/de/" />
+    <xhtml:link rel="alternate" hreflang="es" href="https://capriole.app/es/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://capriole.app/" />
   </url>
 </urlset>

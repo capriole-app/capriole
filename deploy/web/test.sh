@@ -48,19 +48,27 @@ wasm="$(curl -fsSI -H 'Accept-Encoding: gzip, zstd' "$url/$asset")"
 grep -qi '^content-type: application/wasm' <<<"$wasm" || fail "the engine is not served as application/wasm"
 grep -qi '^cache-control: public, max-age=31536000, immutable' <<<"$wasm" || fail "hashed files not kept"
 grep -qi '^content-encoding: \(zstd\|gzip\)' <<<"$wasm" || fail "the engine is not compressed"
+# A language's page (/it/: src/lib/page-head.ts), with the same policy, its own head and a working app.
+it="$(curl -fsS -D - "$url/it/")"
+grep -qi "^content-security-policy: .*'wasm-unsafe-eval' 'sha256-" <<<"$it" || fail "no CSP with hashes on /it/"
+grep -q '<html lang="it"' <<<"$it" || fail "/it/ is not in Italian"
+grep -q '<link rel="canonical" href="https://capriole.app/it/" />' <<<"$it" || fail "/it/ has not its canonical address"
+[[ "$(curl -sS -o /dev/null -w '%{http_code}' "$url/xx/")" == 404 ]] || fail "a language the app does not speak is served"
 echo "✔ headers"
 
 # The count of visits: an opening of the page and a start of the app (its logo), with an address
 # forwarded and a query; each line with no address, no path and no header but the browser's name.
 curl -fsS -o /dev/null -A 'capriole-test' -H 'X-Forwarded-For: 203.0.113.7' "$url/?from=test"
+curl -fsS -o /dev/null -A 'capriole-test' "$url/it/"
 curl -fsS -o /dev/null -A 'capriole-test' "$url/logo-light.svg"
 sleep 0.5
 log="$(docker exec "$name" cat /logs/access.log)"
 grep -q '"method":"GET".*"status":200.*"ua":"capriole-test","kind":"page"' <<<"$log" || fail "an opening is not counted: $log"
 grep -q '"method":"GET".*"status":200.*"ua":"capriole-test","kind":"start"' <<<"$log" || fail "a start is not counted: $log"
-grep -qE '203\.0\.113|from=test|remote_ip|client_ip|"headers"|"uri"|wasm' <<<"$log" && fail "the count keeps more than it should: $log"
+grep -qE '203\.0\.113|from=test|/it/|remote_ip|client_ip|"headers"|"uri"|wasm' <<<"$log" && fail "the count keeps more than it should: $log"
 counted="$("$here/stats.sh" --from-file <(printf '%s\n' "$log"))" || fail "stats.sh cannot read the count"
-grep -qE '^[0-9-]+ +1 +1 +0$' <<<"$counted" || fail "stats.sh counts wrong: $counted"
+# A start, two openings (/ and /it/) by a browser, one by a robot (curl, reading /it/'s head above).
+grep -qE '^[0-9-]+ +1 +2 +1$' <<<"$counted" || fail "stats.sh counts wrong: $counted"
 echo "✔ anonymous count of visits"
 
 # A problem report, through the app's Caddy as the browser sends it: kept, with no address; anything

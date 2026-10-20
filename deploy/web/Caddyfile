@@ -54,10 +54,11 @@
 	# asks again on each visit, no-cache — while the scanners a new domain draws fetch the page alone).
 	# In each line only the time, the method, the status, that label and the browser's name (to tell
 	# robots apart): no address, no other header, no path, all taken away before the line is written.
-	# In /logs, a volume (docker-compose.yml), so that a new deploy does not lose the count.
-	@page path / /index.html
+	# In /logs, a volume (docker-compose.yml), so that a new deploy does not lose the count. The page is /
+	# and each language's (/it/…: the app's pages for search engines), counted alike, the language not kept.
+	@page path / /index.html /it/ /it/index.html /en/ /en/index.html /fr/ /fr/index.html /de/ /de/index.html /es/ /es/index.html
 	@start path /logo-light.svg
-	@uncounted not path / /index.html /logo-light.svg
+	@uncounted not path / /index.html /it/ /it/index.html /en/ /en/index.html /fr/ /fr/index.html /de/ /de/index.html /es/ /es/index.html /logo-light.svg
 	log_skip @uncounted
 	log_append @page kind page
 	log_append @start kind start
