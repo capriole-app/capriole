@@ -1,9 +1,9 @@
 // A Vite plugin for the apps' «Licenze» page: at build time it writes licenses.json next to the app — Capriole's
 // own licence (LICENSE), the notices of what is built into the engine (third_party/notices.json, from
-// scripts/gen_notices.py), the JavaScript packages that ended up in the app's bundle (from the bundle itself:
-// only code that ships), the resource pack's licences (static/resources/LICENSES) and, when given, the desktop
-// shell's Rust crates (apps/desktop/crate-notices.json, from scripts/gen_crate_notices.py). And licenses.txt,
-// the same as plain text.
+// scripts/gen_notices.py), the npm packages that ended up in the app's bundle (from the bundle itself: only
+// code and files that ship, such as the interface's font), the resource pack's licences
+// (static/resources/LICENSES) and, when given, the desktop shell's Rust crates (apps/desktop/crate-notices.json,
+// from scripts/gen_crate_notices.py). And licenses.txt, the same as plain text.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +21,13 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
  *   crates: { license: string; crates: string[]; text: string; source?: string[] }[];
  * }} Licenses
  */
-/** @typedef {{ type: string; modules?: Record<string, { renderedLength: number }> }} Output */
+/**
+ * @typedef {{
+ *   type: string;
+ *   modules?: Record<string, { renderedLength: number }>;
+ *   originalFileNames?: string[];
+ * }} Output
+ */
 /**
  * @typedef {{
  *   environment?: { name: string };
@@ -76,20 +82,25 @@ export function licenses(options) {
       // Only the browser's build ships (SvelteKit also builds for the server, to prerender). The worker is
       // built apart and has no packages of its own (the engine client and the WebAssembly module are ours).
       if (this.environment && this.environment.name !== 'client') return;
-      // The packages whose code is in the bundle.
+      /** @param {string} id */
+      const add = (id) => {
+        const dir = packageDir(id);
+        if (!dir || packages.has(dir) || !existsSync(join(dir, 'package.json'))) return;
+        const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+        packages.set(dir, {
+          name: manifest.name,
+          version: manifest.version,
+          license: typeof manifest.license === 'string' ? manifest.license : (manifest.license?.type ?? ''),
+          text: licenceText(dir),
+        });
+      };
+      // The packages whose code is in the bundle, and those whose files are (the interface's font): an
+      // asset's original name is relative to the app.
       for (const chunk of Object.values(bundle)) {
-        if (chunk.type !== 'chunk') continue;
-        for (const [id, module] of Object.entries(chunk.modules ?? {})) {
-          if (module.renderedLength === 0) continue;
-          const dir = packageDir(id);
-          if (!dir || packages.has(dir) || !existsSync(join(dir, 'package.json'))) continue;
-          const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-          packages.set(dir, {
-            name: manifest.name,
-            version: manifest.version,
-            license: typeof manifest.license === 'string' ? manifest.license : (manifest.license?.type ?? ''),
-            text: licenceText(dir),
-          });
+        if (chunk.type === 'chunk') {
+          for (const [id, module] of Object.entries(chunk.modules ?? {})) if (module.renderedLength > 0) add(id);
+        } else {
+          for (const name of chunk.originalFileNames ?? []) add(resolve(app, name));
         }
       }
       const resources = join(app, 'static/resources/LICENSES');
@@ -123,7 +134,7 @@ function plain(data) {
     if (e.note) out.push(e.note, '');
     if (e.text) out.push(e.text, '');
   }
-  section('JavaScript packages in the app');
+  section('npm packages in the app (code and fonts)');
   for (const p of data.npm)
     out.push(`--- ${p.name} ${p.version} (${p.license})`, '', p.text || '(no licence file)', '');
   if (data.resources.length > 0) {

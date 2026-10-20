@@ -44,7 +44,7 @@
     aria-label={t.region}
     class={[
       'relative w-full max-w-md rounded-xl border bg-card p-6 shadow-sm sm:p-8',
-      dragging && 'ring-2 ring-primary',
+      dragging && 'ring-2 ring-emphasis',
     ]}
     ondragover={(e) => {
       e.preventDefault();
@@ -82,7 +82,7 @@
       <label class="mb-4 flex items-start gap-2 text-sm" data-testid="accept-terms">
         <input
           type="checkbox"
-          class="mt-0.5 size-4 shrink-0 accent-primary"
+          class="mt-0.5 size-4 shrink-0 accent-emphasis"
           bind:checked={ticked}
           onchange={() => {
             if (ticked) {
@@ -95,7 +95,7 @@
           {tt.acceptBefore}
           <button
             type="button"
-            class="underline underline-offset-2 hover:text-primary"
+            class="underline underline-offset-2 hover:text-emphasis"
             onclick={(e) => {
               e.preventDefault();
               editor.termsOpen = true;

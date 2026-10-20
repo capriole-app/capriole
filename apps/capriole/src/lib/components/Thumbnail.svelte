@@ -66,7 +66,7 @@
   {@attach watch}
   class={[
     'group relative flex flex-col items-center gap-2 rounded-lg p-2 outline-offset-2 hover:bg-accent',
-    selected && 'bg-accent ring-2 ring-primary',
+    selected && 'bg-accent ring-2 ring-emphasis',
   ]}
   aria-pressed={selected}
   aria-label={t.page(index + 1)}

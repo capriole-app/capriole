@@ -21,9 +21,10 @@ test('«Informazioni e licenze» lists Capriole’s licence and what it is built
   await engine.getByText(/^FreeType /).click();
   await expect(engine).toContainText('copyright © 2026 The FreeType Project');
 
-  // The JavaScript packages that ship in the app (from its bundle), each with its licence.
+  // The JavaScript packages and fonts that ship in the app (from its bundle), each with its licence.
   const npm = dialog.getByTestId('licenses-npm');
   await expect(npm).toContainText(/svelte \d+\.\d+\.\d+ — MIT/);
+  await expect(npm).toContainText(/@fontsource-variable\/inter \d+\.\d+\.\d+ — OFL-1\.1/);
   await expect(npm).not.toContainText('@playwright/test'); // a tool of the build, not in the app
 
   // The desktop shell's crates only in the desktop app.

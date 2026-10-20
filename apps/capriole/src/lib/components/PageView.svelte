@@ -559,7 +559,7 @@
               width={l[2] - l[0] + 2}
               height={l[3] - l[1] + 2}
               fill="transparent"
-              class="stroke-primary"
+              class="stroke-emphasis"
               stroke-width="1"
               stroke-dasharray="3 2"
               vector-effect="non-scaling-stroke"
@@ -577,7 +577,7 @@
                 height={a.rect[3] - a.rect[1]}
                 fill="transparent"
                 class={[
-                  'stroke-primary',
+                  'stroke-emphasis',
                   same(a, editor.selectedAnnotation) ? 'opacity-100' : 'opacity-0',
                   editor.tool === 'select' && 'hover:opacity-60',
                 ]}
@@ -600,7 +600,7 @@
               width={o[2] - o[0]}
               height={o[3] - o[1]}
               fill="transparent"
-              class="stroke-primary"
+              class="stroke-emphasis"
               stroke-width="1"
               stroke-dasharray="3 2"
               vector-effect="non-scaling-stroke"
@@ -613,7 +613,7 @@
                 y={cy - 2.5}
                 width="5"
                 height="5"
-                class="fill-background stroke-primary"
+                class="fill-background stroke-emphasis"
                 stroke-width="1"
                 vector-effect="non-scaling-stroke"
                 style:cursor={i % 2 === 0 ? 'nwse-resize' : 'nesw-resize'}
@@ -631,7 +631,7 @@
                 width={r[2] - r[0]}
                 height={r[3] - r[1]}
                 fill="transparent"
-                class="stroke-primary"
+                class="stroke-emphasis"
                 stroke-width="1"
                 stroke-dasharray="3 2"
                 vector-effect="non-scaling-stroke"
@@ -644,7 +644,7 @@
                 y={cy - 2.5}
                 width="5"
                 height="5"
-                class="fill-background stroke-primary"
+                class="fill-background stroke-emphasis"
                 stroke-width="1"
                 vector-effect="non-scaling-stroke"
                 style:cursor={i % 2 === 0 ? 'nwse-resize' : 'nesw-resize'}
