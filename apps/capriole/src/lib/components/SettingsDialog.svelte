@@ -17,6 +17,7 @@
   import { settingsWords } from '$lib/i18n/settings';
   import { menusWords } from '$lib/i18n/menus';
   import { graphicSignatureWords } from '$lib/i18n/graphicSignatures';
+  import { dialog, dialogTitle, field, secondaryButton } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(settingsWords));
@@ -59,7 +60,6 @@
     else editor.drawColor = [...rgb];
   }
 
-  const field = 'rounded-md border bg-background px-3 py-2 text-base';
   const section = 'flex flex-col gap-3 border-t pt-4';
   const heading = 'text-sm font-semibold';
 </script>
@@ -90,7 +90,7 @@
 
 <dialog
   {@attach modal}
-  class="m-auto w-full max-w-xl rounded-xl border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  class={[dialog, 'max-w-xl']}
   aria-labelledby="settings-title"
   data-testid="settings-dialog"
   oncancel={(e) => {
@@ -101,7 +101,7 @@
   <!-- Made only while open: its fields are not on the page otherwise. -->
   {#if editor.settingsOpen}
     <div class="flex max-h-[85dvh] flex-col gap-4 text-sm">
-      <h2 id="settings-title" class="flex items-center gap-2 text-base font-semibold">
+      <h2 id="settings-title" class={dialogTitle}>
         <Settings class="size-4" />
         {t.title}
       </h2>
@@ -279,7 +279,7 @@
                   </span>
                   <button
                     type="button"
-                    class="flex size-8 items-center justify-center rounded-md border hover:bg-muted"
+                    class="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                     aria-label={g.remove(s.name)}
                     title={g.remove(s.name)}
                     onclick={() => graphicSignatures.remove(s.id)}><Trash2 class="size-4" /></button
@@ -320,10 +320,10 @@
         </section>
       </div>
 
-      <div class="flex justify-between gap-2">
+      <div class="-mx-6 flex justify-between gap-2 border-t px-6 pt-4">
         <button
           type="button"
-          class="rounded-md border px-3 py-1.5 hover:bg-muted"
+          class={secondaryButton}
           onclick={() => {
             if (!confirm(t.resetConfirm)) return;
             settings.reset();
@@ -333,11 +333,7 @@
             editor.fontSize = settings.values.fontSize;
           }}>{t.reset}</button
         >
-        <button
-          type="button"
-          class="rounded-md border px-3 py-1.5 hover:bg-muted"
-          onclick={() => (editor.settingsOpen = false)}>{t.close}</button
-        >
+        <button type="button" class={secondaryButton} onclick={() => (editor.settingsOpen = false)}>{t.close}</button>
       </div>
     </div>
   {/if}

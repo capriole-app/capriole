@@ -15,6 +15,7 @@
   import { reportWords } from '$lib/i18n/report';
   import { downloadWords } from '$lib/i18n/download';
   import { terms } from '$lib/terms.svelte';
+  import {} from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(openCardWords));
@@ -38,14 +39,11 @@
   }
 </script>
 
-<main class="flex min-h-dvh items-center justify-center bg-muted px-6 py-10">
+<main class="flex min-h-dvh items-center justify-center bg-background px-6 py-10">
   <div
     role="region"
     aria-label={t.region}
-    class={[
-      'relative w-full max-w-md rounded-xl border bg-card p-6 shadow-sm sm:p-8',
-      dragging && 'ring-2 ring-emphasis',
-    ]}
+    class={['relative w-full max-w-md rounded-xl border bg-card p-6 sm:p-8', dragging && 'ring-2 ring-emphasis']}
     ondragover={(e) => {
       e.preventDefault();
       dragging = true;
@@ -57,7 +55,7 @@
       take(e.dataTransfer?.files);
     }}
   >
-    <div class="absolute end-3 top-3 flex gap-2"><ReportButton /><SettingsButton /><LanguageMenu /><ThemeMenu /></div>
+    <div class="absolute end-3 top-3 flex gap-1"><ReportButton /><SettingsButton /><LanguageMenu /><ThemeMenu /></div>
     <header class="mt-10 mb-8 flex flex-col items-center gap-3 text-center">
       <img src="/logo-light.svg" alt="Capriole" class="h-14 dark:hidden" />
       <img src="/logo-dark.svg" alt="Capriole" class="hidden h-14 dark:block" />
