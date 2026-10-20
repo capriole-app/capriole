@@ -50,7 +50,7 @@
 <aside
   class={[
     'flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm',
-    dragging && 'ring-2 ring-primary ring-inset',
+    dragging && 'ring-2 ring-emphasis ring-inset',
   ]}
   aria-label={t.title}
   data-testid="attachments-panel"

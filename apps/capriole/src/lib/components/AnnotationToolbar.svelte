@@ -103,7 +103,7 @@
     {#each tools as { tool, icon: Icon } (tool)}
       <button
         type="button"
-        class={[button, 'size-9', editor.tool === tool && 'border-primary bg-accent']}
+        class={[button, 'size-9', editor.tool === tool && 'border-emphasis bg-accent']}
         aria-label={t[tool]}
         title={t[tool]}
         aria-pressed={editor.tool === tool}
@@ -124,7 +124,7 @@
           title={s.name}
           class={[
             'flex h-8 w-16 items-center justify-center rounded-md border-2 bg-white px-1',
-            graphicSignatures.chosen?.id === s.id ? 'border-primary' : 'border-transparent',
+            graphicSignatures.chosen?.id === s.id ? 'border-emphasis' : 'border-transparent',
           ]}
           onclick={() => graphicSignatures.choose(s.id)}
         >

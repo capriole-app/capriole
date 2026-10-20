@@ -174,7 +174,7 @@
         <div class="flex flex-col gap-1.5">
           <span class="font-medium">{t.keyFile}</span>
           <label
-            class="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 focus-within:ring-2 focus-within:ring-primary hover:bg-muted"
+            class="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 focus-within:ring-2 focus-within:ring-emphasis hover:bg-muted"
           >
             <FileKey class="size-4 shrink-0" />
             <span class="truncate">{key ? key.name : t.chooseKey}</span>

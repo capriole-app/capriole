@@ -64,13 +64,13 @@
     </section>
 
     <p class="text-xs">
-      <a href={latest('SHA256SUMS')} class="underline underline-offset-2 hover:text-primary">{t.checksums}</a>
+      <a href={latest('SHA256SUMS')} class="underline underline-offset-2 hover:text-emphasis">{t.checksums}</a>
       ·
       <a
         href={releases}
         target="_blank"
         rel="noopener noreferrer"
-        class="underline underline-offset-2 hover:text-primary">{t.allReleases}</a
+        class="underline underline-offset-2 hover:text-emphasis">{t.allReleases}</a
       >
     </p>
 

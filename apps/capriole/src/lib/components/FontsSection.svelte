@@ -51,7 +51,7 @@
 {/if}
 
 <section
-  class={['flex flex-col gap-2 rounded-md', dragging && 'ring-2 ring-primary']}
+  class={['flex flex-col gap-2 rounded-md', dragging && 'ring-2 ring-emphasis']}
   aria-label={t.title}
   data-testid="fonts-section"
   ondragover={(e) => {

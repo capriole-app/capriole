@@ -79,7 +79,7 @@
             oninput={() => (missing = false)}
             maxlength="2000"
             rows="4"
-            class="rounded-md border bg-background px-3 py-2 outline-none focus:border-primary"
+            class="rounded-md border bg-background px-3 py-2 outline-none focus:border-emphasis"
             placeholder={t.placeholder}
             disabled={phase === 'sending'}></textarea>
         </label>

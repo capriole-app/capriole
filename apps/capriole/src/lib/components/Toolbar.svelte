@@ -149,7 +149,7 @@
     />
     <button
       type="button"
-      class={[button, editor.attachmentsOpen && 'border-primary bg-accent']}
+      class={[button, editor.attachmentsOpen && 'border-emphasis bg-accent']}
       aria-pressed={editor.attachmentsOpen}
       title={editor.facturx ? t.invoiceTitle : t.attachmentsTitle}
       onclick={() => {
@@ -181,7 +181,7 @@
     </button>
     <button
       type="button"
-      class={[button, editor.signaturesOpen && 'border-primary bg-accent']}
+      class={[button, editor.signaturesOpen && 'border-emphasis bg-accent']}
       aria-pressed={editor.signaturesOpen}
       title={t.signaturesTitle}
       onclick={() => {

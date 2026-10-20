@@ -1,8 +1,8 @@
 <script lang="ts">
   // «Informazioni e licenze» (About and licences): Capriole's licence (0BSD), where its source code is, a
   // link to the terms of use, and the notices of what it is built from — the engine's dependencies, the
-  // JavaScript packages in the app, the resource pack, and on the desktop the Rust crates of its shell. Read
-  // from licenses.json, which the build writes (packages/engine-client/scripts/licenses.mjs).
+  // JavaScript packages and fonts in the app, the resource pack, and on the desktop the Rust crates of its
+  // shell. Read from licenses.json, which the build writes (packages/engine-client/scripts/licenses.mjs).
   import Info from '@lucide/svelte/icons/info';
   import CodedInIreland from './CodedInIreland.svelte';
   import { base } from '$app/paths';
@@ -107,14 +107,14 @@
             href={repository}
             target="_blank"
             rel="noopener noreferrer"
-            class="underline underline-offset-2 hover:text-primary">GitHub</a
+            class="underline underline-offset-2 hover:text-emphasis">GitHub</a
           >
         {/if}
       </p>
       <p>
         <button
           type="button"
-          class="underline underline-offset-2 hover:text-primary"
+          class="underline underline-offset-2 hover:text-emphasis"
           onclick={() => (editor.termsOpen = true)}>{tw.title}</button
         >
       </p>

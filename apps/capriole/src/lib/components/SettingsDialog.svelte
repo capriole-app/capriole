@@ -291,7 +291,7 @@
           {#if graphicSignatures.list.length < maxSignatures}
             <div class="flex flex-wrap items-center gap-3">
               <label
-                class="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 focus-within:ring-2 focus-within:ring-primary hover:bg-muted"
+                class="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 focus-within:ring-2 focus-within:ring-emphasis hover:bg-muted"
               >
                 <ImagePlus class="size-4" />
                 {g.add}
