@@ -52,7 +52,7 @@
 
 <div
   bind:this={grid}
-  class="grid grid-cols-[repeat(auto-fill,minmax(var(--column),1fr))] gap-4 p-6"
+  class="grid grid-cols-[repeat(auto-fill,minmax(var(--column),1fr))] gap-x-4 gap-y-6 p-8"
   style:--column="{(10 * editor.gridZoom) / 100}rem"
   {@attach wheelZoom}
   role="list"

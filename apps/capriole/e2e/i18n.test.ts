@@ -82,6 +82,38 @@ test.describe('a choice', () => {
   });
 });
 
+test.describe("the bar's «More» menu", () => {
+  test.use({ locale: 'en-US' });
+  test('holds the settings, the language and the theme while a document is open', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('open-file').setInputFiles({
+      name: 'blank.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(
+        '%PDF-1.7\n1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n2 0 obj\n<</Type/Pages/Kids[3 0 R]/Count 1>>\nendobj\n3 0 obj\n<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>\nendobj\ntrailer\n<</Root 1 0 R>>\n%%EOF\n',
+        'latin1',
+      ),
+    });
+    await expect(page.getByTestId('page')).toHaveCount(1);
+    // Only «More» in the bar: no buttons of their own.
+    await expect(page.getByRole('button', { name: 'Language' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'More' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Settings' })).toBeVisible();
+    await page.getByRole('menuitemradio', { name: 'Deutsch' }).click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+
+    await page.getByRole('button', { name: 'Mehr' }).click();
+    await expect(page.getByRole('menuitemradio', { name: 'Deutsch' })).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('menuitemradio', { name: 'Dunkel' }).click();
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+
+    await page.getByRole('button', { name: 'Mehr' }).click();
+    await page.getByRole('menuitem', { name: 'Einstellungen' }).click();
+    await expect(page.getByTestId('settings-dialog')).toBeVisible();
+  });
+});
+
 test.describe('«About»', () => {
   test.use({ locale: 'en-US' });
   test('shows the mark, the versions and the motto', async ({ page }) => {
