@@ -10,6 +10,7 @@
   import { fontsSectionWords } from '$lib/i18n/fontsSection';
   import { formatBytes } from '$lib/files';
   import { missingFontsHint } from '$lib/textedit';
+  import { secondaryButton as button } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(fontsSectionWords));
@@ -28,9 +29,6 @@
       adding = false;
     }
   }
-
-  const button =
-    'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
 </script>
 
 {#if hint}

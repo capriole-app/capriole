@@ -9,6 +9,7 @@
   import { pdfaChange, pdfaReason } from '$lib/pdfa';
   import { tr } from '$lib/i18n/index.svelte';
   import { pdfaWords } from '$lib/i18n/pdfa';
+  import { dialog, dialogFooter, dialogTitle, primaryButton, secondaryButton } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(pdfaWords));
@@ -25,7 +26,7 @@
 
 <dialog
   {@attach modal}
-  class="m-auto w-full max-w-lg rounded-xl border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  class={[dialog, 'max-w-lg']}
   aria-labelledby="pdfa-title"
   data-testid="pdfa-dialog"
   oncancel={(e) => {
@@ -34,7 +35,7 @@
   }}
 >
   <div class="flex flex-col gap-4 text-sm">
-    <h2 id="pdfa-title" class="flex items-center gap-2 text-base font-semibold">
+    <h2 id="pdfa-title" class={dialogTitle}>
       <Archive class="size-4" />
       {t.title(invoice)}
     </h2>
@@ -85,30 +86,17 @@
       <p class="rounded-md bg-danger-background px-3 py-2 text-danger" role="alert">{editor.error}</p>
     {/if}
 
-    <div class="flex justify-end gap-2">
-      <button
-        type="button"
-        class="rounded-md border px-3 py-1.5 hover:bg-muted"
-        disabled={editor.busy}
-        onclick={() => editor.closePdfa()}>{editor.pdfaReport ? t.close : t.cancel}</button
+    <div class={dialogFooter}>
+      <button type="button" class={secondaryButton} disabled={editor.busy} onclick={() => editor.closePdfa()}
+        >{editor.pdfaReport ? t.close : t.cancel}</button
       >
       {#if editor.pdfaReport}
-        <button
-          type="button"
-          class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60"
-          disabled={editor.busy}
-          onclick={() => editor.savePdfa()}
-        >
+        <button type="button" class={primaryButton} disabled={editor.busy} onclick={() => editor.savePdfa()}>
           <FileDown class="size-4" />
           {t.save}
         </button>
       {:else if !editor.pdfaRefusal}
-        <button
-          type="button"
-          class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:opacity-60"
-          disabled={editor.busy}
-          onclick={() => editor.convertToPdfa()}
-        >
+        <button type="button" class={primaryButton} disabled={editor.busy} onclick={() => editor.convertToPdfa()}>
           <Archive class="size-4" />
           {t.convert}
         </button>

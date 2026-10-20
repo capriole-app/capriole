@@ -23,3 +23,13 @@ export const separator = 'mx-1 h-5 w-px shrink-0 bg-border';
 export const menu = 'absolute end-0 z-20 mt-1 min-w-44 rounded-lg border bg-card p-1 shadow-lg';
 export const menuItem = 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm hover:bg-muted';
 export const menuLabel = 'px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground';
+
+/** A dialog (with its max-w-…): a card over the page, the page dimmed behind it. */
+export const dialog = 'm-auto w-full rounded-xl border bg-card p-6 text-foreground shadow-xl backdrop:bg-black/30';
+export const dialogTitle = 'flex items-center gap-2 text-lg font-semibold tracking-tight';
+/** The dialog's buttons, under a hairline across it. */
+export const dialogFooter = '-mx-6 flex justify-end gap-2 border-t px-6 pt-4';
+
+/** A field (input, select): the blue line and a soft ring when it has the focus. */
+export const field =
+  'rounded-md border bg-card px-3 py-2 text-base focus:border-emphasis sm:text-sm focus:ring-3 focus:ring-accent focus:outline-none';

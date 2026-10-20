@@ -6,6 +6,7 @@
   import { i18n, tr } from '$lib/i18n/index.svelte';
   import { termsWords } from '$lib/i18n/terms';
   import { provider, termsVersion } from '$lib/terms-version';
+  import { dialog, dialogFooter, dialogTitle, secondaryButton } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(termsWords));
@@ -23,7 +24,7 @@
 
 <dialog
   {@attach modal}
-  class="m-auto w-full max-w-2xl rounded-xl border bg-card p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  class={[dialog, 'max-w-2xl']}
   aria-labelledby="terms-title"
   data-testid="terms-dialog"
   oncancel={(e) => {
@@ -33,7 +34,7 @@
 >
   <div class="flex max-h-[80dvh] flex-col gap-4 text-sm">
     <header class="flex flex-col gap-0.5">
-      <h2 id="terms-title" class="flex items-center gap-2 text-base font-semibold">
+      <h2 id="terms-title" class={dialogTitle}>
         <Scale class="size-4" />
         {t.title}
       </h2>
@@ -50,12 +51,8 @@
       {/each}
       <p class="text-xs text-muted-foreground italic">{t.prevails}</p>
     </div>
-    <div class="flex justify-end">
-      <button
-        type="button"
-        class="rounded-md border px-3 py-1.5 hover:bg-muted"
-        onclick={() => (editor.termsOpen = false)}>{t.close}</button
-      >
+    <div class={dialogFooter}>
+      <button type="button" class={secondaryButton} onclick={() => (editor.termsOpen = false)}>{t.close}</button>
     </div>
   </div>
 </dialog>

@@ -24,6 +24,7 @@
   } from '$lib/smartcard';
   import { tr } from '$lib/i18n/index.svelte';
   import { signingWords } from '$lib/i18n/signing';
+  import { field, secondaryButton } from '$lib/ui';
 
   const editor = getEditor();
   const shell = cardShell();
@@ -111,8 +112,6 @@
       reading = false;
     }
   }
-
-  const field = 'rounded-md border bg-background px-3 py-2 text-base';
 </script>
 
 <div class="flex flex-col gap-3" data-testid="card-signer">
@@ -120,12 +119,7 @@
     <span class="font-medium">{t.module}</span>
     <span class="flex gap-2">
       <input class="{field} min-w-0 flex-1" list="pkcs11-modules" bind:value={module} spellcheck="false" />
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded-md border px-3 py-1.5 hover:bg-muted disabled:opacity-60"
-        disabled={reading || !module.trim()}
-        onclick={findCards}
-      >
+      <button type="button" class={secondaryButton} disabled={reading || !module.trim()} onclick={findCards}>
         <RefreshCw class="size-4" />
         {t.find}
       </button>

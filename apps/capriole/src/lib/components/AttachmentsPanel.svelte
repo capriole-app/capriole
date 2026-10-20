@@ -12,6 +12,7 @@
   import { formatBytes, readableDate } from '$lib/files';
   import { i18n, tr } from '$lib/i18n/index.svelte';
   import { attachmentsWords } from '$lib/i18n/attachments';
+  import { secondaryButton as button } from '$lib/ui';
 
   const editor = getEditor();
   let files: HTMLInputElement | undefined = $state();
@@ -42,9 +43,6 @@
       timeZone: 'UTC',
     }).format(day);
   }
-
-  const button =
-    'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
 </script>
 
 <aside
