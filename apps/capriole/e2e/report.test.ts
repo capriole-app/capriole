@@ -26,7 +26,8 @@ test('a report shows all it sends, and sends nothing of the document but its tra
   await page.getByTestId('open-file').setInputFiles(pdf('contratto-mario-rossi.pdf'));
   await expect(page.getByTestId('brand-mark')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Segnala un problema' }).click();
+  await page.getByRole('button', { name: 'Altro' }).click();
+  await page.getByRole('menuitem', { name: 'Segnala un problema' }).click();
   const dialog = page.getByTestId('report-dialog');
   const sent = dialog.getByTestId('report-sent');
   await expect(sent).toContainText(/\d+\.\d+\.\d+/);

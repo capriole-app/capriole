@@ -150,8 +150,10 @@ test('settings are kept on the device and used: zoom, author, colours, a signatu
   await expect(page.getByRole('dialog').getByLabel('Motivo')).toHaveValue('Approvazione');
   await page.getByRole('dialog').getByRole('button', { name: 'Annulla' }).click();
 
-  // Back to the defaults (graphic signatures are not settings: they stay).
-  await page.getByRole('button', { name: 'Impostazioni' }).click();
+  // Back to the defaults (graphic signatures are not settings: they stay). With a document open, the settings
+  // are in the bar's «Altro» menu.
+  await page.getByRole('button', { name: 'Altro' }).click();
+  await page.getByRole('menuitem', { name: 'Impostazioni' }).click();
   page.once('dialog', (d) => d.accept());
   await dialog.getByRole('button', { name: 'Ripristina i predefiniti' }).click();
   await expect(dialog.getByLabel('Autore')).toHaveValue('');
