@@ -1,7 +1,7 @@
 import { translations } from './index.svelte';
 
-/** The page's title and description, in the interface's language. src/app.html carries the English ones:
- *  the single static page is what search engines read, and their crawlers' browsers speak English. */
+/** The page's title and description: written into each language's page at build time, for search engines
+ *  (src/lib/page-head.ts; / has the English ones), then set by the interface in its own language. */
 export const headWords = translations(
   {
     title: 'Capriole — editor PDF nel browser',

@@ -101,3 +101,66 @@ test.describe('«About»', () => {
     await expect(page.getByTestId('licenses-dialog')).toContainText('free software');
   });
 });
+
+// A page per language for search engines (src/lib/page-head.ts): its head written in the file, in its
+// language, with the other languages' pages; / for the others (x-default), in English.
+const origin = 'https://capriole.app';
+const pages = [
+  { path: '/', lang: 'en', canonical: `${origin}/`, title: 'Capriole — PDF editor in your browser' },
+  ...firstScreen
+    .filter(({ locale }) => locale !== 'pt-BR')
+    .map(({ lang, title }) => ({ path: `/${lang}/`, lang, canonical: `${origin}/${lang}/`, title })),
+];
+
+for (const { path, lang, canonical, title } of pages) {
+  test(`${path}: its head as search engines read it`, async ({ request }) => {
+    const response = await request.get(path);
+    expect(response.status()).toBe(200);
+    const html = await response.text();
+    expect(html).toContain(`<html lang="${lang}"`);
+    expect(html).toContain(`<title>${title}</title>`);
+    expect(html).toContain(`<link rel="canonical" href="${canonical}" />`);
+    expect(html).toContain(`<meta property="og:url" content="${canonical}" />`);
+    for (const other of ['it', 'en', 'fr', 'de', 'es'])
+      expect(html).toContain(`<link rel="alternate" hreflang="${other}" href="${origin}/${other}/" />`);
+    expect(html).toContain(`<link rel="alternate" hreflang="x-default" href="${origin}/" />`);
+    expect(html).not.toContain('%capriole.');
+  });
+}
+
+test.describe('a language page', () => {
+  test.use({ locale: 'en-US' });
+  test('opens in its language, over a choice made before, without changing it', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (!localStorage.getItem('capriole.locale')) localStorage.setItem('capriole.locale', 'fr');
+    });
+    await page.goto('/it/');
+    await expect(page.getByRole('button', { name: 'Scegli un PDF' })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'it');
+    await expect(page).toHaveTitle('Capriole — editor PDF nel browser');
+    expect(await page.evaluate(() => localStorage.getItem('capriole.locale'))).toBe('fr');
+
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Choisir un PDF' })).toBeVisible();
+  });
+
+  test('follows the language chosen from the menu in its address', async ({ page }) => {
+    await page.goto('/es/');
+    await expect(page.getByRole('button', { name: 'Elegir un PDF' })).toBeVisible();
+    await page.getByRole('button', { name: 'Idioma' }).click();
+    await page.getByRole('menuitemradio', { name: 'Deutsch' }).click();
+    await expect(page.getByRole('button', { name: 'PDF auswählen' })).toBeVisible();
+    await expect(page).toHaveURL(/\/de\/$/);
+
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'PDF auswählen' })).toBeVisible();
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'PDF auswählen' })).toBeVisible();
+  });
+});
+
+test('the sitemap lists every page, each with the others as its alternates', async ({ request }) => {
+  const xml = await (await request.get('/sitemap.xml')).text();
+  for (const { canonical } of pages) expect(xml).toContain(`<loc>${canonical}</loc>`);
+  expect(xml.match(/hreflang="x-default"/g)).toHaveLength(pages.length);
+});
