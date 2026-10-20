@@ -70,9 +70,18 @@ Il pacchetto `ghcr.io/capriole-app/capriole-web` è pubblico: il server lo scari
 
 Dal 2026-10-13 il sito è aperto ai motori di ricerca: lo snippet non manda più `X-Robots-Tag: noindex`. Per richiuderlo, si rimette nello snippet `header X-Robots-Tag "noindex, nofollow"` e si ricarica il gateway.
 
+C'è una pagina per lingua: `/it/`, `/en/`, `/fr/`, `/de/`, `/es/`, ognuna con lingua, titolo, descrizione,
+`canonical` e Open Graph nel file, scritti alla build (`apps/capriole/src/lib/page-head.ts`), e i link
+`hreflang` alle altre; `/` è la pagina `x-default` (in inglese nel file, l'app sceglie poi la lingua).
+`sitemap.xml` le elenca tutte. Dopo un cambio di pagine o di sitemap, la sitemap va inviata di nuovo in
+Google Search Console. Da fuori:
+
+    for l in it en fr de es; do curl -s https://capriole.app/$l/ | grep -oE '<html lang="[a-z]+"|<title>[^<]*'; done
+
 ## Quanto è usata
 
-Il Caddy del container scrive una riga quando qualcuno apre la pagina (`/`, etichetta `page`) e una quando
+Il Caddy del container scrive una riga quando qualcuno apre la pagina (`/` o quella di una lingua,
+`/it/`…, etichetta `page`: la lingua non si registra) e una quando
 l'app parte davvero in un browser (etichetta `start`: è il logo della prima schermata, che solo un browser
 che esegue l'app richiede, e lo richiede a ogni visita). In ogni riga ci sono solo: ora, metodo, esito,
 etichetta e nome del browser (serve a riconoscere i robot). Indirizzo IP, header, percorso e parametri

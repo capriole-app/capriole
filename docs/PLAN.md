@@ -1696,6 +1696,24 @@ Provato in locale: header, risorse servite, `/api/report` che risponde 502 come 
 
 ---
 
+## Indicizzazione nelle 5 lingue (2026-10-20)
+
+Un indirizzo per lingua, perché i motori di ricerca leggono il file e non l'app: `/it/`, `/en/`, `/fr/`,
+`/de/`, `/es/` sono la stessa app (`src/routes/[[lang=locale]]`, `src/params/locale.ts`), ognuna prerenderizzata
+con il proprio head: `src/hooks.server.ts` (gira solo alla build) scrive in `app.html` lang, titolo,
+descrizione, `canonical`, Open Graph (`og:locale`) e gli `hreflang` di tutte (`src/lib/page-head.ts`, dalle
+parole di `head.ts`). `/` resta per tutti gli altri, `x-default`, in inglese nel file. I file dell'app per
+percorso assoluto (`paths.relative: false`), perché `/it/` li trovi come `/`.
+
+Nell'app, la lingua dell'indirizzo vince su una scelta fatta prima (chi apre `/it/` da un risultato in
+italiano lo vuole in italiano) ma non la sostituisce (`i18n.visit`); scegliere una lingua dal menu su una
+pagina di lingua ne cambia l'indirizzo (`replaceState`, senza ricaricare) e la ricorda, come su `/`.
+`sitemap.xml` elenca le 6 pagine con le alternative (`xhtml:link`). Il conteggio delle visite conta le pagine
+di lingua come `/`, senza la lingua. Verifiche: e2e `i18n.test.ts` (head di ogni pagina come la legge un
+motore, la lingua dell'indirizzo, il menu che la cambia, la sitemap), `deploy/web/test.sh` (CSP e head di
+`/it/` dall'immagine, `/xx/` 404, il conteggio). Resta il limite di un'app solo client: il corpo della
+pagina lo costruisce JavaScript (Google lo esegue; altri motori leggono solo l'head).
+
 ## Decisioni aperte (con la fase in cui diventano bloccanti)
 
 | Decisione | Blocca | Nota |

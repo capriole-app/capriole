@@ -1,26 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="%capriole.lang%">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
-    <!-- What search engines read: the app has one static page, so one language, English (the language the
-         app falls back to, and the one crawlers' browsers speak). The interface then sets both in its own
-         language (src/lib/i18n/head.ts, whose English must stay the same as here). -->
-    <title>Capriole — PDF editor in your browser</title>
-    <meta
-      name="description"
-      content="Edit PDFs in your browser: text and images on every page, signatures, forms, merging and splitting. Your files never leave your device."
-    />
-    <link rel="canonical" href="https://capriole.app/" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Capriole" />
-    <meta property="og:url" content="https://capriole.app/" />
-    <meta property="og:title" content="Capriole — PDF editor in your browser" />
-    <meta
-      property="og:description"
-      content="Edit PDFs in your browser: text and images on every page, signatures, forms, merging and splitting. Your files never leave your device."
-    />
+    <!-- What search engines read: the language, title, description, canonical address, the other languages'
+         pages and Open Graph, written per page at build time (src/hooks.server.ts). -->
+    <!-- %capriole.head% -->
     <!-- The theme goes on <html> before anything paints, or a dark-theme user sees a light flash.
          Same key and values as mode-watcher (ModeWatcher runs with disableHeadScriptInjection). -->
     <script data-theme-init>
