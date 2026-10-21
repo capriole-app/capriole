@@ -12,6 +12,7 @@
 
 #include "capriole/filters/ccitt.hpp"
 #include "jbig2_arith.hpp"
+#include "jbig2_generic.hpp"
 #include "jbig2_huffman.hpp"
 
 namespace capriole::filters {
@@ -19,64 +20,17 @@ namespace capriole::filters {
 namespace {
 
 using jbig2::ArithmeticDecoder;
+using jbig2::Bitmap;
 using jbig2::BitReader;
+using jbig2::Combine;
 using jbig2::Contexts;
+using jbig2::decode_generic;
+using jbig2::generic_contexts;
+using jbig2::GenericParams;
 using jbig2::HuffmanTable;
 using jbig2::HuffmanValue;
 
-// ── Bitmaps ───────────────────────────────────────────────────────────────────────────────────
-
-enum class Combine : std::uint8_t { kOr, kAnd, kXor, kXnor, kReplace };
-
-// One byte per pixel, 1 for black (JBIG2's convention); outside the bitmap, 0.
-struct Bitmap {
-  std::int32_t width = 0;
-  std::int32_t height = 0;
-  std::vector<std::uint8_t> px;
-
-  [[nodiscard]] std::uint8_t get(std::int64_t x, std::int64_t y) const {
-    if (x < 0 || y < 0 || x >= width || y >= height) {
-      return 0;
-    }
-    return px[(static_cast<std::size_t>(y) * static_cast<std::size_t>(width)) + static_cast<std::size_t>(x)];
-  }
-  void set(std::int64_t x, std::int64_t y, std::uint8_t v) {
-    if (x >= 0 && y >= 0 && x < width && y < height) {
-      px[(static_cast<std::size_t>(y) * static_cast<std::size_t>(width)) + static_cast<std::size_t>(x)] = v;
-    }
-  }
-
-  // Places src with its top-left corner at (x, y), combining (6.4.5, 7.4.1.5), clipped to this bitmap.
-  void compose(const Bitmap& src, std::int64_t x, std::int64_t y, Combine op) {
-    const std::int64_t x0 = std::max<std::int64_t>(0, x);
-    const std::int64_t y0 = std::max<std::int64_t>(0, y);
-    const std::int64_t x1 = std::min<std::int64_t>(width, x + src.width);
-    const std::int64_t y1 = std::min<std::int64_t>(height, y + src.height);
-    for (std::int64_t yy = y0; yy < y1; ++yy) {
-      for (std::int64_t xx = x0; xx < x1; ++xx) {
-        const std::uint8_t s = src.get(xx - x, yy - y);
-        auto& d = px[(static_cast<std::size_t>(yy) * static_cast<std::size_t>(width)) + static_cast<std::size_t>(xx)];
-        switch (op) {
-          case Combine::kOr:
-            d = d | s;
-            break;
-          case Combine::kAnd:
-            d = d & s;
-            break;
-          case Combine::kXor:
-            d = d ^ s;
-            break;
-          case Combine::kXnor:
-            d = (d ^ s) ^ 1U;
-            break;
-          case Combine::kReplace:
-            d = s;
-            break;
-        }
-      }
-    }
-  }
-};
+// ── Bitmaps (jbig2_generic.hpp) ────────────────────────────────────────────────────────────
 
 Combine combine_of(unsigned bits) {
   switch (bits) {
@@ -157,69 +111,7 @@ class Fields {
   bool ok_ = true;
 };
 
-// ── Generic region decoding (6.2) ───────────────────────────────────────────────────────────
-
-struct GenericParams {
-  unsigned tmpl = 0;
-  bool tpgdon = false;
-  std::array<std::int32_t, 8> at{};  // (x, y) of A1..A4
-  const Bitmap* skip = nullptr;      // USESKIP: pixels set here are 0, not decoded
-};
-
-std::size_t generic_contexts(unsigned tmpl) {
-  switch (tmpl) {
-    case 0:
-      return std::size_t{1} << 16U;
-    case 1:
-      return std::size_t{1} << 13U;
-    default:
-      return std::size_t{1} << 10U;
-  }
-}
-
-// The context of pixel (x, y) (the bit order of 6.2.5.3, which TPGDON's pseudo-pixel context relies on).
-std::uint32_t generic_context(const Bitmap& b, std::int64_t x, std::int64_t y, const GenericParams& p) {
-  const auto g = [&](std::int64_t dx, std::int64_t dy) { return static_cast<std::uint32_t>(b.get(x + dx, y + dy)); };
-  const auto& a = p.at;
-  switch (p.tmpl) {
-    case 0:
-      return g(-1, 0) | (g(-2, 0) << 1U) | (g(-3, 0) << 2U) | (g(-4, 0) << 3U) | (g(a[0], a[1]) << 4U) | (g(2, -1) << 5U) | (g(1, -1) << 6U) |
-             (g(0, -1) << 7U) | (g(-1, -1) << 8U) | (g(-2, -1) << 9U) | (g(a[2], a[3]) << 10U) | (g(a[4], a[5]) << 11U) | (g(1, -2) << 12U) |
-             (g(0, -2) << 13U) | (g(-1, -2) << 14U) | (g(a[6], a[7]) << 15U);
-    case 1:
-      return g(-1, 0) | (g(-2, 0) << 1U) | (g(-3, 0) << 2U) | (g(a[0], a[1]) << 3U) | (g(2, -1) << 4U) | (g(1, -1) << 5U) | (g(0, -1) << 6U) |
-             (g(-1, -1) << 7U) | (g(-2, -1) << 8U) | (g(2, -2) << 9U) | (g(1, -2) << 10U) | (g(0, -2) << 11U) | (g(-1, -2) << 12U);
-    case 2:
-      return g(-1, 0) | (g(-2, 0) << 1U) | (g(a[0], a[1]) << 2U) | (g(1, -1) << 3U) | (g(0, -1) << 4U) | (g(-1, -1) << 5U) | (g(-2, -1) << 6U) |
-             (g(1, -2) << 7U) | (g(0, -2) << 8U) | (g(-1, -2) << 9U);
-    default:
-      return g(-1, 0) | (g(-2, 0) << 1U) | (g(-3, 0) << 2U) | (g(-4, 0) << 3U) | (g(a[0], a[1]) << 4U) | (g(1, -1) << 5U) | (g(0, -1) << 6U) |
-             (g(-1, -1) << 7U) | (g(-2, -1) << 8U) | (g(-3, -1) << 9U);
-  }
-}
-
-void decode_generic(ArithmeticDecoder& decoder, Contexts& contexts, Bitmap& b, const GenericParams& p) {
-  // The pseudo-pixel of TPGDON: "this row is the same as the one above" (6.2.5.7).
-  constexpr std::array<std::uint32_t, 4> kSltp = {0x9B25, 0x0795, 0x00E5, 0x0195};
-  bool ltp = false;
-  for (std::int64_t y = 0; y < b.height && !decoder.exhausted(); ++y) {
-    if (p.tpgdon) {
-      ltp = ltp != (decoder.decode(contexts, kSltp.at(p.tmpl)) != 0);
-      if (ltp) {
-        for (std::int64_t x = 0; x < b.width; ++x) {
-          b.set(x, y, b.get(x, y - 1));
-        }
-        continue;
-      }
-    }
-    for (std::int64_t x = 0; x < b.width; ++x) {
-      if (p.skip != nullptr && p.skip->get(x, y) != 0) {
-        continue;
-      }
-      b.set(x, y, static_cast<std::uint8_t>(decoder.decode(contexts, generic_context(b, x, y, p))));
-    }
-  }
-}
+// ── Generic region decoding (6.2): jbig2_generic.cpp; MMR here ─────────────────────────────
 
 // MMR (T.6) coded bitmap: consumed receives the bytes used.
 Result<void> decode_mmr(std::span<const std::byte> data, Bitmap& b, std::size_t* consumed) {

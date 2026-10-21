@@ -2,13 +2,18 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <random>
 #include <string>
 #include <vector>
 
 #include "capriole/filters/decode.hpp"
+#include "filters/jbig2_arith.hpp"
+#include "filters/jbig2_generic.hpp"
 #include "filters/jbig2_huffman.hpp"
 
 namespace capriole::filters {
@@ -122,6 +127,105 @@ TEST(Jbig2, LimitsAndGarbage) {
   std::vector<std::byte> cut = fixture("generic_t2.jb2");
   cut.resize(cut.size() - 20);
   EXPECT_TRUE(jbig2_decode(cut, {}, kMax).has_value());
+}
+
+// Generic region decoding as 6.2.5 reads: each pixel's context gathered from the bitmap one pixel at a
+// time. The decoder keeps the context in sliding windows instead; it must decode the same bits.
+std::uint32_t reference_context(const jbig2::Bitmap& b, std::int64_t x, std::int64_t y, const jbig2::GenericParams& p) {
+  const auto g = [&](std::int64_t dx, std::int64_t dy) { return static_cast<std::uint32_t>(b.get(x + dx, y + dy)); };
+  const auto& a = p.at;
+  switch (p.tmpl) {
+    case 0:
+      return g(-1, 0) | (g(-2, 0) << 1U) | (g(-3, 0) << 2U) | (g(-4, 0) << 3U) | (g(a[0], a[1]) << 4U) | (g(2, -1) << 5U) | (g(1, -1) << 6U) |
+             (g(0, -1) << 7U) | (g(-1, -1) << 8U) | (g(-2, -1) << 9U) | (g(a[2], a[3]) << 10U) | (g(a[4], a[5]) << 11U) | (g(1, -2) << 12U) |
+             (g(0, -2) << 13U) | (g(-1, -2) << 14U) | (g(a[6], a[7]) << 15U);
+    case 1:
+      return g(-1, 0) | (g(-2, 0) << 1U) | (g(-3, 0) << 2U) | (g(a[0], a[1]) << 3U) | (g(2, -1) << 4U) | (g(1, -1) << 5U) | (g(0, -1) << 6U) |
+             (g(-1, -1) << 7U) | (g(-2, -1) << 8U) | (g(2, -2) << 9U) | (g(1, -2) << 10U) | (g(0, -2) << 11U) | (g(-1, -2) << 12U);
+    case 2:
+      return g(-1, 0) | (g(-2, 0) << 1U) | (g(a[0], a[1]) << 2U) | (g(1, -1) << 3U) | (g(0, -1) << 4U) | (g(-1, -1) << 5U) | (g(-2, -1) << 6U) |
+             (g(1, -2) << 7U) | (g(0, -2) << 8U) | (g(-1, -2) << 9U);
+    default:
+      return g(-1, 0) | (g(-2, 0) << 1U) | (g(-3, 0) << 2U) | (g(-4, 0) << 3U) | (g(a[0], a[1]) << 4U) | (g(1, -1) << 5U) | (g(0, -1) << 6U) |
+             (g(-1, -1) << 7U) | (g(-2, -1) << 8U) | (g(-3, -1) << 9U);
+  }
+}
+
+void reference_decode(jbig2::ArithmeticDecoder& decoder, jbig2::Contexts& contexts, jbig2::Bitmap& b, const jbig2::GenericParams& p) {
+  constexpr std::array<std::uint32_t, 4> kSltp = {0x9B25, 0x0795, 0x00E5, 0x0195};
+  bool ltp = false;
+  for (std::int64_t y = 0; y < b.height && !decoder.exhausted(); ++y) {
+    if (p.tpgdon) {
+      ltp = ltp != (decoder.decode(contexts, kSltp.at(p.tmpl)) != 0);
+      if (ltp) {
+        for (std::int64_t x = 0; x < b.width; ++x) {
+          b.set(x, y, b.get(x, y - 1));
+        }
+        continue;
+      }
+    }
+    for (std::int64_t x = 0; x < b.width; ++x) {
+      if (p.skip != nullptr && p.skip->get(x, y) != 0) {
+        continue;
+      }
+      b.set(x, y, static_cast<std::uint8_t>(decoder.decode(contexts, reference_context(b, x, y, p))));
+    }
+  }
+}
+
+jbig2::Bitmap blank(std::int32_t width, std::int32_t height) {
+  return jbig2::Bitmap{
+      .width = width, .height = height, .px = std::vector<std::uint8_t>(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0)};
+}
+
+TEST(Jbig2, GenericRegionDecodesAsTheStandardReads) {
+  std::mt19937 random(20261021);  // fixed: the same cases on every run
+  const auto between = [&](int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(random); };
+  // The nominal adaptive pixels (6.2.5.4, figures 3 to 6), then anywhere: inside the windows and outside.
+  const std::array<std::array<std::int32_t, 8>, 4> nominal = {{{3, -1, -3, -1, 2, -2, -2, -2}, {3, -1}, {2, -1}, {2, -1}}};
+  int cases = 0;
+  for (const std::int32_t width : {1, 3, 7, 8, 9, 23, 24, 31, 32, 33, 40, 63, 64, 65, 131}) {
+    for (unsigned tmpl = 0; tmpl < 4; ++tmpl) {
+      for (int variant = 0; variant < 6; ++variant) {
+        jbig2::GenericParams p;
+        p.tmpl = tmpl;
+        p.tpgdon = variant % 2 == 1;
+        p.at = nominal.at(tmpl);
+        if (variant >= 2) {
+          for (std::size_t i = 0; i < p.at.size(); i += 2) {
+            p.at.at(i) = variant >= 4 ? between(-128, 127) : between(-34, 10);
+            p.at.at(i + 1) = variant >= 4 ? between(-128, 0) : between(-3, 0);
+          }
+        }
+        const std::int32_t height = between(1, 40);
+        jbig2::Bitmap skip = blank(width, height);
+        if (variant == 3) {
+          for (auto& v : skip.px) {
+            v = static_cast<std::uint8_t>(between(0, 3) == 0 ? 1 : 0);
+          }
+          p.skip = &skip;
+        }
+        // Random data, biased towards white as a scan is: either way the decoder must read the same bits.
+        std::vector<std::byte> data(static_cast<std::size_t>(between(16, 2000)));
+        const int bias = between(0, 2);
+        for (auto& v : data) {
+          v = static_cast<std::byte>(bias == 0 ? between(0, 255) : between(0, 255) & between(0, 255) & (bias == 2 ? between(0, 255) : 0xFF));
+        }
+        jbig2::Bitmap fast = blank(width, height);
+        jbig2::Bitmap slow = blank(width, height);
+        jbig2::ArithmeticDecoder fast_decoder(data);
+        jbig2::ArithmeticDecoder slow_decoder(data);
+        jbig2::Contexts fast_contexts(jbig2::generic_contexts(tmpl));
+        jbig2::Contexts slow_contexts(jbig2::generic_contexts(tmpl));
+        jbig2::decode_generic(fast_decoder, fast_contexts, fast, p);
+        reference_decode(slow_decoder, slow_contexts, slow, p);
+        ASSERT_EQ(fast.px, slow.px) << "width " << width << ", template " << tmpl << ", variant " << variant;
+        ASSERT_EQ(fast_decoder.position(), slow_decoder.position());
+        ++cases;
+      }
+    }
+  }
+  EXPECT_EQ(cases, 15 * 4 * 6);
 }
 
 TEST(Jbig2, StandardHuffmanTablesHaveTheirCodes) {
