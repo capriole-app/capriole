@@ -55,6 +55,7 @@ Legenda: ✅ fatto · 🔜 prossimo · 🟡 parziale · 🔁 continuo · ⏸ in 
 | 12b-4 «Scarica l'app per il computer» | ✅ | online su capriole.app dal 18/10, link verificati sui file di `v0.1.0` |
 | 12b-5 Flathub | ⏸️ rinviato | il manifest si costruisce e passa il linter di Flathub (`manifest` e `repo`), ma la submission viola le regole di Flathub (20/10): niente manifest né PR scritti con l'AI, build dai sorgenti, storia di sviluppo lunga — `packaging/flathub/README.md`. Linux resta coperto da `.deb` e AppImage |
 | 12c Self-hosted | ✅ | `docs/SELF-HOSTED.md`, compose provato in locale; `ghcr.io/capriole-app/capriole-web:0.1.0` pubblica |
+| Capriole 0.2.0: la nuova interfaccia nelle app desktop e nell'immagine self-hosted | 🟡 | versione 0.2.0 nel repo (gate verde); da pubblicare con il tag `v0.2.0` su `main`, poi l'installer da provare su Windows |
 | Pacchetto di risorse su capriole.app | ✅ | servito dal 18/10 (font, CMap, profilo CMYK); prima dava 404 |
 | Pubblicazione: preparazione (licenze nei binari e nelle app, file pubblici, kit OSS-Fuzz, verifica) | ✅ | `docs/PUBBLICAZIONE.md` |
 | Pubblicazione: repo pubblico | ✅ | dal 2026-10-14 su `github.com/capriole-app/capriole` (0BSD): storia riscritta senza indirizzi personali (autore noreply; `prepublish_check.sh` «Ready to publish»), contatti `security@`/`hello@capriole.app`, link al codice in «Informazioni e licenze»; vecchio repo cancellato; Jenkins sul nuovo repo |
