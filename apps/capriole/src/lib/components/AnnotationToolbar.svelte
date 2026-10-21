@@ -1,6 +1,6 @@
 <script lang="ts">
-  // The page shown large: back to the pages, the page before and after, the tools that make
-  // annotations or edit the page's text, the colour of the next one, undo and save.
+  // The page shown large: back to the pages, the page before and after, its zoom and rotation, the tools
+  // that make annotations or edit the page's text, the colour of the next one, undo and save.
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Circle from '@lucide/svelte/icons/circle';
@@ -12,6 +12,8 @@
   import Minus from '@lucide/svelte/icons/minus';
   import MousePointer2 from '@lucide/svelte/icons/mouse-pointer-2';
   import PenLine from '@lucide/svelte/icons/pen-line';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+  import RotateCw from '@lucide/svelte/icons/rotate-cw';
   import Signature from '@lucide/svelte/icons/signature';
   import Square from '@lucide/svelte/icons/square';
   import Stamp from '@lucide/svelte/icons/stamp';
@@ -32,11 +34,13 @@
   import { colors, css, sameColor } from '$lib/colors';
   import { tr } from '$lib/i18n/index.svelte';
   import { annotationToolbarWords } from '$lib/i18n/annotationToolbar';
+  import { toolbarWords } from '$lib/i18n/toolbar';
   import { barButton as button, pressed, primaryButton, separator } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(annotationToolbarWords));
   const g = $derived(tr(graphicSignatureWords));
+  const tp = $derived(tr(toolbarWords));
   const page = $derived(editor.viewing ?? 0);
 
   // Filling the form comes first when the document has one.
@@ -95,6 +99,24 @@
     fitted={editor.pageZoom === 'fit'}
     onfit={() => (editor.pageZoom = 'fit')}
   />
+  <div class="flex items-center gap-1">
+    <button
+      type="button"
+      class={button}
+      aria-label={tp.rotateLeft}
+      title={tp.rotateLeft}
+      disabled={editor.busy}
+      onclick={() => editor.rotateShown(-90)}><RotateCcw class="size-4" /></button
+    >
+    <button
+      type="button"
+      class={button}
+      aria-label={tp.rotateRight}
+      title={tp.rotateRight}
+      disabled={editor.busy}
+      onclick={() => editor.rotateShown(90)}><RotateCw class="size-4" /></button
+    >
+  </div>
 
   <span class={separator} aria-hidden="true"></span>
   <div class="flex flex-wrap items-center gap-1" role="toolbar" aria-label={t.tools}>
