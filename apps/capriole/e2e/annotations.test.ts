@@ -116,3 +116,46 @@ test('annotates a page: highlight, note, rectangle; moves, deletes, undoes, save
   await page.getByRole('button', { name: 'Pagine' }).click();
   await expect(page.getByTestId('page')).toHaveCount(2);
 });
+
+test('marks where there is no text (a scan) with a rectangle; rotates the page shown', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText(/motore Capriole \d+\.\d+\.\d+/)).toBeVisible();
+  await page.getByTestId('open-file').setInputFiles({ name: 'scan.pdf', mimeType: 'application/pdf', buffer: pdf() });
+  await page.getByTestId('page').first().dblclick();
+  await expect(page.getByText('Pagina 1 di 2')).toBeVisible();
+  const list = page.getByTestId('annotation-list');
+
+  // Under "Uno" there is no text: the area dragged over is marked, as on a scanned page.
+  await page.getByRole('button', { name: 'Evidenzia' }).click();
+  await dragOnPage(page, [50, 260], [200, 290]);
+  await expect(list).toContainText('Evidenziazione');
+  await page.getByRole('button', { name: 'Sottolinea' }).click();
+  await dragOnPage(page, [50, 320], [200, 340]);
+  await expect(list).toContainText('Sottolineatura');
+
+  // The page turned from the page view's bar (shown wider than high), and back with undo.
+  const surface = page.getByTestId('page-surface');
+  const upright = (await surface.boundingBox())!;
+  expect(upright.height).toBeGreaterThan(upright.width);
+  await page.getByRole('button', { name: 'Ruota a destra' }).click();
+  await expect
+    .poll(async () => (await surface.boundingBox())!.width > (await surface.boundingBox())!.height)
+    .toBe(true);
+  await expect(list).toContainText('Evidenziazione');
+  await page.getByRole('button', { name: 'Annulla' }).click();
+  await expect
+    .poll(async () => (await surface.boundingBox())!.height > (await surface.boundingBox())!.width)
+    .toBe(true);
+  await page.getByRole('button', { name: 'Ruota a sinistra' }).click();
+  await expect
+    .poll(async () => (await surface.boundingBox())!.width > (await surface.boundingBox())!.height)
+    .toBe(true);
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Salva' }).click();
+  const saved = readFileSync(await (await download).path()).toString('latin1');
+  expect(saved).toMatch(/\/Subtype \/Highlight/);
+  expect(saved).toMatch(/\/QuadPoints/);
+  expect(saved).toMatch(/\/Subtype \/Underline/);
+  expect(saved).toMatch(/\/Rotate 270/);
+});

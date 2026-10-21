@@ -13,7 +13,7 @@
   import type { AnnotationInfo, FieldInfo, PageRaster, PageText } from '@capriole/engine-client';
   import { tick } from 'svelte';
   import { colors, css, sameColor } from '$lib/colors';
-  import { getEditor, type Rgb } from '$lib/editor.svelte';
+  import { getEditor, type Rgb, type Tool } from '$lib/editor.svelte';
   import { lineAt, paragraphAt } from '$lib/textedit';
   import { objectAt, objectName } from '$lib/objects';
   import { graphicSignatures } from '$lib/graphic-signatures.svelte';
@@ -211,11 +211,8 @@
         editor.selectedObject = objectAt(editor.elements, p[0], p[1]);
         if (editor.selectedObject !== null) drag = { kind: 'object', start: p, current: p };
       }
-    } else if (tool === 'highlight' || tool === 'underline' || tool === 'strikeout' || tool === 'squiggly') {
-      const word = wordAt(page, p);
-      if (word !== null) drag = { kind: 'markup', from: word, to: word };
-    } else if (tool === 'redact') {
-      // On text: the words dragged over; elsewhere: a rectangle.
+    } else if (markupTools.includes(tool) || tool === 'redact') {
+      // On text: the words dragged over; elsewhere (a scan, a picture): a rectangle.
       const word = wordAt(page, p);
       drag = word !== null ? { kind: 'markup', from: word, to: word } : { kind: 'shape', start: p, current: p };
     } else if (tool === 'ink') {
@@ -391,6 +388,10 @@
       } else if (tool === 'redact') {
         if (x1 - x0 > 3 && y1 - y0 > 3)
           editor.annotate({ kind: 'redact', rect: [x0, y0, x1, y1], color: kMark, fill: [0, 0, 0] });
+      } else if (markupTools.includes(tool)) {
+        // Where there is no text (a scan): the rectangle is the area marked, one quad.
+        if (x1 - x0 > 3 && y1 - y0 > 3)
+          editor.annotate({ kind: tool as 'highlight', quads: [[x0, y0, x1, y1]], color });
       } else if (tool === 'freetext') {
         const line = lineBox(editor.fontSize);
         if (x1 - x0 > 6) {
@@ -407,6 +408,9 @@
       }
     }
   }
+
+  /** The tools that mark text: on the words, or on a rectangle where there are none. */
+  const markupTools: readonly Tool[] = ['highlight', 'underline', 'strikeout', 'squiggly'];
 
   /** The colour of redaction marks: their outline until applied. */
   const kMark: [number, number, number] = [0.85, 0, 0];
@@ -682,6 +686,15 @@
                 y2={drag.current[1]}
                 stroke={css(previewColor)}
                 stroke-width="2"
+              />
+            {:else if markupTools.includes(editor.tool)}
+              <rect
+                x={r[0]}
+                y={r[1]}
+                width={r[2] - r[0]}
+                height={r[3] - r[1]}
+                fill={css(previewColor)}
+                opacity="0.35"
               />
             {:else if editor.tool === 'circle'}
               <ellipse
