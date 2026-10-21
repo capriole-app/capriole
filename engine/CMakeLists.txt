@@ -59,6 +59,7 @@ add_library(capriole_engine STATIC
   src/filters/flate.cpp
   src/filters/jbig2.cpp
   src/filters/jbig2_arith.cpp
+  src/filters/jbig2_generic.cpp
   src/filters/jbig2_huffman.cpp
   src/filters/jpx.cpp
   src/font/cmap.cpp

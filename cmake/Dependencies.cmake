@@ -6,9 +6,9 @@
 
 include(FetchContent)
 
-# Where each archive comes from: its URL — or, with CAPRIOLE_DEPS_DIR set (builds without network, as
-# OSS-Fuzz's: ci/oss-fuzz/fetch_deps.py fills it), the file of the same name there. The SHA-256 is
-# checked either way.
+# Where each archive comes from: its URL, then any mirrors after it (CMake tries them in order) — or,
+# with CAPRIOLE_DEPS_DIR set (builds without network, as OSS-Fuzz's: ci/oss-fuzz/fetch_deps.py fills
+# it), the file of the same name there. The SHA-256 is checked either way.
 function(capriole_dependency_url out url)
   if(CAPRIOLE_DEPS_DIR)
     get_filename_component(_name ${url} NAME)
@@ -17,7 +17,7 @@ function(capriole_dependency_url out url)
     endif()
     set(${out} ${CAPRIOLE_DEPS_DIR}/${_name} PARENT_SCOPE)
   else()
-    set(${out} ${url} PARENT_SCOPE)
+    set(${out} ${url} ${ARGN} PARENT_SCOPE)
   endif()
 endfunction()
 
@@ -190,7 +190,10 @@ add_library(capriole::openjpeg ALIAS capriole_openjpeg)
 # Glyph outlines of the fonts in PDFs: TrueType/OpenType, Type 1, CFF, CID-keyed. Built from its sources
 # like zlib (the tarball's GPG signature checked at the upgrade, the hash pinned here): only the font
 # drivers PDF needs, no rasterizers or hinters, our options and module list in cmake/freetype/.
-capriole_dependency_url(_url https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz)
+# The same tarball from FreeType's SourceForge release area first: savannah answered 504 to two release builds
+# in a row (21/10), and the tag could not be built.
+capriole_dependency_url(_url https://downloads.sourceforge.net/project/freetype/freetype2/2.14.3/freetype-2.14.3.tar.xz
+                        https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz)
 FetchContent_Declare(freetype
   URL ${_url}
   URL_HASH SHA256=36bc4f1cc413335368ee656c42afca65c5a3987e8768cc28cf11ba775e785a5f
