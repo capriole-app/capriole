@@ -446,6 +446,25 @@ export class Editor {
     return this.#edit(() => this.engine.pagesRotate(pages, degrees), pages, rotated);
   }
 
+  /** Rotates the page shown (the page view's buttons): its annotations and fields are listed again where they now are. */
+  rotateShown(degrees: number): Promise<void> {
+    const page = this.viewing;
+    if (page === null) return Promise.resolve();
+    return this.#serial(() =>
+      this.#run(async () => {
+        const before = await this.#snapshot();
+        const summary = await this.engine.pagesRotate([page], degrees);
+        this.#remember(before);
+        this.#show(summary, [page], new Set([this.#refs[page]]));
+        this.modified = true;
+        this.selectedAnnotation = null;
+        this.selectedObject = null;
+        await this.#loadAnnotations();
+        await this.#loadFields();
+      }),
+    );
+  }
+
   /** Deletes the selected pages (not all of them: a document keeps at least one page). */
   remove(): Promise<void> {
     const gone = this.selected;
