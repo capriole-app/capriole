@@ -19,8 +19,11 @@ oom-*
 slow-unit-*
 /fuzz/corpus-work/
 
-# Test corpora live outside the repo (see docs/PLAN.md, CAPRIOLE_CORPUS_DIR)
+# Test corpora live outside the repo (see docs/PLAN.md, CAPRIOLE_CORPUS_DIR); the nightly job's zips and
+# reports (corpus-tools/nightly.py) in its workspace
 /corpora/
+/corpus-work/
+/corpus-reports/
 
 # OS
 .DS_Store
