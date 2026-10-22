@@ -37,6 +37,16 @@
       }
     },
     {
+      "name": "corpus",
+      "displayName": "Optimised + ASan/UBSan, for the corpus runs (corpus-tools/run_corpus.py)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CAPRIOLE_BUILD_TESTS": "OFF",
+        "CAPRIOLE_SANITIZERS": "address;undefined"
+      }
+    },
+    {
       "name": "fuzz",
       "displayName": "libFuzzer targets (Clang + ASan/UBSan)",
       "inherits": "base",
@@ -64,6 +74,7 @@
     { "name": "debug", "configurePreset": "debug" },
     { "name": "release", "configurePreset": "release" },
     { "name": "asan", "configurePreset": "asan" },
+    { "name": "corpus", "configurePreset": "corpus", "targets": ["cpdf"] },
     { "name": "fuzz", "configurePreset": "fuzz" },
     { "name": "wasm", "configurePreset": "wasm" }
   ],

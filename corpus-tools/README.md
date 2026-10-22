@@ -4,10 +4,14 @@ Differential testing on real and hostile PDFs (DOCS/CAPRIOLE.md §7.2–7.3, PLA
 
 ```sh
 corpus-tools/fetch_corpus.sh                                  # ~2.1 GB into ../CORPORA (outside the repo)
-cmake --preset asan && cmake --build --preset asan            # Capriole under ASan/UBSan
+cmake --preset corpus && cmake --build --preset corpus        # cpdf optimised, under ASan/UBSan
 corpus-tools/run_corpus.py ../CORPORA/safedocs/0000 --name safedocs-0000 --report-dir ../CORPORA/reports
 corpus-tools/run_corpus.py ../CORPORA/unsafe/x008   --name unsafe-x008   --report-dir ../CORPORA/reports
 ```
+
+The `corpus` preset is RelWithDebInfo with the sanitizers, and only builds `cpdf`: 9–14 times faster than
+the gate's `asan` (Debug, -O0) on the same files, with the same checks. `fetch_corpus.sh --safedocs NNNN`
+(0000–7932) and `--unsafe xNNN[-NN]` fetch any other zip of the two sets, `--into DIR` elsewhere.
 
 `run_corpus.py` runs `cpdf check` and three reference engines — qpdf, MuPDF (`mutool info`),
 Poppler (`pdfinfo`) — as **external programs** (never linked: licences, §7.3). The expected page count
@@ -20,8 +24,30 @@ the second run of the same `--name` on, lists regressions against the previous r
   unchanged; qpdf is no worse than on the original; strict re-read (compared with the original's own);
   same page count. Refusals (repaired or encrypted files) are counted by reason.
 
-Run it at low intensity on a workstation (`nice -n 19`, `--jobs 2`), and don't rebuild `build/asan`
+A file whose only errors are in image data — the filters only images use: DCTDecode, JPXDecode,
+JBIG2Decode, CCITTFaxDecode — is an `image_error`, counted apart from the failures: the document reads,
+those images are lost, and the data is often broken in the file itself (MuPDF and Poppler fail on it
+too). A timeout in a round trip is counted as a timeout, not as pages lost; against the previous run, a
+file that matched and now times out is listed apart, not as a regression.
+
+Exit status: 1 a crash (reading or saving), 2 usage, 3 with `--fail-on-regressions` a regression.
+
+Run it at low intensity on a workstation (`nice -n 19`, `--jobs 2`), and don't rebuild `build/corpus`
 while it runs.
+
+## The nightly run (Jenkins job `capriole-corpus`)
+
+```sh
+corpus-tools/nightly.py --dry-run                 # what tonight runs
+corpus-tools/nightly.py --date 2026-10-26 --limit 40 --work /tmp/w --report-dir /tmp/r --artifacts /tmp/a
+```
+
+Every night one SafeDocs zip (0001–7932) and one UNSAFE zip (the bucket's listing, x002 and x008 left
+out), chosen from the date — consecutive nights take consecutive zips, nothing is remembered —,
+downloaded into `--work`, run with `--roundtrip --fail-on-regressions` and deleted. On Mondays (or
+`--fixed`) the three fixed corpora too, from `$CAPRIOLE_CORPUS_DIR`, compared with their previous run.
+Each report's `summary.md` and `results.jsonl.gz` go to `--artifacts`, with an index of the headlines.
+The job: `ci/corpus.Jenkinsfile` (image `ci/corpus.Dockerfile`), set up as in docs/DEPLOY.md.
 
 Isolation: separate process per tool, empty working directory, timeout, 4 GB memory cap (prlimit;
 ASan's own RSS limit for Capriole). No network namespace (not available unprivileged here) — the tools

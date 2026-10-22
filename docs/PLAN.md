@@ -287,6 +287,14 @@ x002), che spostano tutti gli offset. Con quella sola riparazione SafeDocs passe
 
 **Uscita:** un comando produce il report di un campione di 10.000 file in < 1 ora.
 
+**Giro notturno (2026-10-22):** il job Jenkins `capriole-corpus` (`ci/corpus.Jenkinsfile`,
+`corpus-tools/nightly.py`) passa ogni notte uno zip di SafeDocs e uno di UNSAFE scelti dalla data, e il
+lunedì i tre corpora fissi, confrontati con il giro precedente: crash = build rossa, regressione = gialla.
+`cpdf` viene dal preset `corpus` (RelWithDebInfo + ASan/UBSan), 9–14 volte più veloce del preset `asan`
+del gate con gli stessi controlli. L'harness conta a parte i file i cui soli errori sono nei dati di
+un'immagine (DCTDecode, JPXDecode, JBIG2Decode, CCITTFaxDecode: il documento si legge, quelle immagini
+no), e i timeout del round trip non contano più come pagine perse né come regressioni.
+
 ## Fase 5 — Strato di riparazione (continuo, guidato dal report)
 
 **Architettura (2026-09-26):** `Document::open` tenta la lettura rigorosa; solo se fallisce, e solo per
