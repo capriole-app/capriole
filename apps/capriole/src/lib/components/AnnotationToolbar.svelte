@@ -128,6 +128,7 @@
         aria-label={t[tool]}
         title={t[tool]}
         aria-pressed={editor.tool === tool}
+        data-tool={tool}
         onclick={() => (editor.tool = tool)}><Icon class="size-4" /></button
       >
     {/each}

@@ -16,7 +16,8 @@
     "check": "npm run engine && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "format": "prettier --write .",
     "lint": "prettier --check .",
-    "test": "playwright test"
+    "test": "playwright test",
+    "shots": "npm run build && playwright test -c playwright.shots.config.ts"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.3.0",
