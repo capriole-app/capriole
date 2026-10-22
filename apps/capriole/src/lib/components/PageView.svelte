@@ -828,6 +828,7 @@
               type="button"
               role="radio"
               aria-checked={editor.editMode === mode}
+              data-mode={mode}
               class={[
                 'flex-1 rounded px-2 py-1',
                 editor.editMode === mode
