@@ -1,6 +1,5 @@
 // The page editor's state: the open file, its pages, the selection, and the edits — each a call to the
 // engine (packages/engine-client), which changes the document in its worker; nothing leaves the browser.
-import { createContext } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 import {
   EngineClient,
@@ -1373,4 +1372,4 @@ function describe(error: unknown): string {
   return cardProblem(error);
 }
 
-export const [getEditor, setEditor] = createContext<Editor>();
+export { getEditor, setEditor } from './editor-context';

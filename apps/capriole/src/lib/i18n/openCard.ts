@@ -12,6 +12,7 @@ export const openCardWords = translations(
     staysBrowser: 'Il file resta nel browser: nessun byte va su un server.',
     engine: (version: string) => `motore Capriole ${version} (WebAssembly)`,
     about: 'Informazioni e licenze',
+    failed: 'L’app non si è caricata: ricarica la pagina.',
   },
   {
     en: {
@@ -24,6 +25,7 @@ export const openCardWords = translations(
       staysBrowser: 'The file stays in the browser: not a byte goes to a server.',
       engine: (version: string) => `Capriole engine ${version} (WebAssembly)`,
       about: 'About and licences',
+      failed: 'The app did not load: reload the page.',
     },
     fr: {
       region: 'Ouvrir un PDF',
@@ -35,6 +37,7 @@ export const openCardWords = translations(
       staysBrowser: 'Le fichier reste dans le navigateur : aucun octet n’est envoyé à un serveur.',
       engine: (version: string) => `moteur Capriole ${version} (WebAssembly)`,
       about: 'À propos et licences',
+      failed: 'L’application ne s’est pas chargée : rechargez la page.',
     },
     de: {
       region: 'PDF öffnen',
@@ -46,6 +49,7 @@ export const openCardWords = translations(
       staysBrowser: 'Die Datei bleibt im Browser: Kein Byte geht an einen Server.',
       engine: (version: string) => `Capriole-Engine ${version} (WebAssembly)`,
       about: 'Info und Lizenzen',
+      failed: 'Die App wurde nicht geladen: Laden Sie die Seite neu.',
     },
     es: {
       region: 'Abrir un PDF',
@@ -57,6 +61,7 @@ export const openCardWords = translations(
       staysBrowser: 'El archivo se queda en el navegador: ni un byte va a un servidor.',
       engine: (version: string) => `motor Capriole ${version} (WebAssembly)`,
       about: 'Información y licencias',
+      failed: 'La aplicación no se ha cargado: recarga la página.',
     },
   },
 );

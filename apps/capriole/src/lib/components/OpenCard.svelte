@@ -1,13 +1,19 @@
 <script lang="ts">
   // The first screen: a card to drop or choose a PDF. Nothing leaves the browser. A file opens only once
   // the terms of use are accepted (lib/terms.svelte.ts): a box to tick, the first time and when they change.
+  // Rendered at build time too, before there is an editor (lib/editor-context.ts): the same card, which
+  // opens files once the app has loaded, a moment later.
+  // The logo: drawn in the page until then, the file once the app runs — a request for /logo-light.svg is
+  // what counts a start of the app (deploy/web/Caddyfile), and robots reading the page must not ask for it.
   import FolderOpen from '@lucide/svelte/icons/folder-open';
   import CodedInIreland from './CodedInIreland.svelte';
   import LanguageMenu from './LanguageMenu.svelte';
   import ReportButton from './ReportButton.svelte';
   import SettingsButton from './SettingsButton.svelte';
   import ThemeMenu from './ThemeMenu.svelte';
-  import { getEditor } from '$lib/editor.svelte';
+  import { getApp } from '$lib/editor-context';
+  import logoLight from '../../../static/logo-light.svg?raw';
+  import logoDark from '../../../static/logo-dark.svg?raw';
   import { choosesWhere, isDesktop } from '$lib/platform';
   import { tr } from '$lib/i18n/index.svelte';
   import { openCardWords } from '$lib/i18n/openCard';
@@ -17,7 +23,8 @@
   import { terms } from '$lib/terms.svelte';
   import {} from '$lib/ui';
 
-  const editor = getEditor();
+  const app = getApp();
+  const editor = $derived(app.editor);
   const t = $derived(tr(openCardWords));
   const tt = $derived(tr(termsWords));
   const tw = $derived(tr(reportWords));
@@ -35,7 +42,7 @@
       refused = true;
       return;
     }
-    editor.openFile(file);
+    editor?.openFile(file);
   }
 </script>
 
@@ -57,20 +64,37 @@
   >
     <div class="absolute end-3 top-3 flex gap-1"><ReportButton /><SettingsButton /><LanguageMenu /><ThemeMenu /></div>
     <header class="mt-10 mb-8 flex flex-col items-center gap-3 text-center">
-      <img src="/logo-light.svg" alt="Capriole" class="h-14 dark:hidden" />
-      <img src="/logo-dark.svg" alt="Capriole" class="hidden h-14 dark:block" />
+      {#if editor}
+        <img src="/logo-light.svg" alt="Capriole" class="h-14 dark:hidden" />
+        <img src="/logo-dark.svg" alt="Capriole" class="hidden h-14 dark:block" />
+      {:else}
+        <!-- The repository's own logo files, as they are. -->
+        <span role="img" aria-label="Capriole" class="h-14 dark:hidden [&>svg]:h-full [&>svg]:w-auto"
+          >{@html logoLight}</span
+        >
+        <span role="img" aria-label="Capriole" class="hidden h-14 dark:block [&>svg]:h-full [&>svg]:w-auto"
+          >{@html logoDark}</span
+        >
+      {/if}
       <p class="text-sm text-muted-foreground">{t.tagline}</p>
     </header>
 
-    {#if editor.error}
+    {#if app.failed}
+      <p class="mb-4 rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">{t.failed}</p>
+    {/if}
+    {#if editor?.error}
       <p
         class="mb-4 flex items-center gap-3 rounded-md bg-danger-background px-3 py-2 text-sm text-danger"
         role="alert"
       >
         <span class="flex-1">{editor.error}</span>
         {#if !isDesktop}
-          <button type="button" class="shrink-0 underline underline-offset-2" onclick={() => (editor.reportOpen = true)}
-            >{tw.reportThis}</button
+          <button
+            type="button"
+            class="shrink-0 underline underline-offset-2"
+            onclick={() => {
+              if (editor) editor.reportOpen = true;
+            }}>{tw.reportThis}</button
           >
         {/if}
       </p>
@@ -96,7 +120,7 @@
             class="underline underline-offset-2 hover:text-emphasis"
             onclick={(e) => {
               e.preventDefault();
-              editor.termsOpen = true;
+              if (editor) editor.termsOpen = true;
             }}>{tt.acceptLink}</button
           >{tt.acceptAfter ? ` ${tt.acceptAfter}` : ''}.
         </span>
@@ -111,11 +135,13 @@
     <button
       type="button"
       class="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-base font-medium text-primary-foreground disabled:opacity-60"
-      disabled={editor.busy || !terms.accepted}
-      onclick={() => (choosesWhere ? editor.openFromDialog() : input?.click())}
+      disabled={editor?.busy || !terms.accepted}
+      onclick={() => {
+        if (editor) void (choosesWhere ? editor.openFromDialog() : input?.click());
+      }}
     >
       <FolderOpen class="size-5" />
-      {editor.busy ? t.opening : t.choose}
+      {editor?.busy ? t.opening : t.choose}
     </button>
     <input
       bind:this={input}
@@ -129,7 +155,7 @@
       {t.orDrop}
       {isDesktop ? t.staysDesktop : t.staysBrowser}
     </p>
-    {#if editor.engineVersion}
+    {#if editor?.engineVersion}
       <p class="mt-6 text-center text-xs text-muted-foreground">
         {t.engine(editor.engineVersion)}
       </p>
@@ -138,22 +164,28 @@
       <button
         type="button"
         class="text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        onclick={() => (editor.licensesOpen = true)}>{t.about}</button
+        onclick={() => {
+          if (editor) editor.licensesOpen = true;
+        }}>{t.about}</button
       >
       ·
       <button
         type="button"
         class="text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        onclick={() => (editor.termsOpen = true)}>{tt.title}</button
+        onclick={() => {
+          if (editor) editor.termsOpen = true;
+        }}>{tt.title}</button
       >
     </p>
     {#if !isDesktop}
-      <p class="mt-2 text-center text-xs">
+      <p class="mt-2 text-center text-xs" data-web-only>
         <button
           type="button"
           class="text-muted-foreground underline underline-offset-2 hover:text-foreground"
           data-testid="download-open"
-          onclick={() => (editor.downloadOpen = true)}>{td.open}</button
+          onclick={() => {
+            if (editor) editor.downloadOpen = true;
+          }}>{td.open}</button
         >
       </p>
     {/if}

@@ -72,6 +72,12 @@
   --color-success-background: var(--success-background);
 }
 
+/* The desktop shell (app.html marks it): what the build rendered for the web only. Outside the layers, so
+   that it wins over the utilities' display. */
+html.desktop [data-web-only] {
+  display: none;
+}
+
 @layer base {
   html,
   body {
