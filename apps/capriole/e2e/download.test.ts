@@ -22,8 +22,7 @@ test('«Scarica l’app per il computer» links the installers of the latest rel
   await expect(dialog).toBeHidden();
 
   // In English too.
-  await page.evaluate(() => localStorage.setItem('capriole.locale', 'en'));
-  await page.reload();
+  await page.goto('/en/');
   await page.getByRole('button', { name: 'Get the app for your computer' }).click();
   await expect(dialog).toContainText('Run anyway');
 });

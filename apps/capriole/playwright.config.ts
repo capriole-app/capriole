@@ -13,15 +13,24 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
-  // Italian, the interface's source language (the tests read its words); e2e/i18n.test.ts sets others.
-  // The terms of use already accepted: e2e/terms.test.ts starts without, to see them asked.
+  // Italian, the interface's source language (the tests read its words): chosen before, so / takes each
+  // test to /it/ (the default is English); e2e/i18n.test.ts starts without a choice. The terms of use
+  // already accepted: e2e/terms.test.ts starts without, to see them asked.
   use: {
     baseURL,
     trace: 'retain-on-failure',
     locale: 'it-IT',
     storageState: {
       cookies: [],
-      origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: termsKey, value: termsVersion }] }],
+      origins: [
+        {
+          origin: new URL(baseURL).origin,
+          localStorage: [
+            { name: termsKey, value: termsVersion },
+            { name: 'capriole.locale', value: 'it' },
+          ],
+        },
+      ],
     },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

@@ -1,7 +1,16 @@
 import { expect, test } from '@playwright/test';
+import { termsKey, termsVersion } from '../src/lib/terms-version';
 
-// The interface's language: the system's (the browser's languages) when it is one the app speaks, else
-// English; the person's choice from the menu once made, remembered.
+// The interface's language: the address's (/it/, /fr/…), and / in English whatever the browser's; the
+// person's choice from the menu once made, remembered, and its page from / on.
+
+// No language chosen before (playwright.config.ts has Italian chosen, for the other tests).
+test.use({
+  storageState: {
+    cookies: [],
+    origins: [{ origin: 'http://localhost:4174', localStorage: [{ name: termsKey, value: termsVersion }] }],
+  },
+});
 
 const firstScreen = [
   {
@@ -39,28 +48,30 @@ const firstScreen = [
     about: 'Información y licencias',
     title: 'Capriole — editor de PDF en el navegador',
   },
-  {
-    locale: 'pt-BR',
-    lang: 'en',
-    choose: 'Choose a PDF',
-    about: 'About and licences',
-    title: 'Capriole — PDF editor in your browser',
-  }, // not spoken: English
 ];
 
-for (const { locale, lang, choose, about, title } of firstScreen) {
-  test.describe(locale, () => {
-    test.use({ locale });
-    test(`the first screen in ${lang}`, async ({ page }) => {
-      await page.goto('/');
-      await expect(page.getByRole('button', { name: choose })).toBeVisible();
-      await expect(page.locator('html')).toHaveAttribute('lang', lang);
-      await expect(page).toHaveTitle(title);
-      await page.getByRole('button', { name: about }).click();
-      await expect(page.getByTestId('licenses-dialog').getByRole('heading', { name: about })).toBeVisible();
-    });
+for (const { lang, choose, about, title } of firstScreen) {
+  test(`the first screen in ${lang}`, async ({ page }) => {
+    await page.goto(`/${lang}/`);
+    await expect(page.getByRole('button', { name: choose })).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('lang', lang);
+    await expect(page).toHaveTitle(title);
+    await page.getByRole('button', { name: about }).click();
+    await expect(page.getByTestId('licenses-dialog').getByRole('heading', { name: about })).toBeVisible();
   });
 }
+
+for (const locale of ['it-IT', 'de-DE', 'pt-BR'])
+  test.describe(locale, () => {
+    test.use({ locale });
+    test(`/ is in English for a browser in ${locale}`, async ({ page }) => {
+      await page.goto('/');
+      await expect(page.getByText(/Capriole engine \d+\.\d+\.\d+/)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Choose a PDF' })).toBeVisible();
+      await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+      await expect(page).toHaveURL(/:4174\/$/);
+    });
+  });
 
 test.describe('a choice', () => {
   test.use({ locale: 'en-US' });
@@ -74,8 +85,11 @@ test.describe('a choice', () => {
     await expect(page.getByRole('button', { name: 'PDF auswählen' })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await expect(page).toHaveTitle('Capriole — PDF-Editor im Browser');
+    await expect(page).toHaveURL(/\/de\/$/);
 
-    await page.reload();
+    // Remembered: / takes the person to its page.
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/de\/$/);
     await expect(page.getByRole('button', { name: 'PDF auswählen' })).toBeVisible();
     await page.getByRole('button', { name: 'Sprache' }).click();
     await expect(page.getByRole('menuitemradio', { name: 'Deutsch' })).toHaveAttribute('aria-checked', 'true');
@@ -139,9 +153,7 @@ test.describe('«About»', () => {
 const origin = 'https://capriole.app';
 const pages = [
   { path: '/', lang: 'en', canonical: `${origin}/`, title: 'Capriole — PDF editor in your browser' },
-  ...firstScreen
-    .filter(({ locale }) => locale !== 'pt-BR')
-    .map(({ lang, title }) => ({ path: `/${lang}/`, lang, canonical: `${origin}/${lang}/`, title })),
+  ...firstScreen.map(({ lang, title }) => ({ path: `/${lang}/`, lang, canonical: `${origin}/${lang}/`, title })),
 ];
 
 for (const { path, lang, canonical, title } of pages) {
@@ -174,6 +186,7 @@ test.describe('a language page', () => {
 
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Choisir un PDF' })).toBeVisible();
+    await expect(page).toHaveURL(/\/fr\/$/);
   });
 
   test('follows the language chosen from the menu in its address', async ({ page }) => {
@@ -188,6 +201,7 @@ test.describe('a language page', () => {
     await expect(page.getByRole('button', { name: 'PDF auswählen' })).toBeVisible();
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'PDF auswählen' })).toBeVisible();
+    await expect(page).toHaveURL(/\/de\/$/);
   });
 });
 
