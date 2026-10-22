@@ -86,22 +86,29 @@ async function savedText(page: Page): Promise<string> {
 
 test.beforeEach(({ page }) => withoutFileAccess(page));
 
+/** The colours of the page's bar: its menu opened if closed (a tool's button, or choosing a colour, closes it). */
+async function colours(page: Page) {
+  const button = page.getByTestId('style-menu');
+  if ((await button.getAttribute('aria-expanded')) !== 'true') await button.click();
+  return page.getByRole('radiogroup', { name: 'Colore' });
+}
+
 test('the highlighter is yellow, what writes and draws is black', async ({ page }) => {
   await open(page);
   await page.getByTestId('page').dblclick();
-  const colours = page.getByRole('radiogroup', { name: 'Colore' });
   await page.getByRole('button', { name: 'Evidenzia' }).click();
-  await expect(colours.getByRole('radio', { name: 'Giallo' })).toHaveAttribute('aria-checked', 'true');
+  await expect((await colours(page)).getByRole('radio', { name: 'Giallo' })).toHaveAttribute('aria-checked', 'true');
   for (const tool of ['Penna', 'Rettangolo', 'Testo', 'Sottolinea']) {
     await page.getByRole('button', { name: tool, exact: true }).click();
-    await expect(colours.getByRole('radio', { name: 'Nero' })).toHaveAttribute('aria-checked', 'true');
+    await expect((await colours(page)).getByRole('radio', { name: 'Nero' })).toHaveAttribute('aria-checked', 'true');
   }
   // A colour chosen for drawing leaves the highlighter's as it was.
-  await colours.getByRole('radio', { name: 'Rosso' }).click();
+  await (await colours(page)).getByRole('radio', { name: 'Rosso' }).click();
+  await expect(page.getByRole('radiogroup', { name: 'Colore' })).toBeHidden();
   await page.getByRole('button', { name: 'Nota' }).click();
-  await expect(colours.getByRole('radio', { name: 'Giallo' })).toHaveAttribute('aria-checked', 'true');
+  await expect((await colours(page)).getByRole('radio', { name: 'Giallo' })).toHaveAttribute('aria-checked', 'true');
   await page.getByRole('button', { name: 'Penna' }).click();
-  await expect(colours.getByRole('radio', { name: 'Rosso' })).toHaveAttribute('aria-checked', 'true');
+  await expect((await colours(page)).getByRole('radio', { name: 'Rosso' })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('settings are kept on the device and used: zoom, author, colours, a signature’s reason', async ({ page }) => {
@@ -128,10 +135,7 @@ test('settings are kept on the device and used: zoom, author, colours, a signatu
   await page.getByTestId('page').dblclick();
   await expect(page.getByTestId('zoom').getByLabel('Percentuale di zoom')).toHaveValue('125%');
   await page.getByRole('button', { name: 'Evidenzia' }).click();
-  await expect(page.getByRole('radiogroup', { name: 'Colore' }).getByRole('radio', { name: 'Verde' })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
+  await expect((await colours(page)).getByRole('radio', { name: 'Verde' })).toHaveAttribute('aria-checked', 'true');
   // The author goes into what is added.
   await page.getByRole('button', { name: 'Rettangolo' }).click();
   const surface = page.getByTestId('page-surface');

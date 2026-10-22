@@ -58,7 +58,8 @@
   }
 
   const selected = $derived(editor.selected.has(index));
-  /** A selected page: a blue line around it, apart from it (the page itself stays as it is). */
+  /** A selected page: a blue line around it, apart from it (the page itself stays as it is); around its
+   *  placeholder too until it is drawn. */
   const page = 'outline-2 outline-offset-3 outline-emphasis';
 </script>
 
@@ -95,7 +96,12 @@
       ></canvas>
     {:else if raster}
       {#await raster}
-        <span class="h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] animate-pulse rounded bg-muted"></span>
+        <span
+          class={[
+            'h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] animate-pulse rounded bg-muted',
+            selected && page,
+          ]}
+        ></span>
       {:then image}
         <canvas
           {@attach (node) => paint(node, image)}
@@ -104,12 +110,15 @@
         ></canvas>
       {:catch}
         <span
-          class="flex h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] items-center justify-center rounded bg-danger-background text-xs text-danger"
-          >{t.notDrawn}</span
+          class={[
+            'flex h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] items-center justify-center rounded bg-danger-background text-xs text-danger',
+            selected && page,
+          ]}>{t.notDrawn}</span
         >
       {/await}
     {:else}
-      <span class="h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] rounded bg-muted"></span>
+      <span class={['h-[calc(var(--box-h)-1rem)] w-[calc(var(--box-w)-1rem)] rounded bg-muted', selected && page]}
+      ></span>
     {/if}
   </span>
   <span class={['text-xs tabular-nums', selected ? 'font-semibold text-emphasis' : 'text-muted-foreground']}

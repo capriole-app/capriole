@@ -5,6 +5,10 @@
 export const barButton =
   'flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-40';
 
+/** A tool of the page's bar: a bar's button with only its icon, narrower (fifteen of them stand in a row). */
+export const toolButton =
+  'flex h-9 w-8 shrink-0 items-center justify-center rounded-md hover:bg-muted disabled:pointer-events-none disabled:opacity-40';
+
 /** A bar's button that is pressed: its panel open, its tool chosen. */
 export const pressed = 'bg-accent text-emphasis hover:bg-accent';
 
