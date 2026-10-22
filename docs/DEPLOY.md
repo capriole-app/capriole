@@ -147,6 +147,8 @@ Su un tag, Jenkins esegue il gate e poi:
    rilasciato fa fallire lo stage: una release non si sovrascrive;
 2. «Image» pubblica `ghcr.io/capriole-app/capriole-web:<versione>`, l'immagine per il self-hosting
    (`docs/SELF-HOSTED.md`). Su un tag non c'è nessun rilascio su capriole.app: quello lo fa `main`.
+   Lo stage fa fino a tre tentativi, perché un errore passeggero del Docker dell'host non si recupera
+   rilanciando il tag (vedi sotto);
 3. alla fine, il workspace del tag viene cancellato (circa 11 GB: gli alberi di build, il `target` di Rust,
    `node_modules`). Un tag non si ricompila, quindi non serve come cache, a differenza di quello di un ramo.
    Lo cancella l'ultimo stage («Image») oppure quello che fallisce, perché ogni stage ha il suo agent e i
@@ -170,6 +172,21 @@ L'immagine scarica il CRT e il Windows SDK di Microsoft, e usarli vuol dire acce
 strumenti di compilazione, non vengono ridistribuiti). Il binario Linux viene avviato su
 un display virtuale e deve essere ancora vivo dopo 15 s, prima che i file vengano conservati.
 
+**Se «Image» fallisce su un tag** (è successo con la `v0.3.1`, il 22/10: il Docker dell'host Jenkins ha
+perso un file del contesto mentre scriveva lo strato, `failed to create diff tar stream: lstat …: no such
+file`), non si rilancia il tag. La release è già pubblicata, quindi «Release (tag)» fallirebbe, e comunque
+rifarebbe gli installer con impronte diverse. L'immagine si costruisce invece a mano dall'archivio della
+release, che è proprio il contesto di «Image». Serve un `docker login ghcr.io` con un token che abbia
+`write:packages`:
+
+    v=0.3.1; base=https://github.com/capriole-app/capriole/releases/download/v$v
+    cd "$(mktemp -d)"
+    curl -fsSLO "$base/capriole-web.tar.gz" && curl -fsSLO "$base/SHA256SUMS"
+    grep ' capriole-web.tar.gz$' SHA256SUMS | sha256sum -c -
+    tar -xzf capriole-web.tar.gz
+    docker build --pull -t "ghcr.io/capriole-app/capriole-web:$v" context
+    docker push "ghcr.io/capriole-app/capriole-web:$v"
+
 **In locale** (lo stesso script, la stessa immagine; prima il motore: `cmake --preset wasm && cmake
 --build --preset wasm`):
 
@@ -189,3 +206,30 @@ un display virtuale e deve essere ancora vivo dopo 15 s, prima che i file vengan
 **Prima di annunciare una versione:** l'installer va provato a mano su un Windows vero (apri, modifica,
 salva, firma con un `.p12`, l'avviso di SmartScreen), e il `.deb` o l'AppImage su Linux. Flathub è
 rinviato (`packaging/flathub/README.md`).
+
+## Job notturno dei corpora (`capriole-corpus`)
+
+Ogni notte il job `capriole-corpus` esegue `corpus-tools/nightly.py` nell'immagine `ci/corpus.Dockerfile`
+(`ci/corpus.Jenkinsfile`, sul ramo `main`). Prende uno zip di SafeDocs e uno di UNSAFE scelti in base alla
+data, li passa a `run_corpus.py` con `cpdf` compilato con il preset `corpus` (ottimizzato, ASan/UBSan) e
+li cancella. Il lunedì passa anche i tre corpora fissi e li confronta con l'esecuzione precedente. Un
+crash fa fallire la build (rossa), una regressione la rende instabile (gialla). I `summary.md` sono tra
+gli artefatti della build (`corpus-reports/summary.md` è l'indice). Il workspace non si cancella:
+`build/corpus` fa da cache alla notte dopo.
+
+**Da fare una volta** (lo fa il titolare, dopo che `ci/corpus.Jenkinsfile` è su `main`):
+1. Sull'host di Jenkins, crea una cartella per i corpora fissi (circa 2,1 GB, scaricati il primo lunedì)
+   e lo storico dei report, di proprietà dell'utente con cui girano i container di Jenkins (uid 1000):
+   `sudo mkdir -p <cartella> && sudo chown 1000:1000 <cartella>`. È un percorso **dell'host**, non del
+   container di Jenkins: lo monta il Docker dell'host.
+2. Jenkins → *Manage Jenkins* → *System* → *Global properties* → *Environment variables* → *Add*:
+   nome `CAPRIOLE_CORPUS_HOST_DIR`, valore la cartella del punto 1. *Save*.
+3. Jenkins → *New Item* → nome `capriole-corpus`, tipo *Pipeline* → *OK*. Nella sezione *Pipeline*:
+   *Definition* «Pipeline script from SCM», *SCM* Git, *Repository URL*
+   `https://github.com/capriole-app/capriole.git`, *Credentials* `github-capriole-app`, *Branch Specifier*
+   `*/main`, *Script Path* `ci/corpus.Jenkinsfile`. *Save*.
+4. *Build Now* una volta: l'orario notturno (`cron('H 1 * * *')` nel Jenkinsfile) Jenkins lo registra
+   solo dopo la prima build. La prima è più lunga: costruisce l'immagine e `build/corpus` da zero.
+
+Per vedere che cosa farà una notte: `corpus-tools/nightly.py --dry-run --date AAAA-MM-GG`. Per rifare una
+notte a mano, la stessa data senza `--dry-run` (`corpus-tools/README.md`).

@@ -15,7 +15,10 @@ Outputs, under --report-dir/<name>-<timestamp>/:
   results.jsonl   one JSON object per file
   summary.md      counts, crashes, timeouts, mismatches, error kinds, unsupported features
 and, when a previous run of the same --name exists, a regression section (files that used to match
-the reference majority and no longer do).
+the reference majority and no longer do; a timeout is listed apart, not as a regression).
+
+Exit status: 0; 1 a crash (sanitizer or signal, reading or saving); 2 usage; 3 with --fail-on-regressions,
+a regression against the previous run (the nightly job, corpus-tools/nightly.py, makes it UNSTABLE).
 
 Standard library only.
 """
@@ -36,6 +39,12 @@ from pathlib import Path
 
 MEMORY_CAP_BYTES = 4 * 1024**3  # reference tools; ASan's own limit is set through ASAN_OPTIONS
 ASAN_OPTIONS = "hard_rss_limit_mb=4096:allocator_may_return_null=1:detect_leaks=0"
+# The filters only images use (ISO 32000-2 §7.4.1, Table 6): when they are a file's only errors, the
+# document reads and only those images are lost. Such files are counted apart ("image_error"), not as
+# failures: the data is often broken in the file itself (zlib labelled /DCTDecode), and MuPDF and Poppler
+# fail on it too.
+IMAGE_FILTERS = ("DCTDecode", "JPXDecode", "JBIG2Decode", "CCITTFaxDecode")
+EXIT_CRASH, EXIT_USAGE, EXIT_REGRESSION = 1, 2, 3
 
 
 def run(cmd: list[str], timeout: float, env: dict[str, str] | None = None, cap_memory: bool = True) -> dict:
@@ -71,6 +80,16 @@ def int_after(pattern: str, text: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def only_image_errors(out: str, err: str) -> bool:
+    """Whether the page tree read and every error `cpdf check` counted is in an image filter. cpdf prints
+    at most 20 errors: with more, the others are unknown, and the file is not counted as image-only."""
+    errors = int_after(r"streams decoded, (\d+) errors", out)
+    reported = [line for line in err.splitlines() if line.startswith("object ")]
+    pattern = re.compile(rf"^object \d+: ({'|'.join(IMAGE_FILTERS)})\b")
+    pages_read = int_after(r": (\d+) pages,", out) is not None
+    return pages_read and bool(errors) and len(reported) == errors and all(pattern.match(line) for line in reported)
+
+
 def run_capriole(cpdf: str, path: str, timeout: float) -> dict:
     env = {"PATH": "/usr/bin:/bin", "ASAN_OPTIONS": ASAN_OPTIONS, "UBSAN_OPTIONS": "print_stacktrace=1", "CAPRIOLE_PASSWORD": ""}
     result = run([cpdf, "check", path], timeout, env=env, cap_memory=False)
@@ -83,7 +102,7 @@ def run_capriole(cpdf: str, path: str, timeout: float) -> dict:
     elif result["status"] == 0:
         outcome = "ok"
     else:
-        outcome = "error"
+        outcome = "image_error" if only_image_errors(out, err) else "error"
     first_error = next(
         (line for line in (err + "\n" + out).splitlines() if line and "objects loaded" not in line and "not supported yet" not in line and not line.strip().startswith("repaired (")),
         "",
@@ -147,6 +166,8 @@ def run_roundtrip(cpdf: str, path: str, pages_before: int | None, timeout: float
         output = os.path.join(out_dir, "saved.pdf")
         mode = ["--incremental", "--moddate", "D:20260927120000Z"] if incremental else []
         saved = run([cpdf, "save", *mode, path, output], timeout, env=env, cap_memory=False)
+        if saved["status"] == "timeout":
+            return {"saved": False, "timeout": True, "error": "timeout", "crash": False}
         if saved["status"] != 0 or not os.path.exists(output):
             reason = next((line for line in (saved["stderr"] + saved["stdout"]).splitlines() if line.strip()), "")
             reason = re.sub(r"^(?:\S+: )+", "", reason)  # without the "cpdf: <path>: " prefix
@@ -157,12 +178,16 @@ def run_roundtrip(cpdf: str, path: str, pages_before: int | None, timeout: float
         pages_after = int_after(r": (\d+) pages,", strict["stdout"])
         return {
             "saved": True,
+            # A re-read that ran out of time says nothing about the pages: it is not counted as pages lost.
+            "timeout": strict["status"] == "timeout",
             "qpdf_check": {0: "clean", 2: "errors", 3: "warnings"}.get(check["status"], str(check["status"])),
             # qpdf reports problems on stderr (warnings) and stdout (the check's own findings).
             "qpdf_error": first_problem(check["stderr"] + "\n" + check["stdout"])[:200],
             "strict_ok": strict["status"] == 0,
             # cpdf prints its errors on stderr, one per line ("object N: message (code)").
             "strict_error": "" if strict["status"] == 0 else next((line for line in strict["stderr"].splitlines() if line.strip()), "")[:200],
+            # The strict re-read fails where an image's data is broken, as the original's own reading does.
+            "strict_image_only": strict["status"] != 0 and only_image_errors(strict["stdout"], strict["stderr"]),
             "pages_kept": pages_before is not None and pages_after == pages_before,
             "crash": bool(re.search(r"AddressSanitizer|runtime error", strict["stderr"])),
             **({"prefix_identical": prefix, "source_strict_ok": run([cpdf, "check", path], timeout, env={**env, "CAPRIOLE_STRICT": "1"}, cap_memory=False)["status"] == 0}
@@ -205,12 +230,27 @@ def previous_results(report_dir: Path, name: str) -> dict[str, dict] | None:
         return {r["file"]: r for r in map(json.loads, f)}
 
 
+def compare(results: list[dict], previous: dict[str, dict]) -> dict[str, list[dict]]:
+    """Against the previous run of the same --name. A file that ran out of time is not a regression:
+    on a busy machine a slow file can, and the timeouts are listed on their own."""
+    def before(r: dict) -> dict:
+        return previous.get(r["file"], {})
+
+    return {
+        "regressions": [r for r in results if before(r).get("pages_match") and not r["pages_match"] and r["capriole"]["outcome"] != "timeout"],
+        "new_timeouts": [r for r in results if before(r).get("pages_match") and r["capriole"]["outcome"] == "timeout"],
+        "new_crashes": [r for r in results if r["capriole"]["outcome"] == "crash" and before(r).get("capriole", {}).get("outcome") != "crash"],
+        "fixed": [r for r in results if r["file"] in previous and not before(r)["pages_match"] and r["pages_match"]],
+    }
+
+
 def summarise(results: list[dict], previous: dict[str, dict] | None, args: argparse.Namespace) -> str:
     total = len(results)
     outcomes = collections.Counter(r["capriole"]["outcome"] for r in results)
     with_majority = [r for r in results if r["reference"]["majority"] is not None]
     healthy = [r for r in results if r["healthy"]]
     healthy_ok = [r for r in healthy if r["pages_match"] and r["capriole"]["outcome"] == "ok"]
+    healthy_image = [r for r in healthy if r["pages_match"] and r["capriole"]["outcome"] == "image_error"]
     matched = [r for r in with_majority if r["pages_match"]]
     mismatched = [r for r in with_majority if r["capriole"]["pages"] is not None and not r["pages_match"]]
     missed = [r for r in with_majority if r["capriole"]["pages"] is None]
@@ -220,6 +260,7 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
     repairs = collections.Counter(k for r in results for k in r["capriole"].get("repairs", []))
     repaired_files = sum(1 for r in results if r["capriole"].get("repairs"))
     errors = collections.Counter(re.sub(r"\d+", "N", r["capriole"]["error"])[:120] for r in results if r["capriole"]["outcome"] == "error")
+    image_errors = collections.Counter(re.sub(r"\d+", "N", r["capriole"]["error"])[:120] for r in results if r["capriole"]["outcome"] == "image_error")
 
     def pct(n: int, d: int) -> str:
         return f"{n}/{d} ({100.0 * n / d:.2f}%)" if d else "0/0"
@@ -236,7 +277,8 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
         f"- **crashes (sanitizer or signal): {outcomes['crash']}**",
         f"- timeouts ({args.timeout:g} s): {outcomes['timeout']}",
         f"- healthy files (qpdf --check clean, three references agree): {len(healthy)}; "
-        f"**Capriole opens them with the same page count and no error: {pct(len(healthy_ok), len(healthy))}**",
+        f"**Capriole opens them with the same page count and no error: {pct(len(healthy_ok), len(healthy))}**; "
+        f"with errors only in image data: {len(healthy_image)}",
         f"- files with a reference majority: {len(with_majority)}; same page count: {pct(len(matched), len(with_majority))}; "
         f"different count: {len(mismatched)}; no count from Capriole: {len(missed)}",
         f"- files no two references agree on, which Capriole reads: {len(beyond)}",
@@ -258,6 +300,10 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
         "",
         *[f"- {v} × `{k}`" for k, v in errors.most_common(25)],
         "",
+        "## Errors only in image data (the document reads; those images are lost)",
+        "",
+        *[f"- {v} × `{k}`" for k, v in image_errors.most_common(10)],
+        "",
         "## Not supported yet",
         "",
         *[f"- {v} × {k}" for k, v in unsupported.most_common(15)],
@@ -266,18 +312,20 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
     trips = [r["capriole"]["roundtrip"] for r in results if "roundtrip" in r["capriole"]]
     if trips:
         saved = [t for t in trips if t["saved"]]
+        reread = [t for t in saved if not t.get("timeout")]
         lines += [
             "## Round trip (full save)",
             "",
-            f"- saved: {pct(len(saved), len(trips))}",
+            f"- saved: {pct(len(saved), len(trips))}; timeouts (saving or re-reading, not counted below): {sum(1 for t in trips if t.get('timeout'))}",
             f"- **output accepted by qpdf --check without errors: {pct(sum(1 for t in saved if t['qpdf_check'] != 'errors'), len(saved))}**"
             f" (clean: {sum(1 for t in saved if t['qpdf_check'] == 'clean')}, warnings: {sum(1 for t in saved if t['qpdf_check'] == 'warnings')})",
-            f"- **output read strictly by Capriole: {pct(sum(1 for t in saved if t['strict_ok']), len(saved))}**",
-            f"- **pages kept: {pct(sum(1 for t in saved if t['pages_kept']), len(saved))}**",
+            f"- **output read strictly by Capriole: {pct(sum(1 for t in reread if t['strict_ok']), len(reread))}**"
+            f" (not read strictly only because of image data: {sum(1 for t in reread if t.get('strict_image_only'))})",
+            f"- **pages kept: {pct(sum(1 for t in reread if t['pages_kept']), len(reread))}**",
             f"- crashes: {sum(1 for t in trips if t.get('crash'))}",
             "",
         ]
-        failures = collections.Counter(re.sub(r"\d+", "N", t["error"])[:120] for t in trips if not t["saved"])
+        failures = collections.Counter(re.sub(r"\d+", "N", t["error"])[:120] for t in trips if not t["saved"] and not t.get("timeout"))
         lines += [f"- not saved {v} × `{k}`" for k, v in failures.most_common(10)]
         qpdf_errors = collections.Counter(re.sub(r"/\S+|\d+", "N", t["qpdf_error"])[:120] for t in saved if t["qpdf_check"] == "errors")
         lines += [f"- qpdf error {v} × `{k}`" for k, v in qpdf_errors.most_common(10)]
@@ -285,19 +333,21 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
     updates = [r["capriole"]["incremental"] for r in results if "incremental" in r["capriole"]]
     if updates:
         appended = [t for t in updates if t["saved"]]
+        reread = [t for t in appended if not t.get("timeout")]
         lines += [
             "## Round trip (incremental save, /ModDate changed)",
             "",
-            f"- saved: {pct(len(appended), len(updates))} (the others refused: repairs needed, or encrypted)",
+            f"- saved: {pct(len(appended), len(updates))} (the others refused: repairs needed, or encrypted); "
+            f"timeouts (not counted below): {sum(1 for t in updates if t.get('timeout'))}",
             f"- **original bytes unchanged at the start: {pct(sum(1 for t in appended if t['prefix_identical']), len(appended))}**",
             f"- **qpdf --check no worse than on the original: {pct(sum(1 for t in appended if t['qpdf_no_worse']), len(appended))}**",
-            f"- **output read strictly by Capriole: {pct(sum(1 for t in appended if t['strict_ok']), len(appended))}**"
-            f" (where the original reads strictly: {pct(sum(1 for t in appended if t['strict_ok'] and t['source_strict_ok']), sum(1 for t in appended if t['source_strict_ok']))})",
-            f"- **pages kept: {pct(sum(1 for t in appended if t['pages_kept']), len(appended))}**",
+            f"- **output read strictly by Capriole: {pct(sum(1 for t in reread if t['strict_ok']), len(reread))}**"
+            f" (where the original reads strictly: {pct(sum(1 for t in reread if t['strict_ok'] and t['source_strict_ok']), sum(1 for t in reread if t['source_strict_ok']))})",
+            f"- **pages kept: {pct(sum(1 for t in reread if t['pages_kept']), len(reread))}**",
             f"- crashes: {sum(1 for t in updates if t.get('crash'))}",
             "",
         ]
-        refusals = collections.Counter(re.sub(r"\b\d+\b", "N", re.sub(r"^(?:\S+: )+", "", t["error"]))[:120] for t in updates if not t["saved"])
+        refusals = collections.Counter(re.sub(r"\b\d+\b", "N", re.sub(r"^(?:\S+: )+", "", t["error"]))[:120] for t in updates if not t["saved"] and not t.get("timeout"))
         lines += [f"- refused {v} × `{k}`" for k, v in refusals.most_common(10)]
         worse = collections.Counter(re.sub(r"/\S+|\d+", "N", t["qpdf_error"])[:120] for t in appended if not t["qpdf_no_worse"])
         lines += [f"- qpdf worse {v} × `{k}`" for k, v in worse.most_common(10)]
@@ -313,11 +363,20 @@ def summarise(results: list[dict], previous: dict[str, dict] | None, args: argpa
         lines += ["## Healthy files Capriole does not open cleanly", ""]
         lines += [f"- `{r['file']}`: {r['capriole']['outcome']} — {r['capriole']['error']}" for r in healthy if r not in healthy_ok][:50] + [""]
     if previous is not None:
-        regressions = [r for r in results if r["file"] in previous and previous[r["file"]]["pages_match"] and not r["pages_match"]]
-        new_crashes = [r for r in results if r["capriole"]["outcome"] == "crash" and previous.get(r["file"], {}).get("capriole", {}).get("outcome") != "crash"]
-        fixed = [r for r in results if r["file"] in previous and not previous[r["file"]]["pages_match"] and r["pages_match"]]
-        lines += ["## Compared with the previous run", "", f"- regressions (matched before, not now): {len(regressions)}", f"- new crashes: {len(new_crashes)}", f"- newly matching: {len(fixed)}", ""]
-        lines += [f"- REGRESSION `{r['file']}`" for r in regressions[:50]]
+        delta = compare(results, previous)
+        lines += [
+            "## Compared with the previous run",
+            "",
+            f"- regressions (matched before, not now): {len(delta['regressions'])}",
+            f"- new crashes: {len(delta['new_crashes'])}",
+            f"- matched before, timed out now (not a regression): {len(delta['new_timeouts'])}",
+            f"- newly matching: {len(delta['fixed'])}",
+            "",
+        ]
+        lines += [f"- REGRESSION `{r['file']}`: capriole {r['capriole']['pages']} pages ({r['capriole']['outcome']}), "
+                  f"references {r['reference']['majority']}" + (f" — {r['capriole']['error']}" if r['capriole']['error'] else "")
+                  for r in delta["regressions"][:50]]
+        lines += [f"- timed out `{r['file']}`" for r in delta["new_timeouts"][:20]]
     return "\n".join(lines) + "\n"
 
 
@@ -325,21 +384,24 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("corpus", type=Path, help="directory with the corpus files (searched recursively)")
     parser.add_argument("--name", required=True, help="label of this corpus, used to compare with previous runs")
-    parser.add_argument("--cpdf", default=str(Path(__file__).resolve().parent.parent / "build/asan/tools/cpdf/cpdf"))
+    parser.add_argument("--cpdf", default=str(Path(__file__).resolve().parent.parent / "build/corpus/tools/cpdf/cpdf"),
+                        help="cpdf under ASan/UBSan (default: the corpus preset's, optimised)")
     parser.add_argument("--report-dir", type=Path, default=Path(os.environ.get("CAPRIOLE_CORPUS_DIR", ".")) / "reports")
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--timeout", type=float, default=60.0, help="seconds per tool invocation")
     parser.add_argument("--limit", type=int, help="process only the first N files (sorted by path)")
     parser.add_argument("--roundtrip", action="store_true", help="also save every readable file and check the output")
+    parser.add_argument("--fail-on-regressions", action="store_true",
+                        help=f"exit {EXIT_REGRESSION} when a file matched in the previous run of --name and does not now")
     args = parser.parse_args()
 
     if not Path(args.cpdf).is_file():
-        print(f"cpdf not found: {args.cpdf} (build the asan preset first)", file=sys.stderr)
-        return 2
+        print(f"cpdf not found: {args.cpdf} (cmake --preset corpus && cmake --build --preset corpus)", file=sys.stderr)
+        return EXIT_USAGE
     files = collect(args.corpus, args.limit)
     if not files:
         print(f"no files under {args.corpus}", file=sys.stderr)
-        return 2
+        return EXIT_USAGE
 
     out_dir = args.report_dir / f"{args.name}-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     previous = previous_results(args.report_dir, args.name)
@@ -361,7 +423,12 @@ def main() -> int:
     print(summary)
     print(f"report: {out_dir}", file=sys.stderr)
     crashes = sum(1 for r in results if r["capriole"]["outcome"] == "crash")
-    return 1 if crashes else 0
+    crashes += sum(1 for r in results for key in ("roundtrip", "incremental") if r["capriole"].get(key, {}).get("crash"))
+    if crashes:
+        return EXIT_CRASH
+    if args.fail_on_regressions and previous is not None and compare(results, previous)["regressions"]:
+        return EXIT_REGRESSION
+    return 0
 
 
 if __name__ == "__main__":
