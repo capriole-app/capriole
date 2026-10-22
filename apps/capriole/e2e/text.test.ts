@@ -46,6 +46,7 @@ test('free text is written on the page: a click widens, a rectangle wraps and gr
   await page.getByTestId('page').first().dblclick();
   const list = page.getByTestId('annotation-list');
   await page.getByRole('button', { name: 'Testo', exact: true }).click();
+  await page.getByTestId('style-menu').click();
   await page.getByRole('combobox', { name: 'Dimensione del testo' }).selectOption('18');
 
   // A click: a box one line of 18 points high, the cursor in it; it widens as the text is typed.
@@ -64,6 +65,7 @@ test('free text is written on the page: a click widens, a rectangle wraps and gr
   await expect(list).toContainText('Testo — Una riga sola');
 
   // A rectangle 100 points wide: lines wrap at its edge, it grows downwards, its width stays.
+  await page.getByTestId('style-menu').click();
   await page.getByRole('combobox', { name: 'Dimensione del testo' }).selectOption('12');
   const from = await at(page, 30, 120);
   const to = await at(page, 130, 130);

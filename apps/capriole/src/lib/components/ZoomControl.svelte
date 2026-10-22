@@ -85,7 +85,10 @@
       class={[barButton, fitted && pressed]}
       aria-pressed={fitted}
       title={t.fitTitle}
-      onclick={onfit}><Maximize class="size-4" /> {t.fit}</button
+      onclick={onfit}
+      ><Maximize class="size-4" />
+      <!-- Only the page's bar has it: there, below 1600 px, the icon alone (AnnotationToolbar). -->
+      <span class="sr-only min-[1600px]:not-sr-only">{t.fit}</span></button
     >
   {/if}
 </div>

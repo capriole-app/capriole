@@ -8,7 +8,8 @@
 /* Design tokens. The brand: ink #111D4A and blue #2F5BEA from the Capriole logo. Light is «paper» (a warm
    ground, ink text, hairlines), dark is «ink» (a neutral near-black): flat surfaces, one accent. --primary
    fills (the main action, with --primary-foreground on it); --emphasis is the same blue as a line or text
-   (selection, links), lighter in the dark so that it reads there. */
+   (selection, links), lighter in the dark so that it reads there: the logo's hue, light enough for 4.5:1 on
+   every dark surface, --accent included. */
 :root {
   --background: #f7f7f4;
   --foreground: #1c2033;
@@ -37,7 +38,7 @@
   --border: #262932;
   --primary: #2f5bea;
   --primary-foreground: #ffffff;
-  --emphasis: #8fa5ff;
+  --emphasis: #6e8ef7;
   --accent: #1a2350;
   --warning: #ffc266;
   --warning-background: #3a2a0c;
