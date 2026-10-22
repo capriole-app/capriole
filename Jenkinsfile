@@ -171,6 +171,9 @@ pipeline {
 
     // The image of the web app, tagged with the commit's sha (never `latest`), pushed to ghcr.io. On a
     // release tag, tagged with the version instead (v0.1.0 → 0.1.0): the image self-hosting uses.
+    // Up to three attempts: the Jenkins host's docker once lost a file of the context while writing a layer
+    // (v0.3.1, 22/10: «failed to create diff tar stream: lstat …: no such file»), with the release already
+    // published, and a tag cannot be built again (github_release.sh refuses a release that exists).
     stage('Image') {
       when {
         beforeAgent true
@@ -178,23 +181,25 @@ pipeline {
       }
       agent any
       steps {
-        timeout(time: 15, unit: 'MINUTES') {
+        timeout(time: 30, unit: 'MINUTES') {
           script {
             env.IMAGE_TAG = env.TAG_NAME ? env.TAG_NAME.substring(1) : env.GIT_COMMIT.take(7)
           }
-          withCredentials([usernamePassword(credentialsId: 'ghcr-push', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
-            sh '''#!/usr/bin/env bash
-              set -euo pipefail
-              # A docker configuration of its own: the login does not touch jenkins' shared one.
-              DOCKER_CONFIG="$(mktemp -d)"
-              export DOCKER_CONFIG
-              trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-              printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-              IMAGE="ghcr.io/capriole-app/capriole-web:${IMAGE_TAG}"
-              docker build --pull -t "$IMAGE" deploy/web/context
-              docker push "$IMAGE"
-              docker image rm -f "$IMAGE" >/dev/null 2>&1 || true
-            '''
+          retry(3) {
+            withCredentials([usernamePassword(credentialsId: 'ghcr-push', usernameVariable: 'GHCR_USER', passwordVariable: 'GHCR_TOKEN')]) {
+              sh '''#!/usr/bin/env bash
+                set -euo pipefail
+                # A docker configuration of its own: the login does not touch jenkins' shared one.
+                DOCKER_CONFIG="$(mktemp -d)"
+                export DOCKER_CONFIG
+                trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+                printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+                IMAGE="ghcr.io/capriole-app/capriole-web:${IMAGE_TAG}"
+                docker build --pull -t "$IMAGE" deploy/web/context
+                docker push "$IMAGE"
+                docker image rm -f "$IMAGE" >/dev/null 2>&1 || true
+              '''
+            }
           }
         }
       }

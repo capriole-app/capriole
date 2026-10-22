@@ -147,6 +147,8 @@ Su un tag, Jenkins esegue il gate e poi:
    rilasciato fa fallire lo stage: una release non si sovrascrive;
 2. «Image» pubblica `ghcr.io/capriole-app/capriole-web:<versione>`, l'immagine per il self-hosting
    (`docs/SELF-HOSTED.md`). Su un tag non c'è nessun rilascio su capriole.app: quello lo fa `main`.
+   Lo stage fa fino a tre tentativi, perché un errore passeggero del Docker dell'host non si recupera
+   rilanciando il tag (vedi sotto);
 3. alla fine, il workspace del tag viene cancellato (circa 11 GB: gli alberi di build, il `target` di Rust,
    `node_modules`). Un tag non si ricompila, quindi non serve come cache, a differenza di quello di un ramo.
    Lo cancella l'ultimo stage («Image») oppure quello che fallisce, perché ogni stage ha il suo agent e i
@@ -169,6 +171,21 @@ perché il motore nel desktop è il modulo WebAssembly che il gate ha già compi
 L'immagine scarica il CRT e il Windows SDK di Microsoft, e usarli vuol dire accettarne la licenza (sono
 strumenti di compilazione, non vengono ridistribuiti). Il binario Linux viene avviato su
 un display virtuale e deve essere ancora vivo dopo 15 s, prima che i file vengano conservati.
+
+**Se «Image» fallisce su un tag** (è successo con la `v0.3.1`, il 22/10: il Docker dell'host Jenkins ha
+perso un file del contesto mentre scriveva lo strato, `failed to create diff tar stream: lstat …: no such
+file`), non si rilancia il tag. La release è già pubblicata, quindi «Release (tag)» fallirebbe, e comunque
+rifarebbe gli installer con impronte diverse. L'immagine si costruisce invece a mano dall'archivio della
+release, che è proprio il contesto di «Image». Serve un `docker login ghcr.io` con un token che abbia
+`write:packages`:
+
+    v=0.3.1; base=https://github.com/capriole-app/capriole/releases/download/v$v
+    cd "$(mktemp -d)"
+    curl -fsSLO "$base/capriole-web.tar.gz" && curl -fsSLO "$base/SHA256SUMS"
+    grep ' capriole-web.tar.gz$' SHA256SUMS | sha256sum -c -
+    tar -xzf capriole-web.tar.gz
+    docker build --pull -t "ghcr.io/capriole-app/capriole-web:$v" context
+    docker push "ghcr.io/capriole-app/capriole-web:$v"
 
 **In locale** (lo stesso script, la stessa immagine; prima il motore: `cmake --preset wasm && cmake
 --build --preset wasm`):
