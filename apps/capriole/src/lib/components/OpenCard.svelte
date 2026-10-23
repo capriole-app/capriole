@@ -147,7 +147,7 @@
       <p class="mb-4 text-base font-semibold sm:mt-2 sm:mb-5 sm:text-lg desktop:hidden">{tl.drop}</p>
 
       {#if !terms.accepted}
-        <label class="mb-4 flex items-start gap-2 text-start text-sm" data-testid="accept-terms">
+        <label class="mb-4 flex items-start gap-2 text-start text-sm" data-testid="accept-terms" data-terms-box>
           <input
             type="checkbox"
             class="mt-0.5 size-4 shrink-0 accent-emphasis"

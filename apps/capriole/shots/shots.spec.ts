@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { contract, edit, fileName, height, termParagraph, width, type Lang, type Spot } from './samples';
@@ -13,10 +14,15 @@ import { contract, edit, fileName, height, termParagraph, width, type Lang, type
 // pages' positions), so that one scene serves the five.
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const signing = fileURLToPath(new URL('../../../tests/data/signing/', import.meta.url));
 const langs: Lang[] = ['it', 'en', 'fr', 'de', 'es'];
 const themes = ['light', 'dark'] as const;
 const viewport = { width: 1600, height: 1000 };
+/** The signature scene's certificate, with a name as a person's (make_certificate.sh): the tests' own say "(test)". */
+const certificate = `${root}/test-results/anna-bianchi.p12`;
+
+test.beforeAll(() => {
+  execFileSync(`${root}/shots/make_certificate.sh`, [`${root}/test-results`]);
+});
 
 /** The WebP of a PNG, encoded by the page's browser (canvas.toBlob). */
 async function webp(page: Page, png: Buffer, quality = 0.82): Promise<Buffer> {
@@ -168,7 +174,7 @@ const scenes: Record<string, (page: Page, lang: Lang) => Promise<void>> = {
     await page.locator('[data-tool="sign"]').click();
     await drag(page, [330, 230], [520, 160]);
     await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByTestId('sign-key').setInputFiles(signing + 'ec.p12');
+    await page.getByTestId('sign-key').setInputFiles(certificate);
     const password = page.getByRole('dialog').locator('input[type="password"]');
     await password.fill('capriole');
     await password.press('Tab');
