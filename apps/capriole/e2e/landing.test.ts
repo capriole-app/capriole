@@ -106,6 +106,16 @@ test('a PDF dropped anywhere on the page opens', async ({ page }) => {
   await expect(page.getByTestId('page')).toHaveCount(1);
 });
 
+test('the terms already accepted: the box is never shown, not even before the app runs', async ({ page }) => {
+  // The app's scripts held back (not its styles): the page as the browser paints it from the HTML alone.
+  await page.route('**/_app/**', (route) =>
+    route.request().resourceType() === 'script' ? route.abort() : route.continue(),
+  );
+  await page.goto('/it/');
+  await expect(page.locator('html')).toHaveClass(/terms-accepted/);
+  await expect(page.getByTestId('accept-terms')).toBeHidden();
+});
+
 test.describe('without the terms accepted', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   test('a PDF dropped far from the card brings the card back, asking for the box', async ({ page }) => {
@@ -116,6 +126,15 @@ test.describe('without the terms accepted', () => {
     await expect(page.getByRole('alert')).toHaveText('Per aprire un file, accetta prima le condizioni d’uso.');
     await expect(page.getByTestId('accept-terms')).toBeInViewport();
     await expect(page.getByTestId('page')).toHaveCount(0);
+  });
+
+  test('the box is in the page the build rendered', async ({ page }) => {
+    await page.route('**/_app/**', (route) =>
+      route.request().resourceType() === 'script' ? route.abort() : route.continue(),
+    );
+    await page.goto('/it/');
+    await expect(page.locator('html')).not.toHaveClass(/terms-accepted/);
+    await expect(page.getByTestId('accept-terms')).toBeVisible();
   });
 });
 

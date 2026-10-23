@@ -86,6 +86,11 @@ html.desktop [data-web-only] {
   display: none;
 }
 
+/* The terms already accepted (app.html marks it): the box the build rendered goes before it is seen. */
+html.terms-accepted [data-terms-box] {
+  display: none;
+}
+
 @layer base {
   html,
   body {

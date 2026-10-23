@@ -4,10 +4,10 @@
   "version": "0.3.1",
   "identifier": "app.capriole.Capriole",
   "build": {
-    "frontendDist": "../../capriole/build",
+    "frontendDist": "../frontend",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm --prefix ../capriole run dev",
-    "beforeBuildCommand": "npm --prefix ../capriole run build"
+    "beforeBuildCommand": "npm --prefix ../capriole run build && node scripts/frontend.mjs"
   },
   "app": {
     "windows": [

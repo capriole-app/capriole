@@ -10,7 +10,9 @@
     <!-- The theme goes on <html> before anything paints, or a dark-theme user sees a light flash.
          Same key and values as mode-watcher (ModeWatcher runs with disableHeadScriptInjection).
          And the desktop shell is marked, so that what only the web app shows (data-web-only: app.css),
-         rendered at build time for the web, never appears there. -->
+         rendered at build time for the web, never appears there. And the terms of use already accepted are
+         marked, so that the box to tick them, in every page the build renders, is never shown only to go
+         away a moment later (app.css; key and version from lib/terms-version.ts: src/hooks.server.ts). -->
     <script data-theme-init>
       (() => {
         let mode = 'system';
@@ -21,6 +23,10 @@
         document.documentElement.classList.toggle('dark', dark);
         document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
         if ('__TAURI_INTERNALS__' in window) document.documentElement.classList.add('desktop');
+        try {
+          if (localStorage.getItem('%capriole.terms.key%') === '%capriole.terms.version%')
+            document.documentElement.classList.add('terms-accepted');
+        } catch {}
       })();
     </script>
     %sveltekit.head%
