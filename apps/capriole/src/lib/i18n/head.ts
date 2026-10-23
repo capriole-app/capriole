@@ -1,33 +1,35 @@
 import { translations } from './index.svelte';
 
 /** The page's title and description: written into each language's page at build time, for search engines
- *  (src/lib/page-head.ts; / has the English ones), then set by the interface in its own language. */
+ *  (src/lib/page-head.ts; / has the English ones), then set by the interface in its own language. The words
+ *  people search for in each language (MARKETING/capriole/LANDING-brief.md, §6); the description ~155
+ *  characters, what a result shows. */
 export const headWords = translations(
   {
-    title: 'Capriole — editor PDF nel browser',
+    title: 'Capriole · Modificare PDF online gratis, anche il testo',
     description:
-      'Modifica i PDF nel browser: testo e immagini su ogni pagina, firme, moduli, unione e divisione. I tuoi file non lasciano mai il dispositivo.',
+      'Modifica il testo dei PDF, firma, compila moduli, oscura dati e unisci pagine nel browser. Gratis, senza account, senza caricare il file. Open source.',
   },
   {
     en: {
-      title: 'Capriole — PDF editor in your browser',
+      title: 'Capriole · Edit PDFs online for free, text included',
       description:
-        'Edit PDFs in your browser: text and images on every page, signatures, forms, merging and splitting. Your files never leave your device.',
+        'Edit PDF text, sign, fill in forms, redact and merge pages in your browser. Free, no account, no upload. Open source, with apps for Windows and Linux.',
     },
     fr: {
-      title: 'Capriole — éditeur PDF dans le navigateur',
+      title: 'Capriole · Modifier un PDF en ligne gratuitement, texte compris',
       description:
-        'Modifiez vos PDF dans le navigateur : texte et images sur chaque page, signatures, formulaires, fusion et découpage. Vos fichiers restent chez vous.',
+        'Modifiez le texte d’un PDF, signez, remplissez des formulaires, masquez et fusionnez des pages dans le navigateur. Gratuit, sans compte, sans envoi.',
     },
     de: {
-      title: 'Capriole — PDF-Editor im Browser',
+      title: 'Capriole · PDF online kostenlos bearbeiten, auch den Text',
       description:
-        'PDFs im Browser bearbeiten: Text und Bilder auf jeder Seite, Signaturen, Formulare, Zusammenführen und Teilen. Ihre Dateien bleiben auf Ihrem Gerät.',
+        'PDF-Text bearbeiten, signieren, Formulare ausfüllen, schwärzen und Seiten zusammenführen, im Browser. Kostenlos, ohne Konto, ohne Upload. Open Source.',
     },
     es: {
-      title: 'Capriole — editor de PDF en el navegador',
+      title: 'Capriole · Editar PDF en línea gratis, también el texto',
       description:
-        'Edita PDF en el navegador: texto e imágenes en cada página, firmas, formularios, unir y dividir. Tus archivos no salen de tu dispositivo.',
+        'Edita el texto de un PDF, firma, rellena formularios, oculta datos y une páginas en el navegador. Gratis, sin cuenta, sin subir el archivo. Código abierto.',
     },
   },
 );
