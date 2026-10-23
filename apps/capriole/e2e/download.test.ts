@@ -23,6 +23,6 @@ test('«Scarica l’app per il computer» links the installers of the latest rel
 
   // In English too.
   await page.goto('/en/');
-  await page.getByRole('button', { name: 'Get the app for your computer' }).click();
+  await page.getByRole('button', { name: 'Or get the app for Windows or Linux' }).click();
   await expect(dialog).toContainText('Run anyway');
 });

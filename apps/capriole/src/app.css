@@ -1,9 +1,13 @@
 @import 'tailwindcss';
 /* Inter, served with the app (the CSP allows no outside fonts). */
 @import '@fontsource-variable/inter';
+/* The landing's headings: a book serif, served the same way. */
+@import '@fontsource-variable/source-serif-4';
 
 /* Dark mode follows the .dark class that the theme script and mode-watcher put on <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
+/* The desktop shell, marked on <html> by app.html before anything paints (desktop:…). */
+@custom-variant desktop (&:where(.desktop, .desktop *));
 
 /* Design tokens. The brand: ink #111D4A and blue #2F5BEA from the Capriole logo. Light is «paper» (a warm
    ground, ink text, hairlines), dark is «ink» (a neutral near-black): flat surfaces, one accent. --primary
@@ -27,6 +31,8 @@
   --danger-background: #fdecea;
   --success: #12733d;
   --success-background: #e6f6ec;
+  /* The logo's ink: the landing's dark band, in both themes. */
+  --ink: #111d4a;
 }
 
 .dark {
@@ -50,6 +56,7 @@
 
 @theme {
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Source Serif 4 Variable', ui-serif, Georgia, serif;
   --radius-md: 0.5rem;
 }
 
@@ -70,6 +77,7 @@
   --color-danger-background: var(--danger-background);
   --color-success: var(--success);
   --color-success-background: var(--success-background);
+  --color-ink: var(--ink);
 }
 
 /* The desktop shell (app.html marks it): what the build rendered for the web only. Outside the layers, so
