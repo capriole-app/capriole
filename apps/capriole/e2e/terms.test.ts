@@ -13,7 +13,7 @@ const pdf = {
 };
 
 test('a file opens only once the terms of use are accepted, and they are asked once', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/it/');
   await expect(page.getByText(/motore Capriole \d+\.\d+\.\d+/)).toBeVisible();
   const choose = page.getByRole('button', { name: 'Scegli un PDF' });
   await expect(choose).toBeDisabled();

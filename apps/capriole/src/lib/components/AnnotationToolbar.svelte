@@ -1,6 +1,8 @@
 <script lang="ts">
   // The page shown large: back to the pages, the page before and after, its zoom and rotation, the tools
-  // that make annotations or edit the page's text, the colour of the next one, undo and save.
+  // that make annotations or edit the page's text, the colour of the next one, undo and save. On one line
+  // from 1440 px: below 1600 px «Pagine», «Adatta» and «Annulla» keep only their icon (and their name for
+  // screen readers).
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Circle from '@lucide/svelte/icons/circle';
@@ -25,17 +27,16 @@
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import BrandMark from './BrandMark.svelte';
   import MoreMenu from './MoreMenu.svelte';
+  import StyleMenu from './StyleMenu.svelte';
   import ZoomControl from './ZoomControl.svelte';
   import { pageRange } from '$lib/zoom';
-  import { fontSizes } from '$lib/settings.svelte';
   import { graphicSignatures, showPicture } from '$lib/graphic-signatures.svelte';
   import { graphicSignatureWords } from '$lib/i18n/graphicSignatures';
-  import { getEditor, type Rgb, type Tool } from '$lib/editor.svelte';
-  import { colors, css, sameColor } from '$lib/colors';
+  import { getEditor, type Tool } from '$lib/editor.svelte';
   import { tr } from '$lib/i18n/index.svelte';
   import { annotationToolbarWords } from '$lib/i18n/annotationToolbar';
   import { toolbarWords } from '$lib/i18n/toolbar';
-  import { barButton as button, pressed, primaryButton, separator } from '$lib/ui';
+  import { barButton as button, pressed, primaryButton, separator, toolButton } from '$lib/ui';
 
   const editor = getEditor();
   const t = $derived(tr(annotationToolbarWords));
@@ -63,15 +64,15 @@
     { tool: 'stamp', icon: Stamp },
   ];
   const tools = $derived(hasForm ? all : all.filter((t) => t.tool !== 'form'));
-  // The size of the next free text, or of the free text selected.
-  const selectedText = $derived(editor.annotation?.subtype === 'FreeText' ? editor.annotation : null);
+  /** A button's text that only the wide screens show. */
+  const wide = 'sr-only min-[1600px]:not-sr-only';
 </script>
 
-<header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-background px-4 py-2">
+<header class="flex flex-wrap items-center gap-x-2 gap-y-2 border-b bg-background px-3 py-2">
   <BrandMark label={t.about} />
-  <button type="button" class={button} onclick={() => editor.closeView()}>
+  <button type="button" class={button} title={t.pages} onclick={() => editor.closeView()}>
     <LayoutGrid class="size-4" />
-    {t.pages}
+    <span class={wide}>{t.pages}</span>
   </button>
   <div class="flex items-center gap-1">
     <button
@@ -119,14 +120,15 @@
   </div>
 
   <span class={separator} aria-hidden="true"></span>
-  <div class="flex flex-wrap items-center gap-1" role="toolbar" aria-label={t.tools}>
+  <div class="flex flex-wrap items-center gap-0.5" role="toolbar" aria-label={t.tools}>
     {#each tools as { tool, icon: Icon } (tool)}
       <button
         type="button"
-        class={[button, editor.tool === tool && pressed]}
+        class={[toolButton, editor.tool === tool && pressed]}
         aria-label={t[tool]}
         title={t[tool]}
         aria-pressed={editor.tool === tool}
+        data-tool={tool}
         onclick={() => (editor.tool = tool)}><Icon class="size-4" /></button
       >
     {/each}
@@ -158,41 +160,7 @@
   {/if}
 
   <span class={separator} aria-hidden="true"></span>
-  <div class="flex items-center gap-1" role="radiogroup" aria-label={t.color}>
-    {#each colors as { name, rgb } (name)}
-      <button
-        type="button"
-        role="radio"
-        aria-checked={sameColor(editor.color, rgb)}
-        aria-label={name}
-        title={name}
-        class={[
-          'size-6 rounded-full border-2',
-          sameColor(editor.color, rgb) ? 'border-foreground' : 'border-transparent',
-        ]}
-        style:background-color={css(rgb)}
-        onclick={() => (editor.color = [...rgb] as Rgb)}
-      ></button>
-    {/each}
-  </div>
-
-  <label class="flex items-center gap-1.5 text-sm" title={t.textSize}>
-    <Type class="size-4 text-muted-foreground" aria-hidden="true" />
-    <select
-      class="h-9 rounded-md border bg-card px-2 text-sm"
-      aria-label={t.textSize}
-      value={selectedText?.fontSize ? Math.round(selectedText.fontSize) : editor.fontSize}
-      onchange={(e) => {
-        const size = Number(e.currentTarget.value);
-        editor.fontSize = size;
-        if (selectedText?.ref) editor.changeAnnotation(selectedText.ref, { fontSize: size });
-      }}
-    >
-      {#each fontSizes as size (size)}
-        <option value={size}>{size} pt</option>
-      {/each}
-    </select>
-  </label>
+  <StyleMenu />
 
   {#if editor.redactionMarks.length > 0}
     <button
@@ -210,8 +178,12 @@
   {/if}
 
   <div class="ms-auto flex items-center gap-1">
-    <button type="button" class={button} disabled={!editor.canUndo || editor.busy} onclick={() => editor.undo()}
-      ><Undo2 class="size-4" /> {t.undo}</button
+    <button
+      type="button"
+      class={button}
+      title={t.undo}
+      disabled={!editor.canUndo || editor.busy}
+      onclick={() => editor.undo()}><Undo2 class="size-4" /> <span class={wide}>{t.undo}</span></button
     >
     <button type="button" class={[primaryButton, 'ms-1']} disabled={editor.busy} onclick={() => editor.save()}
       ><FileDown class="size-4" /> {t.save}</button

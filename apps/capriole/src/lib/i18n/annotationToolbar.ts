@@ -24,6 +24,7 @@ export const annotationToolbarWords = translations(
     sign: 'Firma (disegna il riquadro)',
     stamp: 'Firma grafica',
     color: 'Colore',
+    style: 'Colore e dimensione del testo',
     textSize: 'Dimensione del testo',
     redactConfirm: (n: number, signed: boolean) =>
       `Togliere dal file ciò che sta ${n === 1 ? 'nell’area segnata' : `nelle ${n} aree segnate`} di questa pagina?\n\n` +
@@ -58,6 +59,7 @@ export const annotationToolbarWords = translations(
       sign: 'Sign (draw its box)',
       stamp: 'Graphic signature',
       color: 'Colour',
+      style: 'Colour and text size',
       textSize: 'Text size',
       redactConfirm: (n: number, signed: boolean) =>
         `Remove from the file what lies ${n === 1 ? 'in the marked area' : `in the ${n} marked areas`} of this page?\n\n` +
@@ -91,6 +93,7 @@ export const annotationToolbarWords = translations(
       sign: 'Signer (tracez le cadre)',
       stamp: 'Signature graphique',
       color: 'Couleur',
+      style: 'Couleur et taille du texte',
       textSize: 'Taille du texte',
       redactConfirm: (n: number, signed: boolean) =>
         `Retirer du fichier ce qui se trouve ${n === 1 ? 'dans la zone marquée' : `dans les ${n} zones marquées`} de cette page ?\n\n` +
@@ -124,6 +127,7 @@ export const annotationToolbarWords = translations(
       sign: 'Signieren (Rahmen zeichnen)',
       stamp: 'Grafische Unterschrift',
       color: 'Farbe',
+      style: 'Farbe und Textgröße',
       textSize: 'Textgröße',
       redactConfirm: (n: number, signed: boolean) =>
         `Den Inhalt ${n === 1 ? 'des markierten Bereichs' : `der ${n} markierten Bereiche`} dieser Seite aus der Datei entfernen?\n\n` +
@@ -157,6 +161,7 @@ export const annotationToolbarWords = translations(
       sign: 'Firmar (dibuja el recuadro)',
       stamp: 'Firma gráfica',
       color: 'Color',
+      style: 'Color y tamaño del texto',
       textSize: 'Tamaño del texto',
       redactConfirm: (n: number, signed: boolean) =>
         `¿Quitar del archivo lo que está ${n === 1 ? 'en el área marcada' : `en las ${n} áreas marcadas`} de esta página?\n\n` +

@@ -1,15 +1,12 @@
 <script lang="ts">
-  // «Scarica l'app per il computer»: the desktop app's installers, from the latest GitHub release of the
-  // repository (scripts/build_release.sh names them without a version, so these links never change). Plain
-  // links: the page makes no request of its own (its CSP allows none to GitHub). Only in the web app.
+  // «Scarica l'app per il computer»: the desktop app's installers, from the latest release (lib/releases.ts).
+  // Only in the web app.
   import Download from '@lucide/svelte/icons/download';
   import { getEditor } from '$lib/editor.svelte';
   import { tr } from '$lib/i18n/index.svelte';
   import { downloadWords } from '$lib/i18n/download';
+  import { installers, latest, releases } from '$lib/releases';
   import { dialog, dialogFooter, dialogTitle, secondaryButton } from '$lib/ui';
-
-  const releases = 'https://github.com/capriole-app/capriole/releases';
-  const latest = (file: string) => `${releases}/latest/download/${file}`;
 
   const editor = getEditor();
   const t = $derived(tr(downloadWords));
@@ -54,14 +51,14 @@
 
     <section class="flex flex-col gap-2">
       <h3 class="font-medium">{t.windows}</h3>
-      {@render file(latest('Capriole_x64-setup.exe'), 'Capriole_x64-setup.exe', t.windowsFile)}
+      {@render file(latest(installers.windows), installers.windows, t.windowsFile)}
       <p class="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{t.unsigned}</p>
     </section>
 
     <section class="flex flex-col gap-2">
       <h3 class="font-medium">{t.linux}</h3>
-      {@render file(latest('Capriole_amd64.deb'), 'Capriole_amd64.deb', t.deb)}
-      {@render file(latest('Capriole_amd64.AppImage'), 'Capriole_amd64.AppImage', t.appImage)}
+      {@render file(latest(installers.deb), installers.deb, t.deb)}
+      {@render file(latest(installers.appImage), installers.appImage, t.appImage)}
     </section>
 
     <p class="text-xs">

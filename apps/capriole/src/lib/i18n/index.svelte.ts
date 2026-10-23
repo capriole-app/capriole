@@ -1,9 +1,9 @@
 // The languages of the interface. Each area of the app keeps its words in one file of this folder, all
 // languages side by side (`translations(it, { en, fr, de, es })`): Italian is the source, and the others
 // must have exactly its keys — a key missing or left over fails the type check, so the gate. Words that
-// depend on a number are functions. The language is the address's when it has one (/it/, /fr/…: a page
-// per language for search engines), else the person's choice when they made one (remembered here), else
-// the first of the system's languages that the app speaks, else English.
+// depend on a number are functions. The language is the address's: /it/, /fr/… (a page per language for
+// search engines), and / in English. The person's choice from the menu is remembered here, and takes them
+// to its page (routes/+layout.svelte).
 //
 // The engine's messages (errors, repairs) are in English and stay so.
 
@@ -47,27 +47,18 @@ export function isLocale(value: unknown): value is Locale {
   return typeof value === 'string' && (locales as readonly string[]).includes(value);
 }
 
-/** The language a list of BCP 47 tags (navigator.languages) asks for, among those the app speaks. */
-export function preferred(tags: readonly string[]): Locale {
-  for (const tag of tags) {
-    const primary = tag.toLowerCase().split('-')[0];
-    if (isLocale(primary)) return primary;
-  }
-  return 'en';
-}
-
-function initial(): Locale {
+/** The language the person chose from the menu before, if any (kept on this device). */
+export function remembered(): Locale | null {
   try {
     const stored = localStorage.getItem(storageKey);
-    if (isLocale(stored)) return stored;
+    return isLocale(stored) ? stored : null;
   } catch {
-    // no storage: the system's language
+    return null; // no storage (or the build, which has none)
   }
-  if (typeof navigator === 'undefined') return 'en';
-  return preferred(navigator.languages?.length ? navigator.languages : [navigator.language]);
 }
 
-let current = $state<Locale>(initial());
+// English until the page's address says otherwise (+page.ts): / is English, /it/ Italian…
+let current = $state<Locale>('en');
 
 function apply(locale: Locale): void {
   if (typeof document !== 'undefined') document.documentElement.lang = locale;

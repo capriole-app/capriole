@@ -76,6 +76,7 @@ test('annotates a page: highlight, note, rectangle; moves, deletes, undoes, save
   await expect(list).toContainText('Nota — Ciao');
 
   // A rectangle in blue, then moved 20 points right with the selection tool.
+  await page.getByTestId('style-menu').click();
   await page.getByRole('radio', { name: 'Blu' }).first().click();
   await page.getByRole('button', { name: 'Rettangolo' }).click();
   await dragOnPage(page, [50, 250], [150, 320]);

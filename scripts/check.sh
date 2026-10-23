@@ -121,6 +121,7 @@ fi
 if [[ "${SKIP_DESKTOP:-1}" != 1 ]]; then
   [[ "$SKIP_WASM" != 1 ]] || die "SKIP_DESKTOP=0 needs SKIP_WASM=0: the shell compiles in the web app's build"
   step "Desktop shell (apps/desktop): cargo clippy, cargo test"
+  node apps/desktop/scripts/frontend.mjs  # the web app it compiles in, without the landing's images
   command -v cargo >/dev/null || [[ -x "$HOME/.cargo/bin/cargo" ]] || die "cargo not found — see docs/SETUP.md (rustup)"
   (
     export PATH="$HOME/.cargo/bin:$PATH"
