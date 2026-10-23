@@ -18,35 +18,35 @@ const firstScreen = [
     lang: 'it',
     choose: 'Scegli un PDF',
     about: 'Informazioni e licenze',
-    title: 'Capriole — editor PDF nel browser',
+    title: 'Capriole · Modificare PDF online gratis, anche il testo',
   },
   {
     locale: 'en-US',
     lang: 'en',
     choose: 'Choose a PDF',
     about: 'About and licences',
-    title: 'Capriole — PDF editor in your browser',
+    title: 'Capriole · Edit PDFs online for free, text included',
   },
   {
     locale: 'fr-FR',
     lang: 'fr',
     choose: 'Choisir un PDF',
     about: 'À propos et licences',
-    title: 'Capriole — éditeur PDF dans le navigateur',
+    title: 'Capriole · Modifier un PDF en ligne gratuitement, texte compris',
   },
   {
     locale: 'de-DE',
     lang: 'de',
     choose: 'PDF auswählen',
     about: 'Info und Lizenzen',
-    title: 'Capriole — PDF-Editor im Browser',
+    title: 'Capriole · PDF online kostenlos bearbeiten, auch den Text',
   },
   {
     locale: 'es-ES',
     lang: 'es',
     choose: 'Elegir un PDF',
     about: 'Información y licencias',
-    title: 'Capriole — editor de PDF en el navegador',
+    title: 'Capriole · Editar PDF en línea gratis, también el texto',
   },
 ];
 
@@ -84,7 +84,7 @@ test.describe('a choice', () => {
     await deutsch.click();
     await expect(page.getByRole('button', { name: 'PDF auswählen' })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
-    await expect(page).toHaveTitle('Capriole — PDF-Editor im Browser');
+    await expect(page).toHaveTitle('Capriole · PDF online kostenlos bearbeiten, auch den Text');
     await expect(page).toHaveURL(/\/de\/$/);
 
     // Remembered: / takes the person to its page.
@@ -152,7 +152,7 @@ test.describe('«About»', () => {
 // language, with the other languages' pages; / for the others (x-default), in English.
 const origin = 'https://capriole.app';
 const pages = [
-  { path: '/', lang: 'en', canonical: `${origin}/`, title: 'Capriole — PDF editor in your browser' },
+  { path: '/', lang: 'en', canonical: `${origin}/`, title: 'Capriole · Edit PDFs online for free, text included' },
   ...firstScreen.map(({ lang, title }) => ({ path: `/${lang}/`, lang, canonical: `${origin}/${lang}/`, title })),
 ];
 
@@ -181,7 +181,7 @@ test.describe('a language page', () => {
     await page.goto('/it/');
     await expect(page.getByRole('button', { name: 'Scegli un PDF' })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'it');
-    await expect(page).toHaveTitle('Capriole — editor PDF nel browser');
+    await expect(page).toHaveTitle('Capriole · Modificare PDF online gratis, anche il testo');
     expect(await page.evaluate(() => localStorage.getItem('capriole.locale'))).toBe('fr');
 
     await page.goto('/');

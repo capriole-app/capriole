@@ -1,7 +1,8 @@
 // The Content-Security-Policy of the web app as served (deploy/web): its inline scripts — the theme's,
 // applied before the first paint (src/app.html), and SvelteKit's start — allowed by their hashes,
-// read from the built pages, so that a hash can never be stale. The engine needs 'wasm-unsafe-eval'
-// (WebAssembly) and its worker; nothing is fetched from elsewhere.
+// read from the built pages, so that a hash can never be stale. Data blocks (the JSON-LD for search
+// engines, type="application/ld+json") are never run, and the policy does not apply to them: no hash.
+// The engine needs 'wasm-unsafe-eval' (WebAssembly) and its worker; nothing is fetched from elsewhere.
 //
 //   node deploy/web/csp.mjs <build dir>   → prints the Caddy line (header Content-Security-Policy "…")
 import { createHash } from 'node:crypto';
@@ -20,11 +21,17 @@ function pages(dir) {
   );
 }
 
+/** A script the browser runs: no type, or a JavaScript one (a module included); any other type is data. */
+function runs(attributes) {
+  const type = /\stype\s*=\s*["']?([^"'\s>]+)/i.exec(attributes)?.[1]?.toLowerCase();
+  return type === undefined || type === 'module' || type === 'text/javascript' || type === 'application/javascript';
+}
+
 const hashes = new Set();
 for (const page of pages(root)) {
   const html = readFileSync(page, 'utf8');
   for (const [, attributes, body] of html.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/g)) {
-    if (/\ssrc\s*=/.test(attributes ?? '') || body.trim() === '') continue;
+    if (/\ssrc\s*=/.test(attributes ?? '') || body.trim() === '' || !runs(attributes ?? '')) continue;
     hashes.add(`'sha256-${createHash('sha256').update(body).digest('base64')}'`);
   }
 }
