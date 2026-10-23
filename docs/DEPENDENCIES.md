@@ -86,7 +86,9 @@ long-term signature: PLAN.md 11c).
 
 `apps/capriole` serves the interface's font itself (the CSP allows no outside fonts): Inter, from
 `@fontsource-variable/inter` 5.3.0 (OFL-1.1, the variable font in woff2, no code; listed in «Informazioni e
-licenze», which `licenses.mjs` builds from the bundle's code and files).
+licenze», which `licenses.mjs` builds from the bundle's code and files). The landing's headings: Source Serif 4,
+from `@fontsource-variable/source-serif-4` 5.3.0 (OFL-1.1, the same way; the weight axis only, ~50 KB for the
+Latin subset, the others fetched only for their characters).
 
 ## Desktop shell (`apps/desktop`, PLAN.md 8c, ADR 0008)
 
