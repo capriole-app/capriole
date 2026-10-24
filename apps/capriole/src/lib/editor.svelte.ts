@@ -323,6 +323,21 @@ export class Editor {
     if (picked) await this.open(picked);
   }
 
+  /** Another file in place of the open one (OpenButton): chosen first, so that giving up keeps this one. */
+  async replace(source: PickedFile): Promise<void> {
+    await this.close();
+    await this.open(source);
+  }
+
+  /** The same, from the system's dialog. */
+  async replaceFromDialog(): Promise<void> {
+    const picked = await pickPdf().catch((error: unknown) => {
+      this.error = describe(error);
+      return null;
+    });
+    if (picked) await this.replace(picked);
+  }
+
   async open(source: PickedFile, password = ''): Promise<void> {
     this.#source = source;
     this.#password = password;
