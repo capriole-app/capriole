@@ -18,6 +18,7 @@
   import X from '@lucide/svelte/icons/x';
   import BrandMark from './BrandMark.svelte';
   import MoreMenu from './MoreMenu.svelte';
+  import OpenButton from './OpenButton.svelte';
   import ZoomControl from './ZoomControl.svelte';
   import { gridRange } from '$lib/zoom';
   import { getEditor } from '$lib/editor.svelte';
@@ -36,6 +37,7 @@
 
 <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-background px-4 py-2">
   <BrandMark label={t.about} />
+  <OpenButton text="sr-only min-[1900px]:not-sr-only" />
   <div class="me-2 min-w-0 flex-1">
     <p class="truncate text-sm font-medium" title={editor.name ?? ''}>
       {editor.name}{#if editor.modified}<span class="text-emphasis"> •</span>{/if}

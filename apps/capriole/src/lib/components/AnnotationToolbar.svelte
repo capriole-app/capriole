@@ -27,6 +27,7 @@
   import Undo2 from '@lucide/svelte/icons/undo-2';
   import BrandMark from './BrandMark.svelte';
   import MoreMenu from './MoreMenu.svelte';
+  import OpenButton from './OpenButton.svelte';
   import StyleMenu from './StyleMenu.svelte';
   import ZoomControl from './ZoomControl.svelte';
   import { pageRange } from '$lib/zoom';
@@ -68,8 +69,9 @@
   const wide = 'sr-only min-[1600px]:not-sr-only';
 </script>
 
-<header class="flex flex-wrap items-center gap-x-2 gap-y-2 border-b bg-background px-3 py-2">
+<header class="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-b bg-background px-3 py-2">
   <BrandMark label={t.about} />
+  <OpenButton text="sr-only min-[1900px]:not-sr-only" />
   <button type="button" class={button} title={t.pages} onclick={() => editor.closeView()}>
     <LayoutGrid class="size-4" />
     <span class={wide}>{t.pages}</span>
