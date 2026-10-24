@@ -2,13 +2,13 @@
 # on port 8080, plain HTTP; put it behind the proxy that terminates TLS for your domain. Documents are never
 # sent to it: the engine runs in the browser.
 #
-#   CAPRIOLE_VERSION=0.4.0 docker compose up -d     # then http://localhost:8080
+#   CAPRIOLE_VERSION=0.4.1 docker compose up -d     # then http://localhost:8080
 name: capriole
 
 services:
   web:
     # The image capriole.app runs, tagged with the release's version.
-    image: 'ghcr.io/capriole-app/capriole-web:${CAPRIOLE_VERSION:?set CAPRIOLE_VERSION, e.g. 0.4.0}'
+    image: 'ghcr.io/capriole-app/capriole-web:${CAPRIOLE_VERSION:?set CAPRIOLE_VERSION, e.g. 0.4.1}'
     restart: unless-stopped
     ports:
       - '127.0.0.1:8080:8080'
