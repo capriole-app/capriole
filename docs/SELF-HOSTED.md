@@ -18,7 +18,7 @@ read-only, has no Linux capabilities and can regain no privileges:
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/capriole-app/capriole/main/deploy/self-hosted/docker-compose.yml
-CAPRIOLE_VERSION=0.4.0 docker compose up -d
+CAPRIOLE_VERSION=0.4.1 docker compose up -d
 curl -sI http://localhost:8080/ | grep -i content-security-policy   # the app's policy is there
 ```
 
