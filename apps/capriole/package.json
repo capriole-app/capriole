@@ -1,6 +1,6 @@
 {
   "name": "@capriole/app",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Capriole: PDF pages in the browser — open, reorder, rotate, delete, merge, extract (WebAssembly, nothing leaves the device).",
   "license": "0BSD",
