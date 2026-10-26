@@ -50,9 +50,10 @@
   }
 </script>
 
+<!-- On a phone, less margin: two columns at 360 px. -->
 <div
   bind:this={grid}
-  class="grid grid-cols-[repeat(auto-fill,minmax(var(--column),1fr))] gap-x-4 gap-y-6 p-8"
+  class="grid grid-cols-[repeat(auto-fill,minmax(var(--column),1fr))] gap-x-4 gap-y-6 p-8 max-md:gap-x-3 max-md:p-3"
   style:--column="{(10 * editor.gridZoom) / 100}rem"
   {@attach wheelZoom}
   role="list"

@@ -153,6 +153,8 @@ test('«Apri» puts another file in place of the open one; unsaved changes are a
   // Accepted, from the page shown large and with Ctrl+O: the new file, with nothing of the old one.
   await pages.nth(0).dblclick();
   await expect(page.getByTestId('page-sheet')).toBeVisible();
+  // The page's annotations read first: while the editor is busy, «Apri» (and Ctrl+O) waits.
+  await expect(page.getByTestId('open-another')).toBeEnabled();
   page.once('dialog', (dialog) => void dialog.accept());
   chooser = page.waitForEvent('filechooser');
   await page.keyboard.press('ControlOrMeta+o');

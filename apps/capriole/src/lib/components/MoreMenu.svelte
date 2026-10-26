@@ -1,6 +1,8 @@
 <script lang="ts">
   // The bar's «More» (⋯): what is not about the document — the settings, «Segnala un problema» (only in the
   // web app, as ReportButton), the language and the theme. The first screen keeps them as buttons of their own.
+  // On a phone, first, the bar's commands that do not fit in it (`phone`: menu items).
+  import type { Snippet } from 'svelte';
   import Ellipsis from '@lucide/svelte/icons/ellipsis';
   import MessageSquareWarning from '@lucide/svelte/icons/message-square-warning';
   import Settings from '@lucide/svelte/icons/settings';
@@ -14,6 +16,7 @@
   import { settingsWords } from '$lib/i18n/settings';
   import { barButton, menu, menuItem, menuLabel, pressed } from '$lib/ui';
 
+  let { phone }: { phone?: Snippet } = $props();
   const editor = getEditor();
   const t = $derived(tr(menusWords));
   const ts = $derived(tr(settingsWords));
@@ -40,7 +43,13 @@
     <Ellipsis class="size-4" />
   </button>
   {#if open}
-    <div role="menu" class={[menu, 'w-56']}>
+    <div role="menu" class={[menu, 'w-56 max-md:max-h-[calc(100dvh-8rem)] max-md:overflow-y-auto']}>
+      {#if phone}
+        <div class="md:hidden" data-testid="more-phone">
+          {@render phone()}
+          <div role="separator" class="my-1 h-px bg-border"></div>
+        </div>
+      {/if}
       <button type="button" role="menuitem" class={menuItem} onclick={() => (editor.settingsOpen = true)}>
         <Settings class="size-4 text-muted-foreground" />
         {ts.open}

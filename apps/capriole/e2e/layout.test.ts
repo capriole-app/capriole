@@ -34,9 +34,10 @@ for (const lang of ['it', 'en', 'fr', 'de', 'es']) {
     await expect(page.getByTestId('style-menu')).toBeVisible();
     // One line of 36 px buttons, and room left for the form's tool (a document with fields has it).
     expect((await bar.boundingBox())!.height).toBeLessThan(60);
+    // From the colour's menu, the last of the tools, to undo and save.
     const room = await bar.evaluate((header) => {
-      const [before, last] = [...header.children].slice(-2).map((e) => e.getBoundingClientRect());
-      return last.left - before.right;
+      const before = header.querySelector('[data-testid=style-menu]')!.getBoundingClientRect();
+      return header.lastElementChild!.getBoundingClientRect().left - before.right;
     });
     expect(room).toBeGreaterThan(32 + 2 + 8);
   });

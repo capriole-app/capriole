@@ -20,6 +20,16 @@ export const primaryButton =
 export const secondaryButton =
   'flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-card px-4 text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50';
 
+/**
+ * On a phone (below md): the commands of a bar along the bottom of the screen, in reach of the thumb, on one
+ * line (EditorApp leaves its height free under the page). From md up, `contents`: the commands stay in their bar.
+ */
+export const bottomBar =
+  'contents max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:z-10 max-md:flex max-md:h-14 max-md:items-center max-md:gap-1 max-md:border-t max-md:bg-background max-md:px-2';
+
+/** The part of the bottom bar that scrolls sideways when it does not fit (nothing in it opens a menu). */
+export const bottomScroll = 'max-md:flex max-md:min-w-0 max-md:flex-1 max-md:flex-nowrap max-md:overflow-x-auto';
+
 /** The thin line between a bar's groups. */
 export const separator = 'mx-1 h-5 w-px shrink-0 bg-border';
 
