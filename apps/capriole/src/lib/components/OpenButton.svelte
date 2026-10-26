@@ -1,7 +1,8 @@
 <script lang="ts">
   // «Apri» in the bars (Toolbar, AnnotationToolbar), and Ctrl/Cmd+O: another PDF in place of the open one.
   // The file is chosen first, so that giving up keeps the document as it is; unsaved changes are asked
-  // about before the choice, with the words of the bar's ✕.
+  // about before the choice, with the words of the bar's ✕. On a phone the button is in the bar's ⋯, which
+  // calls choose() (the file's input stays here, in the bar: the menu closes before the file is chosen).
   import FolderOpen from '@lucide/svelte/icons/folder-open';
   import { getEditor } from '$lib/editor.svelte';
   import { choosesWhere, fromBrowser } from '$lib/platform';
@@ -9,13 +10,20 @@
   import { toolbarWords } from '$lib/i18n/toolbar';
   import { barButton } from '$lib/ui';
 
-  /** The class of the button's text: shown only where the bar has room for it. */
-  let { text }: { text: string } = $props();
+  let {
+    text,
+    class: extra = '',
+  }: {
+    /** The class of the button's text: shown only where the bar has room for it. */
+    text: string;
+    /** The button's own: where it is hidden. */
+    class?: string;
+  } = $props();
   const editor = getEditor();
   const t = $derived(tr(toolbarWords));
   let input: HTMLInputElement | undefined = $state();
 
-  function choose(): void {
+  export function choose(): void {
     if (editor.busy || (editor.modified && !confirm(t.closeUnsaved))) return;
     if (choosesWhere) void editor.replaceFromDialog();
     else input?.click();
@@ -33,7 +41,7 @@
 
 <button
   type="button"
-  class={barButton}
+  class={[barButton, extra]}
   disabled={editor.busy}
   title={t.openTitle}
   data-testid="open-another"
