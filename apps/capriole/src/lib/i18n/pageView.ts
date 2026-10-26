@@ -15,6 +15,7 @@ export const pageViewWords = translations(
               : 'disegna'
       }`,
     annotations: 'Annotazioni',
+    closeDetails: 'Chiudi i dettagli',
     objectHelp:
       'Trascinalo per spostarlo, o da un angolo per cambiarne la misura; Canc per eliminarlo. Si cambia solo l’oggetto: il resto della pagina resta com’è.',
     delete: 'Elimina',
@@ -83,6 +84,7 @@ export const pageViewWords = translations(
                 : 'draw'
         }`,
       annotations: 'Annotations',
+      closeDetails: 'Close the details',
       objectHelp:
         'Drag it to move it, or by a corner to resize it; Delete removes it. Only the object changes: the rest of the page stays as it is.',
       delete: 'Delete',
@@ -150,6 +152,7 @@ export const pageViewWords = translations(
                 : 'dessinez'
         }`,
       annotations: 'Annotations',
+      closeDetails: 'Fermer les détails',
       objectHelp:
         'Faites-le glisser pour le déplacer, ou par un coin pour le redimensionner ; Suppr pour le supprimer. Seul l’objet change : le reste de la page reste tel quel.',
       delete: 'Supprimer',
@@ -217,6 +220,7 @@ export const pageViewWords = translations(
                 : 'zeichnen'
         }`,
       annotations: 'Anmerkungen',
+      closeDetails: 'Details schließen',
       objectHelp:
         'Ziehen, um es zu verschieben, oder an einer Ecke, um die Größe zu ändern; Entf löscht es. Nur das Objekt ändert sich: Der Rest der Seite bleibt, wie er ist.',
       delete: 'Löschen',
@@ -284,6 +288,7 @@ export const pageViewWords = translations(
                 : 'dibuja'
         }`,
       annotations: 'Anotaciones',
+      closeDetails: 'Cerrar los detalles',
       objectHelp:
         'Arrástralo para moverlo, o desde una esquina para cambiar su tamaño; Supr para eliminarlo. Solo cambia el objeto: el resto de la página se queda como está.',
       delete: 'Eliminar',

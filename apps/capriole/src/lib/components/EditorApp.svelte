@@ -113,7 +113,8 @@
 <SettingsDialog />
 
 {#if editor.name}
-  <div class="flex h-dvh flex-col">
+  <!-- On a phone, the bars' commands along the bottom (ui.ts bottomBar): their height left free. -->
+  <div class="flex h-dvh flex-col max-md:pb-14">
     {#if editor.viewing !== null}
       <AnnotationToolbar />
     {:else}

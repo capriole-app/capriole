@@ -3,7 +3,10 @@
   // coordinates (points as shown — those of the text and of the annotations the engine lists) where the
   // pointer makes annotations with the tool chosen, or selects and moves them, or writes a line of the
   // page's own text again (edittext: a double click on a line, or on a paragraph laid out anew). Beside it, the selected
-  // annotation (its text, colour, removal) and the list of the page's annotations (the keyboard's way).
+  // annotation (its text, colour, removal) and the list of the page's annotations (the keyboard's way). On a
+  // phone those details are under the page, closed: they open by themselves with something to edit in them
+  // (and close with it, unless opened by hand from ⋯), and with their ✕.
+  import X from '@lucide/svelte/icons/x';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import FontsSection from './FontsSection.svelte';
   import FormLayer from './FormLayer.svelte';
@@ -11,7 +14,7 @@
   import ParagraphEditor from './ParagraphEditor.svelte';
   import TextBoxEditor from './TextBoxEditor.svelte';
   import type { AnnotationInfo, FieldInfo, PageRaster, PageText } from '@capriole/engine-client';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { colors, css, sameColor } from '$lib/colors';
   import { getEditor, type Rgb, type Tool } from '$lib/editor.svelte';
   import { lineAt, paragraphAt } from '$lib/textedit';
@@ -26,6 +29,22 @@
   const t = $derived(tr(pageViewWords));
   const g = $derived(tr(graphicSignatureWords));
   const index = $derived(editor.viewing ?? 0);
+
+  const toEdit = $derived(
+    editor.annotation !== null || editor.object !== null || editor.noRoom !== null || editor.textNotice !== null,
+  );
+  let openedByItself = false;
+  $effect(() => {
+    if (toEdit) {
+      if (!untrack(() => editor.detailsOpen)) {
+        editor.detailsOpen = true;
+        openedByItself = true;
+      }
+    } else if (openedByItself) {
+      editor.detailsOpen = false;
+      openedByItself = false;
+    }
+  });
 
   // The text gives the page's size as shown, the words that text markup goes on and the lines edittext
   // writes again — in the content's order, or as laid out for edittext (as the engine groups lines: text
@@ -85,7 +104,7 @@
     !page
       ? '100%'
       : editor.pageZoom === 'fit'
-        ? `min(100%, calc((100dvh - 7.5rem) * ${page.width / page.height}))`
+        ? `min(100%, calc((100dvh - var(--bars)) * ${page.width / page.height}))`
         : `${(page.width * pixelsPerPoint * editor.pageZoom) / 100}px`,
   );
 
@@ -481,6 +500,17 @@
         ? 'text'
         : 'crosshair',
   );
+  /**
+   * Where a finger may scroll the page (zoomed in, on a phone): selecting with nothing selected, writing the
+   * page's text, filling the form. Something selected is moved by the finger; the other tools draw with it.
+   */
+  const touch = $derived(
+    (editor.tool === 'select' && editor.annotation === null && editor.object === null) ||
+      editor.tool === 'edittext' ||
+      editor.tool === 'form'
+      ? 'pan-x pan-y'
+      : 'none',
+  );
 </script>
 
 <svelte:window
@@ -500,8 +530,12 @@
   }}
 />
 
-<div class="flex min-h-0 flex-1">
-  <main class="min-w-0 flex-1 overflow-auto bg-muted p-6" {@attach wheelZoom}>
+<div class="flex min-h-0 flex-1 max-md:flex-col">
+  <!-- --bars: the height the bars and the margins take, for the page fitted (on a phone, a bar at the bottom too). -->
+  <main
+    class="min-h-0 min-w-0 flex-1 overflow-auto bg-muted p-6 [--bars:7.5rem] max-md:p-2 max-md:[--bars:8.5rem]"
+    {@attach wheelZoom}
+  >
     {#if failure}
       <p class="rounded-md bg-danger-background px-3 py-2 text-sm text-danger" role="alert">{failure}</p>
     {:else if !page}
@@ -524,8 +558,9 @@
         <canvas {@attach paint} class="absolute inset-0 size-full" aria-hidden="true"></canvas>
         <svg
           viewBox="0 0 {page.width} {page.height}"
-          class="absolute inset-0 size-full touch-none select-none"
+          class="absolute inset-0 size-full select-none"
           style:cursor
+          style:touch-action={touch}
           role="application"
           aria-label={t.surface(
             index + 1,
@@ -742,9 +777,24 @@
   </main>
 
   <aside
-    class="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm"
+    class={[
+      'flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm',
+      'max-md:max-h-[45dvh] max-md:w-full max-md:border-s-0 max-md:border-t',
+      !editor.detailsOpen && 'max-md:hidden',
+    ]}
     aria-label={t.annotations}
+    data-testid="page-details"
   >
+    <button
+      type="button"
+      class="-mb-3 self-end rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+      aria-label={t.closeDetails}
+      title={t.closeDetails}
+      onclick={() => {
+        editor.detailsOpen = false;
+        openedByItself = false;
+      }}><X class="size-4" /></button
+    >
     {#if editor.tool === 'select' && editor.object && !editor.annotation}
       {@const o = editor.object}
       <section class="flex flex-col gap-3" data-testid="object-panel">

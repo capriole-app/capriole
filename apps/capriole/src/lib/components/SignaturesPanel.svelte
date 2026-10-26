@@ -33,7 +33,7 @@
 </script>
 
 <aside
-  class="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm"
+  class="flex w-80 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm max-md:fixed max-md:inset-0 max-md:z-30 max-md:w-auto"
   aria-label={t.title}
   data-testid="signatures-panel"
 >

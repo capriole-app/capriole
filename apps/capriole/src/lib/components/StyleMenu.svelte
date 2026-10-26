@@ -1,6 +1,7 @@
 <script lang="ts">
   // The colour of the next annotation and the size of the next free text (or of the free text selected),
   // in a menu under one button that shows the colour: the page's bar stays on one line at 1440 px.
+  // On a phone the button is at the end of the bar along the bottom: the menu opens above it.
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import { fontSizes } from '$lib/settings.svelte';
   import { getEditor, type Rgb } from '$lib/editor.svelte';
@@ -42,7 +43,7 @@
       role="dialog"
       tabindex="-1"
       aria-label={t.style}
-      class="absolute start-0 z-20 mt-1 w-max rounded-lg border bg-card p-2 shadow-lg"
+      class="absolute start-0 z-20 mt-1 w-max rounded-lg border bg-card p-2 shadow-lg max-md:start-auto max-md:end-0 max-md:bottom-full max-md:mt-0 max-md:mb-1"
       onclick={(e) => e.stopPropagation()}
     >
       <p class={menuLabel}>{t.color}</p>
