@@ -5,13 +5,20 @@ import { expect, test, type Page } from '@playwright/test';
 
 test.use({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true });
 
-/** `n` A4 pages with nothing on them. */
-function pdf(n: number): Buffer {
+/** `n` A4 pages with nothing on them but, on the first, `links` links. */
+function pdf(n: number, links = 0): Buffer {
   const kids = Array.from({ length: n }, (_, i) => `${3 + i} 0 R`).join(' ');
   const bodies = [
     '<</Type/Catalog/Pages 2 0 R>>',
     `<</Type/Pages/Kids[${kids}]/Count ${n}/MediaBox[0 0 595 842]>>`,
-    ...Array.from({ length: n }, () => '<</Type/Page/Parent 2 0 R>>'),
+    ...Array.from({ length: n }, (_, i) => {
+      const annots = Array.from(
+        { length: i === 0 ? links : 0 },
+        (_, k) =>
+          `<</Type/Annot/Subtype/Link/Rect[50 ${800 - 20 * k} 150 ${815 - 20 * k}]/A<</S/URI/URI(https://example.com/${k})>>>>`,
+      ).join('');
+      return `<</Type/Page/Parent 2 0 R${annots ? `/Annots[${annots}]` : ''}>>`;
+    }),
   ];
   let text = '%PDF-1.7\n';
   const offsets: number[] = [];
@@ -26,9 +33,11 @@ function pdf(n: number): Buffer {
   return Buffer.from(text, 'latin1');
 }
 
-async function open(page: Page, lang = 'it') {
+async function open(page: Page, lang = 'it', links = 0) {
   await page.goto(`/${lang}/`);
-  await page.getByTestId('open-file').setInputFiles({ name: 'a.pdf', mimeType: 'application/pdf', buffer: pdf(3) });
+  await page
+    .getByTestId('open-file')
+    .setInputFiles({ name: 'a.pdf', mimeType: 'application/pdf', buffer: pdf(3, links) });
   await expect(page.getByTestId('page')).toHaveCount(3);
 }
 
@@ -60,7 +69,7 @@ test('the pages: one line on top, the actions along the bottom, the rest in ⋯'
 });
 
 test('a page: as wide as the screen, its details under it when there is something to edit', async ({ page }) => {
-  await open(page, 'de');
+  await open(page, 'de', 30);
   await page.getByTestId('page').first().dblclick();
   const sheet = page.getByTestId('page-sheet');
   await expect(sheet).toBeVisible();
@@ -76,6 +85,8 @@ test('a page: as wide as the screen, its details under it when there is somethin
   await page.getByTestId('page-surface').tap({ position: { x: box.width / 2, y: box.height / 3 } });
   await expect(details).toBeVisible();
   await expect(details.locator('textarea')).toBeVisible();
+  // Only what there is to edit: not the page's 30 links.
+  await expect(details.getByTestId('annotation-lists')).toBeHidden();
   await details.getByRole('button', { name: 'Details schließen' }).tap();
   await expect(details).toBeHidden();
 
@@ -84,6 +95,13 @@ test('a page: as wide as the screen, its details under it when there is somethin
   await page.getByTestId('open-details').tap();
   await expect(details).toBeVisible();
   await expect(details.getByTestId('annotation-list')).toBeVisible();
+  // The links folded in one line, open on a tap.
+  const folded = details.getByTestId('link-list');
+  await expect(folded.locator('summary')).toHaveText('30 Links');
+  await expect(folded.getByRole('button').first()).toBeHidden();
+  await folded.locator('summary').tap();
+  await expect(folded.getByRole('button')).toHaveCount(30);
+  await folded.locator('summary').tap();
 
   // The colour's menu opens above its button, at the bottom.
   await page.getByTestId('style-menu').tap();

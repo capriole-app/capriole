@@ -179,8 +179,9 @@ export class Editor {
   /** The document's signatures, verified; their panel beside the pages. */
   signatures = $state.raw<SignatureInfo[]>([]);
   signaturesOpen = $state(false);
-  /** On a phone: the page's details (beside the page on a wider screen) open under it. */
-  detailsOpen = $state(false);
+  /** On a phone: the page's details (beside the page on a wider screen) open under it; 'edit': opened by
+   * themselves, with something to edit, they show only that. */
+  detailsOpen: boolean | 'edit' = $state(false);
   /** The signature being made (the dialog is open); null: none. */
   signRequest = $state.raw<SignRequest | null>(null);
   /** After a signature with a card for the long term: what could not be answered (null: none asked). */
