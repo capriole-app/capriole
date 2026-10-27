@@ -21,6 +21,7 @@ export const pageViewWords = translations(
     delete: 'Elimina',
     text: 'Testo',
     comment: 'Commento',
+    commentAndColor: 'Commento e colore',
     annotationColor: "Colore dell'annotazione",
     helpParagraph:
       'Doppio clic su un paragrafo per riscriverlo: il testo va a capo dentro il paragrafo, con i suoi margini e il suo allineamento; il resto della pagina non si sposta. Gli stili (grassetto, corsivo, colori) restano sulle parole che non cambi; una parola che ne sostituisce un’altra ne prende lo stile, una aggiunta quello della parola prima. Ctrl+Invio per scrivere, Esc per lasciarlo com’era.',
@@ -91,6 +92,7 @@ export const pageViewWords = translations(
       delete: 'Delete',
       text: 'Text',
       comment: 'Comment',
+      commentAndColor: 'Comment and colour',
       annotationColor: 'Colour of the annotation',
       helpParagraph:
         'Double-click a paragraph to rewrite it: the text wraps inside the paragraph, with its margins and alignment; the rest of the page does not move. Styles (bold, italic, colours) stay on the words you do not change; a word that replaces another takes its style, an added one that of the word before. Ctrl+Enter to write it, Esc to leave it as it was.',
@@ -160,6 +162,7 @@ export const pageViewWords = translations(
       delete: 'Supprimer',
       text: 'Texte',
       comment: 'Commentaire',
+      commentAndColor: 'Commentaire et couleur',
       annotationColor: 'Couleur de l’annotation',
       helpParagraph:
         'Double-cliquez sur un paragraphe pour le réécrire : le texte revient à la ligne dans le paragraphe, avec ses marges et son alignement ; le reste de la page ne bouge pas. Les styles (gras, italique, couleurs) restent sur les mots que vous ne changez pas ; un mot qui en remplace un autre prend son style, un mot ajouté celui du mot précédent. Ctrl+Entrée pour l’écrire, Échap pour le laisser tel quel.',
@@ -229,6 +232,7 @@ export const pageViewWords = translations(
       delete: 'Löschen',
       text: 'Text',
       comment: 'Kommentar',
+      commentAndColor: 'Kommentar und Farbe',
       annotationColor: 'Farbe der Anmerkung',
       helpParagraph:
         'Doppelklick auf einen Absatz, um ihn neu zu schreiben: Der Text wird innerhalb des Absatzes umbrochen, mit seinen Rändern und seiner Ausrichtung; der Rest der Seite verschiebt sich nicht. Stile (fett, kursiv, Farben) bleiben auf den Wörtern, die Sie nicht ändern; ein Wort, das ein anderes ersetzt, übernimmt dessen Stil, ein hinzugefügtes den des vorherigen Wortes. Strg+Eingabe zum Schreiben, Esc lässt ihn unverändert.',
@@ -298,6 +302,7 @@ export const pageViewWords = translations(
       delete: 'Eliminar',
       text: 'Texto',
       comment: 'Comentario',
+      commentAndColor: 'Comentario y color',
       annotationColor: 'Color de la anotación',
       helpParagraph:
         'Doble clic en un párrafo para reescribirlo: el texto se ajusta dentro del párrafo, con sus márgenes y su alineación; el resto de la página no se mueve. Los estilos (negrita, cursiva, colores) se quedan en las palabras que no cambias; una palabra que sustituye a otra toma su estilo, una añadida el de la palabra anterior. Ctrl+Intro para escribirlo, Esc para dejarlo como estaba.',
