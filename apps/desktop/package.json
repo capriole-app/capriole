@@ -1,6 +1,6 @@
 {
   "name": "@capriole/desktop",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "description": "Capriole desktop: the web app (apps/capriole) in a Tauri shell, with the system's file dialogs.",
   "license": "0BSD",
