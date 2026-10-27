@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "capriole-desktop"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "cryptoki",
  "serde",

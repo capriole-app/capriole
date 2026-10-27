@@ -7,6 +7,7 @@
   // phone those details are under the page, closed: they open by themselves with something to edit in them
   // (and close with it, unless opened by hand from ⋯), and with their ✕.
   import X from '@lucide/svelte/icons/x';
+  import MessageSquare from '@lucide/svelte/icons/message-square';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import FontsSection from './FontsSection.svelte';
   import FormLayer from './FormLayer.svelte';
@@ -42,6 +43,13 @@
     }
   });
   const onlyToEdit = $derived(editor.detailsOpen === 'edit');
+  /**
+   * On a phone, what is selected in one line (its name, delete, ✕): the page stays in view and scrolls. Its
+   * comment and colour open on asking (`asked`: for which annotation), a note's and a text's at once.
+   */
+  const strip = $derived(onlyToEdit && (editor.annotation !== null || editor.object !== null));
+  let asked = $state<string | null>(null);
+  const keyOf = (ref: [number, number]) => `${ref[0]} ${ref[1]}`;
 
   // The text gives the page's size as shown, the words that text markup goes on and the lines edittext
   // writes again — in the content's order, or as laid out for edittext (as the engine groups lines: text
@@ -147,6 +155,8 @@
     | { kind: 'ink'; points: Point[] }
     | { kind: 'shape'; start: Point; current: Point };
   let drag = $state.raw<Drag | null>(null);
+  /** With «Seleziona», where a finger went down off what is selected: chosen on lifting it, unless it scrolled. */
+  let tap: Point | null = null;
 
   function pointOf(event: MouseEvent): Point {
     const svg = event.currentTarget as SVGSVGElement;
@@ -217,6 +227,17 @@
         corner === null
           ? [...editor.annotations].reverse().find((a) => a.editable && a.ref && inside(p, a.rect, 3))
           : undefined;
+      // A finger moves only what is already selected: anywhere else it scrolls the page, or chooses what it
+      // lifts on (a page full of links stays where it is).
+      const onSelected =
+        corner !== null ||
+        (hit
+          ? same(hit, editor.selectedAnnotation)
+          : object !== null && objectAt(editor.elements, p[0], p[1]) === editor.selectedObject);
+      if (event.pointerType === 'touch' && !onSelected) {
+        tap = p;
+        return;
+      }
       if (corner === null || object) editor.selectedAnnotation = hit?.ref ?? null;
       if (corner !== null) {
         drag = { kind: 'resize', corner, start: p, current: p, stamp: object ? undefined : stamp?.ref };
@@ -355,7 +376,18 @@
     }
   }
 
+  /** What a finger chose, lifted where it went down: an annotation, else an object, else nothing. */
+  function choose(p: Point) {
+    const hit = [...editor.annotations].reverse().find((a) => a.editable && a.ref && inside(p, a.rect, 3));
+    editor.selectedAnnotation = hit?.ref ?? null;
+    editor.selectedObject = hit ? null : objectAt(editor.elements, p[0], p[1]);
+  }
+
   function up(page: PageText) {
+    if (tap) {
+      choose(tap);
+      tap = null;
+    }
     const done = drag;
     drag = null;
     if (!done) return;
@@ -501,16 +533,21 @@
         : 'crosshair',
   );
   /**
-   * Where a finger may scroll the page (zoomed in, on a phone): selecting with nothing selected, writing the
-   * page's text, filling the form. Something selected is moved by the finger; the other tools draw with it.
+   * Where a finger may scroll the page (zoomed in, on a phone): selecting, writing the page's text, filling
+   * the form; the other tools draw with it. Dragging what is selected moves it: `still` stops the scroll.
    */
   const touch = $derived(
-    (editor.tool === 'select' && editor.annotation === null && editor.object === null) ||
-      editor.tool === 'edittext' ||
-      editor.tool === 'form'
-      ? 'pan-x pan-y'
-      : 'none',
+    editor.tool === 'select' || editor.tool === 'edittext' || editor.tool === 'form' ? 'pan-x pan-y' : 'none',
   );
+  /** A finger that took what is selected, to move or resize it, does not scroll the page. */
+  function still(svg: SVGSVGElement) {
+    // After pointerdown, which has started the drag or not; not passive, to cancel the scroll.
+    const stop = (e: TouchEvent) => {
+      if (editor.tool === 'select' && drag !== null) e.preventDefault();
+    };
+    svg.addEventListener('touchstart', stop, { passive: false });
+    return () => svg.removeEventListener('touchstart', stop);
+  }
 </script>
 
 <svelte:window
@@ -591,7 +628,11 @@
           onpointerdown={(e) => down(e, page)}
           onpointermove={(e) => move(e, page)}
           onpointerup={() => up(page)}
-          onpointercancel={() => (drag = null)}
+          onpointercancel={() => {
+            drag = null;
+            tap = null;
+          }}
+          {@attach still}
           onpointerleave={() => (hovered = null)}
           ondblclick={(e) => {
             const p = pointOf(e);
@@ -802,13 +843,17 @@
       'flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-s bg-card p-4 text-sm',
       'max-md:max-h-[45dvh] max-md:w-full max-md:border-s-0 max-md:border-t',
       !editor.detailsOpen && 'max-md:hidden',
+      strip && 'max-md:flex-row max-md:items-start max-md:gap-2 max-md:py-2',
     ]}
     aria-label={t.annotations}
     data-testid="page-details"
   >
     <button
       type="button"
-      class="-mb-3 self-end rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+      class={[
+        '-mb-3 self-end rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden',
+        strip && 'order-last mb-0 self-start',
+      ]}
       aria-label={t.closeDetails}
       title={t.closeDetails}
       onclick={() => {
@@ -817,9 +862,12 @@
     >
     {#if editor.tool === 'select' && editor.object && !editor.annotation}
       {@const o = editor.object}
-      <section class="flex flex-col gap-3" data-testid="object-panel">
-        <h2 class="font-semibold">{objectName(o)}</h2>
-        <p class="text-muted-foreground">
+      <section
+        class={['flex flex-col gap-3', strip && 'max-md:min-w-0 max-md:flex-1 max-md:flex-row max-md:items-center']}
+        data-testid="object-panel"
+      >
+        <h2 class={['font-semibold', strip && 'max-md:min-w-0 max-md:flex-1 max-md:truncate']}>{objectName(o)}</h2>
+        <p class={['text-muted-foreground', strip && 'max-md:hidden']}>
           {t.objectHelp}
         </p>
         <button
@@ -832,11 +880,29 @@
     {:else if editor.annotation}
       {@const a = editor.annotation}
       {@const ref = a.ref!}
-      <section class="flex flex-col gap-3" data-testid="annotation-panel">
-        <h2 class="font-semibold">{nameOf(a)}</h2>
+      {@const folded = strip && a.subtype !== 'Text' && a.subtype !== 'FreeText' && asked !== keyOf(ref)}
+      <section
+        class={[
+          'flex flex-col gap-3',
+          strip && 'max-md:min-w-0 max-md:flex-1 max-md:flex-row max-md:flex-wrap max-md:items-center max-md:gap-2',
+        ]}
+        data-testid="annotation-panel"
+      >
+        <h2 class={['font-semibold', strip && 'max-md:min-w-0 max-md:flex-1 max-md:truncate']}>{nameOf(a)}</h2>
+        {#if a.editable && folded}
+          <button
+            type="button"
+            class="rounded-md border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground md:hidden"
+            aria-label={t.commentAndColor}
+            title={t.commentAndColor}
+            onclick={() => (asked = keyOf(ref))}><MessageSquare class="size-4" /></button
+          >
+        {/if}
         {#if a.editable}
           {#key `${ref[0]} ${ref[1]}`}
-            <label class="flex flex-col gap-1">
+            <label
+              class={['flex flex-col gap-1', strip && 'max-md:order-last max-md:w-full', folded && 'max-md:hidden']}
+            >
               <span class="text-muted-foreground">{a.subtype === 'FreeText' ? t.text : t.comment}</span>
               <textarea
                 class="min-h-24 rounded-md border bg-card px-2 py-1.5 text-base focus:border-emphasis focus:ring-3 focus:ring-accent focus:outline-none sm:text-sm"
@@ -848,7 +914,11 @@
           {/key}
           <!-- A stamp's colours are its picture's. -->
           {#if a.subtype !== 'Stamp'}
-            <div class="flex items-center gap-1" role="radiogroup" aria-label={t.annotationColor}>
+            <div
+              class={['flex items-center gap-1', strip && 'max-md:order-last max-md:w-full', folded && 'max-md:hidden']}
+              role="radiogroup"
+              aria-label={t.annotationColor}
+            >
               {#each colors as { name, rgb } (name)}
                 <button
                   type="button"
