@@ -33,18 +33,15 @@
   const toEdit = $derived(
     editor.annotation !== null || editor.object !== null || editor.noRoom !== null || editor.textNotice !== null,
   );
-  let openedByItself = false;
+  // Opened by itself ('edit'), on a phone it shows only what there is to edit: the lists come from ⋯.
   $effect(() => {
     if (toEdit) {
-      if (!untrack(() => editor.detailsOpen)) {
-        editor.detailsOpen = true;
-        openedByItself = true;
-      }
-    } else if (openedByItself) {
+      if (!untrack(() => editor.detailsOpen)) editor.detailsOpen = 'edit';
+    } else if (untrack(() => editor.detailsOpen) === 'edit') {
       editor.detailsOpen = false;
-      openedByItself = false;
     }
   });
+  const onlyToEdit = $derived(editor.detailsOpen === 'edit');
 
   // The text gives the page's size as shown, the words that text markup goes on and the lines edittext
   // writes again — in the content's order, or as laid out for edittext (as the engine groups lines: text
@@ -443,6 +440,9 @@
   const nameOf = (a: AnnotationInfo) => t.names[a.subtype] ?? a.subtype;
   // Form widgets belong to their fields (listed apart, filled with the form tool).
   const listed = $derived(editor.annotations.filter((a) => a.subtype !== 'Widget'));
+  // A page can have dozens of links: they are listed apart, folded.
+  const marks = $derived(listed.filter((a) => a.subtype !== 'Link'));
+  const links = $derived(listed.filter((a) => a.subtype === 'Link'));
   const pageFields = $derived(editor.fields.filter((f) => f.widgets.some((w) => w.page === index)));
 
   // The text of the selected annotation is written as it is typed: after a short pause (each pause one
@@ -529,6 +529,27 @@
     }
   }}
 />
+
+{#snippet listItem(a: AnnotationInfo)}
+  <li>
+    <button
+      type="button"
+      class={[
+        'flex w-full items-center gap-2 rounded-md px-2 py-1 text-start hover:bg-muted disabled:opacity-60',
+        same(a, editor.selectedAnnotation) && 'bg-accent',
+      ]}
+      disabled={!a.editable}
+      onclick={() => {
+        editor.tool = 'select';
+        editor.selectedAnnotation = a.ref;
+      }}
+    >
+      <span class="size-3 shrink-0 rounded-full border" style:background-color={a.color ? css(a.color) : 'transparent'}
+      ></span>
+      <span class="truncate">{nameOf(a)}{a.contents ? ` — ${a.contents}` : ''}</span>
+    </button>
+  </li>
+{/snippet}
 
 <div class="flex min-h-0 flex-1 max-md:flex-col">
   <!-- --bars: the height the bars and the margins take, for the page fitted (on a phone, a bar at the bottom too). -->
@@ -792,7 +813,6 @@
       title={t.closeDetails}
       onclick={() => {
         editor.detailsOpen = false;
-        openedByItself = false;
       }}><X class="size-4" /></button
     >
     {#if editor.tool === 'select' && editor.object && !editor.annotation}
@@ -931,7 +951,7 @@
       {/if}
     {/if}
     {#if pageFields.length > 0}
-      <section class="flex flex-col gap-1">
+      <section class={['flex flex-col gap-1', onlyToEdit && 'max-md:hidden']}>
         <h2 class="font-semibold">{t.formFields}</h2>
         <ul class="flex flex-col gap-1" data-testid="field-list">
           {#each pageFields as f (`${f.ref[0]} ${f.ref[1]}`)}
@@ -952,35 +972,28 @@
         </ul>
       </section>
     {/if}
-    <section class="flex flex-col gap-1">
+    <section class={['flex flex-col gap-1', onlyToEdit && 'max-md:hidden']} data-testid="annotation-lists">
       <h2 class="font-semibold">{t.pageAnnotations}</h2>
       {#if listed.length === 0}
         <p class="text-muted-foreground">{t.none}</p>
       {/if}
       <ul class="flex flex-col gap-1" data-testid="annotation-list">
-        {#each listed as a, i (a.ref ? `${a.ref[0]} ${a.ref[1]}` : `d${i}`)}
-          <li>
-            <button
-              type="button"
-              class={[
-                'flex w-full items-center gap-2 rounded-md px-2 py-1 text-start hover:bg-muted disabled:opacity-60',
-                same(a, editor.selectedAnnotation) && 'bg-accent',
-              ]}
-              disabled={!a.editable}
-              onclick={() => {
-                editor.tool = 'select';
-                editor.selectedAnnotation = a.ref;
-              }}
-            >
-              <span
-                class="size-3 shrink-0 rounded-full border"
-                style:background-color={a.color ? css(a.color) : 'transparent'}
-              ></span>
-              <span class="truncate">{nameOf(a)}{a.contents ? ` — ${a.contents}` : ''}</span>
-            </button>
-          </li>
+        {#each marks as a, i (a.ref ? `${a.ref[0]} ${a.ref[1]}` : `d${i}`)}
+          {@render listItem(a)}
         {/each}
       </ul>
+      {#if links.length > 0}
+        <details open={links.some((a) => same(a, editor.selectedAnnotation))} data-testid="link-list">
+          <summary class="cursor-pointer rounded-md px-2 py-1 text-muted-foreground hover:bg-muted"
+            >{t.links(links.length)}</summary
+          >
+          <ul class="flex flex-col gap-1">
+            {#each links as a, i (a.ref ? `${a.ref[0]} ${a.ref[1]}` : `l${i}`)}
+              {@render listItem(a)}
+            {/each}
+          </ul>
+        </details>
+      {/if}
     </section>
   </aside>
 </div>
