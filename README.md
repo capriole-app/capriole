@@ -66,3 +66,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) (contributions are signed off under the D
 without fee, with no conditions. Third-party components built into the engine keep their own licences:
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (generated) and [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md);
 the apps list theirs in «Informazioni e licenze». Rationale: [ADR 0009](docs/adr/0009-licenza.md).
+
+The licence covers the code, not the name «Capriole» or its logo: see [TRADEMARK.md](TRADEMARK.md).
