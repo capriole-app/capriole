@@ -40,6 +40,9 @@ pipeline {
     }
 
     stage('Corpus') {
+      // The shared host's CPU lock (project-template ADR 0004): Declarative takes it before the agent, so
+      // no executor waits, and the 6-hour timeout inside the steps does not count the wait.
+      options { lock(resource: 'jenkins-cpu') }
       agent {
         dockerfile {
           filename 'corpus.Dockerfile'
